@@ -27,9 +27,11 @@ extern crate agnes;
 A quick example:
 
 ```rust
-extern crate csv_sniffer;
+extern crate agnes;
 
-use std::env;
+use agnes::source::{CsvReader, CsvSourceBuilder, FileSource};
+use agnes::field::{FieldIdent, FieldType};
+use agnes::view::DataView;
 
 fn main() {
     let data_filepath = Path::new(file!()).parent().unwrap().join("tests/data/sample1.csv");
