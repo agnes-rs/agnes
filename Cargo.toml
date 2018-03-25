@@ -1,0 +1,25 @@
+[package]
+name = "agnes"
+version = "0.1.0"
+description = "A data wrangling library for Rust"
+authors = ["Jamie Blondin <jblondin@gmail.com>"]
+license-file = "LICENSE"
+repository = "https://github.com/jblondin/agnes"
+exclude = ["tests/data/*"]
+
+[dependencies]
+csv = "1.0.0-beta.5"
+serde = "1.0"
+serde_derive = "1.0"
+futures = "0.1"
+hyper-tls = "0.1"
+hyper = "0.11"
+tokio-core = "0.1"
+tokio-io = "0.1"
+native-tls = "0.1"
+encoding = "0.2"
+indexmap = "0.4"
+bit-vec = "0.4.4"
+
+[dev-dependencies]
+serde_json = "1.0"
