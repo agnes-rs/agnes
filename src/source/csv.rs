@@ -175,7 +175,7 @@ impl CsvReader {
                     FieldIdent::Name(ref s)  => s.clone()
                 }
             }).collect::<Vec<_>>().join(",");
-            return Err(ViewsError::Field(
+            return Err(AgnesError::Field(
                 format!("Field names not found in CSV: {}", column_list)));
         }
 
@@ -192,7 +192,7 @@ impl CsvReader {
             let record = row?;
             for field in &self.field_coll.fields {
                 let value = decode(record.get(field.src_index).ok_or(
-                    ViewsError::MissingSourceField(field.ty_ident.ident.clone()))?)?;
+                    AgnesError::FieldNotFound(field.ty_ident.ident.clone()))?)?;
                 ds.insert(field.clone(), value.clone())?;
             }
         }

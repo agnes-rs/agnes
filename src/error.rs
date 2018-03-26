@@ -13,7 +13,7 @@ use field::FieldIdent;
 
 /// General DataFrame error enum.
 #[derive(Debug)]
-pub enum ViewsError {
+pub enum AgnesError {
     /// File IO error.
     Io(io::Error),
     /// Network-related error
@@ -27,49 +27,49 @@ pub enum ViewsError {
     /// Charset Decoding error.
     Decode(String),
     /// Field missing from DataSource.
-    MissingSourceField(FieldIdent)
+    FieldNotFound(FieldIdent)
 }
 
 /// Wrapper for DataFrame-based results.
-pub type Result<T> = ::std::result::Result<T, ViewsError>;
+pub type Result<T> = ::std::result::Result<T, AgnesError>;
 
-impl fmt::Display for ViewsError {
+impl fmt::Display for AgnesError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            ViewsError::Io(ref err) => write!(f, "IO error: {}", err),
-            ViewsError::Net(ref err) => write!(f, "Network error: {}", err),
-            ViewsError::Csv(ref err) => write!(f, "CSV error: {}", err),
-            ViewsError::Field(ref s) => write!(f, "Field error: {}", s),
-            ViewsError::Parse(ref err) => write!(f, "Parse error: {}", err),
-            ViewsError::Decode(ref s) => write!(f, "Decode error: {}", s),
-            ViewsError::MissingSourceField(ref ident) =>
+            AgnesError::Io(ref err) => write!(f, "IO error: {}", err),
+            AgnesError::Net(ref err) => write!(f, "Network error: {}", err),
+            AgnesError::Csv(ref err) => write!(f, "CSV error: {}", err),
+            AgnesError::Field(ref s) => write!(f, "Field error: {}", s),
+            AgnesError::Parse(ref err) => write!(f, "Parse error: {}", err),
+            AgnesError::Decode(ref s) => write!(f, "Decode error: {}", s),
+            AgnesError::FieldNotFound(ref ident) =>
                 write!(f, "Missing source field: {}", ident.to_string()),
         }
     }
 }
 
-impl Error for ViewsError {
+impl Error for AgnesError {
     fn description(&self) -> &str {
         match *self {
-            ViewsError::Io(ref err) => err.description(),
-            ViewsError::Net(ref err) => err.description(),
-            ViewsError::Csv(ref err) => err.description(),
-            ViewsError::Field(ref s) => s,
-            ViewsError::Parse(ref err) => err.description(),
-            ViewsError::Decode(ref s) => s,
-            ViewsError::MissingSourceField(_) => "missing source field"
+            AgnesError::Io(ref err) => err.description(),
+            AgnesError::Net(ref err) => err.description(),
+            AgnesError::Csv(ref err) => err.description(),
+            AgnesError::Field(ref s) => s,
+            AgnesError::Parse(ref err) => err.description(),
+            AgnesError::Decode(ref s) => s,
+            AgnesError::FieldNotFound(_) => "missing source field"
         }
     }
 
     fn cause(&self) -> Option<&Error> {
         match *self {
-            ViewsError::Io(ref err) => Some(err),
-            ViewsError::Net(ref err) => Some(err),
-            ViewsError::Csv(ref err) => Some(err),
-            ViewsError::Field(_) => None,
-            ViewsError::Parse(ref err) => Some(err),
-            ViewsError::Decode(_) => None,
-            ViewsError::MissingSourceField(_) => None,
+            AgnesError::Io(ref err) => Some(err),
+            AgnesError::Net(ref err) => Some(err),
+            AgnesError::Csv(ref err) => Some(err),
+            AgnesError::Field(_) => None,
+            AgnesError::Parse(ref err) => Some(err),
+            AgnesError::Decode(_) => None,
+            AgnesError::FieldNotFound(_) => None,
         }
     }
 }
@@ -159,9 +159,9 @@ impl From<std::num::ParseIntError> for ParseError {
         ParseError::Int(err)
     }
 }
-impl From<std::num::ParseIntError> for ViewsError {
-    fn from(err: std::num::ParseIntError) -> ViewsError {
-        ViewsError::Parse(err.into())
+impl From<std::num::ParseIntError> for AgnesError {
+    fn from(err: std::num::ParseIntError) -> AgnesError {
+        AgnesError::Parse(err.into())
     }
 }
 impl From<std::num::ParseFloatError> for ParseError {
@@ -169,9 +169,9 @@ impl From<std::num::ParseFloatError> for ParseError {
         ParseError::Float(err)
     }
 }
-impl From<std::num::ParseFloatError> for ViewsError {
-    fn from(err: std::num::ParseFloatError) -> ViewsError {
-        ViewsError::Parse(err.into())
+impl From<std::num::ParseFloatError> for AgnesError {
+    fn from(err: std::num::ParseFloatError) -> AgnesError {
+        AgnesError::Parse(err.into())
     }
 }
 impl From<std::str::ParseBoolError> for ParseError {
@@ -179,27 +179,27 @@ impl From<std::str::ParseBoolError> for ParseError {
         ParseError::Bool(err)
     }
 }
-impl From<std::str::ParseBoolError> for ViewsError {
-    fn from(err: std::str::ParseBoolError) -> ViewsError {
-        ViewsError::Parse(err.into())
+impl From<std::str::ParseBoolError> for AgnesError {
+    fn from(err: std::str::ParseBoolError) -> AgnesError {
+        AgnesError::Parse(err.into())
     }
 }
-impl From<ParseError> for ViewsError {
-    fn from(err: ParseError) -> ViewsError {
-        ViewsError::Parse(err)
-    }
-}
-
-
-impl From<io::Error> for ViewsError {
-    fn from(err: io::Error) -> ViewsError {
-        ViewsError::Io(err)
+impl From<ParseError> for AgnesError {
+    fn from(err: ParseError) -> AgnesError {
+        AgnesError::Parse(err)
     }
 }
 
-impl From<NetError> for ViewsError {
-    fn from(err: NetError) -> ViewsError {
-        ViewsError::Net(err)
+
+impl From<io::Error> for AgnesError {
+    fn from(err: io::Error) -> AgnesError {
+        AgnesError::Io(err)
+    }
+}
+
+impl From<NetError> for AgnesError {
+    fn from(err: NetError) -> AgnesError {
+        AgnesError::Net(err)
     }
 }
 
@@ -208,9 +208,9 @@ impl From<native_tls::Error> for NetError {
         NetError::Tls(err)
     }
 }
-impl From<native_tls::Error> for ViewsError {
-    fn from(err: native_tls::Error) -> ViewsError {
-        ViewsError::Net(err.into())
+impl From<native_tls::Error> for AgnesError {
+    fn from(err: native_tls::Error) -> AgnesError {
+        AgnesError::Net(err.into())
     }
 }
 
@@ -219,14 +219,14 @@ impl From<hyper::Error> for NetError {
         NetError::Http(err)
     }
 }
-impl From<hyper::Error> for ViewsError {
-    fn from(err: hyper::Error) -> ViewsError {
-        ViewsError::Net(err.into())
+impl From<hyper::Error> for AgnesError {
+    fn from(err: hyper::Error) -> AgnesError {
+        AgnesError::Net(err.into())
     }
 }
 
-impl From<csv::Error> for ViewsError {
-    fn from(err: csv::Error) -> ViewsError {
-        ViewsError::Csv(err)
+impl From<csv::Error> for AgnesError {
+    fn from(err: csv::Error) -> AgnesError {
+        AgnesError::Csv(err)
     }
 }

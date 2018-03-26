@@ -16,6 +16,6 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<String> {
             // fallback to WINDOWS-1252 encoding
             WINDOWS_1252.decode(bytes, DecoderTrap::Strict)
         })
-        .map_err(|_| ViewsError::Decode("unabled to decode input".to_string()))
+        .map_err(|_| AgnesError::Decode("unabled to decode input".to_string()))
 }
 
