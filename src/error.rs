@@ -27,7 +27,11 @@ pub enum AgnesError {
     /// Charset Decoding error.
     Decode(String),
     /// Field missing from DataSource.
-    FieldNotFound(FieldIdent)
+    FieldNotFound(FieldIdent),
+    /// Dimension mismatch
+    DimensionMismatch(String),
+    /// Field collision when merging
+    FieldCollision(String),
 }
 
 /// Wrapper for DataFrame-based results.
@@ -44,6 +48,8 @@ impl fmt::Display for AgnesError {
             AgnesError::Decode(ref s) => write!(f, "Decode error: {}", s),
             AgnesError::FieldNotFound(ref ident) =>
                 write!(f, "Missing source field: {}", ident.to_string()),
+            AgnesError::DimensionMismatch(ref s) => write!(f, "Dimension mismatch: {}", s),
+            AgnesError::FieldCollision(ref s) => write!(f, "Field collision: {}", s)
         }
     }
 }
@@ -57,7 +63,9 @@ impl Error for AgnesError {
             AgnesError::Field(ref s) => s,
             AgnesError::Parse(ref err) => err.description(),
             AgnesError::Decode(ref s) => s,
-            AgnesError::FieldNotFound(_) => "missing source field"
+            AgnesError::FieldNotFound(_) => "missing source field",
+            AgnesError::DimensionMismatch(ref s) => s,
+            AgnesError::FieldCollision(_) => "field collision",
         }
     }
 
@@ -66,10 +74,12 @@ impl Error for AgnesError {
             AgnesError::Io(ref err) => Some(err),
             AgnesError::Net(ref err) => Some(err),
             AgnesError::Csv(ref err) => Some(err),
-            AgnesError::Field(_) => None,
             AgnesError::Parse(ref err) => Some(err),
+            AgnesError::Field(_) => None,
             AgnesError::Decode(_) => None,
             AgnesError::FieldNotFound(_) => None,
+            AgnesError::DimensionMismatch(_) => None,
+            AgnesError::FieldCollision(_) => None,
         }
     }
 }

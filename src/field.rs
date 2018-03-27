@@ -3,12 +3,12 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-/// Identifier for a field in the source file.
+/// Identifier for a field in the source.
 #[derive(Debug, Clone)]
 pub enum FieldIdent {
-    /// Column index in the source file
+    /// Unnamed field identifier, using the field index in the source file.
     Index(usize),
-    /// Column name in the source file
+    /// Field name in the source file
     Name(String)
 }
 impl FieldIdent {
@@ -36,6 +36,22 @@ impl Eq for FieldIdent {}
 impl Hash for FieldIdent {
     fn hash<H>(&self, state: &mut H) where H: Hasher {
         self.to_string().hash(state)
+    }
+}
+
+impl From<usize> for FieldIdent {
+    fn from(src: usize) -> FieldIdent {
+        FieldIdent::Index(src)
+    }
+}
+impl<'a> From<&'a str> for FieldIdent {
+    fn from(src: &'a str) -> FieldIdent {
+        FieldIdent::Name(src.to_string())
+    }
+}
+impl From<String> for FieldIdent {
+    fn from(src: String) -> FieldIdent {
+        FieldIdent::Name(src)
     }
 }
 
