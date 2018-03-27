@@ -60,5 +60,5 @@ fn aggregate() {
 
     let dv = dv_gdp.merge(&dv_life).unwrap();
     println!("{}", dv);
-    println!("{}", serde_json::to_string(&dv).unwrap());
+    // println!("{}", serde_json::to_string(&dv).unwrap());
 }

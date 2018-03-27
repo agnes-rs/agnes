@@ -11,6 +11,15 @@ pub enum MaybeNa<T> {
     /// Indicates an existing value.
     Exists(T)
 }
+impl<T: ToString> ToString for MaybeNa<T> {
+    fn to_string(&self) -> String {
+        match *self {
+            MaybeNa::Na => "NA".into(),
+            MaybeNa::Exists(ref t) => t.to_string()
+        }
+    }
+}
+
 
 /// Data vector along with bit-vector-based mask indicating whether or not values exist.
 #[derive(Debug, Clone)]

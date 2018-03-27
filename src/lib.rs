@@ -14,6 +14,7 @@ extern crate csv;
 extern crate encoding;
 extern crate indexmap;
 extern crate bit_vec;
+#[macro_use] extern crate prettytable;
 
 pub mod source;
 pub mod store;

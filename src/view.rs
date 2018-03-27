@@ -19,11 +19,11 @@ use std::rc::Rc;
 
 use indexmap::IndexMap;
 use serde::ser::{self, Serialize, Serializer, SerializeMap};
+use prettytable as pt;
 
 use store::DataStore;
 use masked::FieldData;
 use field::FieldIdent;
-use MaybeNa;
 use error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -158,91 +158,40 @@ impl From<DataStore> for DataView {
     }
 }
 
-macro_rules! format_opt {
-    ($fmt:expr, $value:expr) => {{
-        match $value {
-            MaybeNa::Exists(ref value) => format!($fmt, value),
-            MaybeNa::Na                => "NA".to_string()
-        }
-    }}
-}
-macro_rules! write_column {
-    ($formatter:expr, $value:expr, width = $width:expr) => {{
-        const GAP: &str = "  ";
-        write!($formatter, "{:>width$.width$}{}", $value, GAP, width = $width)
-    }}
-}
-macro_rules! write_column_opt {
-    ($formatter:expr, $value:expr, width = $width:expr) => {{
-        match $value {
-            MaybeNa::Exists(ref value) => write_column!($formatter, value, width = $width),
-            MaybeNa::Na                => write_column!($formatter, "NA", width = $width)
-        }
-    }}
-}
-
 impl Display for DataView {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         if self.stores.len() == 0 || self.fields.len() == 0 {
             return write!(f, "Empty DataView");
         }
-        const MAX_COL_WIDTH: usize = 30;
+        const MAX_ROWS: usize = 1000;
         let nrows = self.stores[0].nrows();
 
-        let cols = self.fields.values()
+        let mut table = pt::Table::new();
+        table.set_titles(self.fields.keys().into());
+        let all_data = self.fields.values()
             .filter_map(|field| {
-                self.stores[field.store_idx].get_field_data(&field.ident).map(|data| (field, data))
-            }).map(|(field, data)| {
-                // go through the data to find the column width
-                let mut max_width = 0;
                 // this should be guaranteed by construction of the DataView
                 assert_eq!(nrows, self.stores[field.store_idx].nrows());
-                for i in 0..nrows {
-                    // col.get(i).unwrap() should be safe: store guarantees that all fields have the
-                    // same length (given by self.store.nrows())
-                    max_width = max_width.max(match data {
-                        FieldData::Unsigned(col) => {
-                            format_opt!("{}", col.get(i).unwrap()).len()
-                        },
-                        FieldData::Signed(col) => { format_opt!("{}", col.get(i).unwrap()).len() },
-                        FieldData::Text(col) => { format_opt!("{}", col.get(i).unwrap()).len() },
-                        FieldData::Boolean(col) => { format_opt!("{}", col.get(i).unwrap()).len() },
-                        FieldData::Float(col) => { format_opt!("{}", col.get(i).unwrap()).len() },
-                    });
-                }
-                (data, MAX_COL_WIDTH.min(max_width), field.to_string())
-            }).collect::<Vec<_>>();
-
-        for j in 0..cols.len() {
-            write_column!(f, cols[j].2, width = cols[j].1)?;
-        }
-        writeln!(f)?;
-        for i in 0..nrows {
-            for j in 0..cols.len() {
-                let col_width = cols[j].1;
-                // col.get(i).unwrap() should be safe: store guarantees that all fields have the
-                // same length (given by self.store.nrows())
-                match cols[j].0 {
-                    FieldData::Unsigned(col) => {
-                        write_column_opt!(f, col.get(i).unwrap(), width = col_width)?;
-                    },
-                    FieldData::Signed(col) => {
-                        write_column_opt!(f, col.get(i).unwrap(), width = col_width)?;
-                    },
-                    FieldData::Text(col) => {
-                        write_column_opt!(f, col.get(i).unwrap(), width = col_width)?;
-                    },
-                    FieldData::Boolean(col) => {
-                        write_column_opt!(f, col.get(i).unwrap(), width = col_width)?;
-                    },
-                    FieldData::Float(col) => {
-                        write_column_opt!(f, col.get(i).unwrap(), width = col_width)?;
-                    },
-                }
+                self.stores[field.store_idx].get_field_data(&field.ident)
+            })
+            .collect::<Vec<_>>();
+        for i in 0..nrows.min(MAX_ROWS) {
+            let mut row = pt::row::Row::empty();
+            for field_data in &all_data {
+                // col.get(i).unwrap() should be safe: store guarantees that all fields have
+                // the same length (given by nrows)
+                match *field_data {
+                    FieldData::Unsigned(col) => row.add_cell(cell!(col.get(i).unwrap())),
+                    FieldData::Signed(col) => row.add_cell(cell!(col.get(i).unwrap())),
+                    FieldData::Text(col) => row.add_cell(cell!(col.get(i).unwrap())),
+                    FieldData::Boolean(col) => row.add_cell(cell!(col.get(i).unwrap())),
+                    FieldData::Float(col) => row.add_cell(cell!(col.get(i).unwrap())),
+                };
             }
-            writeln!(f)?;
+            table.add_row(row);
         }
-        Ok(())
+        table.set_format(*pt::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+        table.fmt(f)
     }
 }
 
