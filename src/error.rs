@@ -8,6 +8,7 @@ use std;
 use csv;
 use native_tls;
 use hyper;
+use csv_sniffer;
 
 use field::FieldIdent;
 
@@ -20,8 +21,10 @@ pub enum AgnesError {
     Net(NetError),
     /// CSV reading / parsing error
     Csv(csv::Error),
-    /// Field access error.
-    Field(String),
+    /// CSV sniffer error
+    CsvSniffer(csv_sniffer::error::SnifferError),
+    /// CSV dialect error
+    CsvDialect(String),
     /// Parsing error (failure parsing as specified type).
     Parse(ParseError),
     /// Charset Decoding error.
@@ -43,7 +46,8 @@ impl fmt::Display for AgnesError {
             AgnesError::Io(ref err) => write!(f, "IO error: {}", err),
             AgnesError::Net(ref err) => write!(f, "Network error: {}", err),
             AgnesError::Csv(ref err) => write!(f, "CSV error: {}", err),
-            AgnesError::Field(ref s) => write!(f, "Field error: {}", s),
+            AgnesError::CsvSniffer(ref err) => write!(f, "CSV sniffer error: {}", err),
+            AgnesError::CsvDialect(ref s) => write!(f, "CSV structure error: {}", s),
             AgnesError::Parse(ref err) => write!(f, "Parse error: {}", err),
             AgnesError::Decode(ref s) => write!(f, "Decode error: {}", s),
             AgnesError::FieldNotFound(ref ident) =>
@@ -60,7 +64,8 @@ impl Error for AgnesError {
             AgnesError::Io(ref err) => err.description(),
             AgnesError::Net(ref err) => err.description(),
             AgnesError::Csv(ref err) => err.description(),
-            AgnesError::Field(ref s) => s,
+            AgnesError::CsvSniffer(ref err) => err.description(),
+            AgnesError::CsvDialect(ref s) => s,
             AgnesError::Parse(ref err) => err.description(),
             AgnesError::Decode(ref s) => s,
             AgnesError::FieldNotFound(_) => "missing source field",
@@ -74,8 +79,9 @@ impl Error for AgnesError {
             AgnesError::Io(ref err) => Some(err),
             AgnesError::Net(ref err) => Some(err),
             AgnesError::Csv(ref err) => Some(err),
+            AgnesError::CsvSniffer(ref err) => Some(err),
+            AgnesError::CsvDialect(_) => None,
             AgnesError::Parse(ref err) => Some(err),
-            AgnesError::Field(_) => None,
             AgnesError::Decode(_) => None,
             AgnesError::FieldNotFound(_) => None,
             AgnesError::DimensionMismatch(_) => None,
@@ -93,6 +99,8 @@ pub enum NetError {
     Tls(native_tls::Error),
     /// HTTP error.
     Http(hyper::Error),
+    /// Local file error
+    LocalFile
 }
 impl fmt::Display for NetError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -101,6 +109,7 @@ impl fmt::Display for NetError {
                 write!(f, "Unsupported scheme: {}", t.clone().unwrap_or("none".to_string())),
             NetError::Tls(ref err) => write!(f, "TLS error: {}", err),
             NetError::Http(ref err) => write!(f, "HTTP error: {}", err),
+            NetError::LocalFile => write!(f, "unable to access local file over HTTP")
         }
     }
 }
@@ -115,6 +124,7 @@ impl Error for NetError {
             },
             NetError::Tls(ref err) => err.description(),
             NetError::Http(ref err) => err.description(),
+            NetError::LocalFile => "unable to read local file over HTTP",
         }
     }
 
@@ -123,6 +133,7 @@ impl Error for NetError {
             NetError::UnsupportedUriScheme(_) => None,
             NetError::Tls(ref err) => Some(err),
             NetError::Http(ref err) => Some(err),
+            NetError::LocalFile => None,
         }
     }
 }
@@ -238,5 +249,11 @@ impl From<hyper::Error> for AgnesError {
 impl From<csv::Error> for AgnesError {
     fn from(err: csv::Error) -> AgnesError {
         AgnesError::Csv(err)
+    }
+}
+
+impl From<csv_sniffer::error::SnifferError> for AgnesError {
+    fn from(err: csv_sniffer::error::SnifferError) -> AgnesError {
+        AgnesError::CsvSniffer(err)
     }
 }
