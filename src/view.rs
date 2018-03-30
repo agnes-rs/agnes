@@ -65,6 +65,10 @@ impl DataView {
     pub fn nrows(&self) -> usize {
         if self.stores.len() == 0 { 0 } else { self.stores[0].nrows() }
     }
+    /// Number of fields in this data view
+    pub fn nfields(&self) -> usize {
+        self.fields.len()
+    }
 
     /// Rename a field of this DataView.
     pub fn rename<T, U>(&mut self, orig: T, new: U) -> error::Result<()> where

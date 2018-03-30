@@ -55,7 +55,7 @@ pub struct CsvReader {
 impl CsvReader {
     /// Create a new CSV reader from a CSV source specification. This will process header row (if
     /// exists), and verify the fields specified in the `CsvSource` object exist in this CSV file.
-    pub fn new(src: CsvSource) -> Result<CsvReader> {
+    pub fn new(src: &CsvSource) -> Result<CsvReader> {
         let file_reader = LocalFileReader::new(&src.src)?;
         let mut csv_reader = src.metadata.dialect.open_reader(file_reader)?;
         let mut field_coll = FieldCollection::new();

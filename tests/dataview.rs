@@ -1,6 +1,7 @@
 extern crate agnes;
 extern crate serde;
 extern crate serde_json;
+extern crate csv_sniffer;
 
 mod common;
 
@@ -8,7 +9,7 @@ use agnes::view::DataView;
 
 #[test]
 fn rename() {
-    let mut csv_rdr = common::load_test_file("sample1.csv");
+    let (mut csv_rdr, _) = common::load_csv_file("sample1.csv");
 
     let mut dv: DataView = csv_rdr.read().unwrap().into();
     println!("{}", dv);
@@ -20,11 +21,11 @@ fn rename() {
 
 #[test]
 fn aggregate() {
-    let mut csv_rdr = common::load_test_file("gdp.csv");
+    let (mut csv_rdr, _) = common::load_csv_file("gdp.csv");
     let mut dv_gdp: DataView = DataView::from(csv_rdr.read().unwrap())
         .v(["Country Name", "Country Code", "1983"]);
 
-    let mut csv_rdr = common::load_test_file("life.csv");
+    let (mut csv_rdr, _) = common::load_csv_file("life.csv");
     // only take extra '1983' column
     let mut dv_life: DataView = DataView::from(csv_rdr.read().unwrap()).v("1983");
 
