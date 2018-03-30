@@ -14,62 +14,6 @@ use tokio_core::reactor::Core;
 use source::FileLocator;
 use error::*;
 
-/*
-/// A file source. Abstracts over different kinds of file sources.
-#[derive(Clone, Debug)]
-pub struct FileSource {
-    /// file location.
-    pub file: FileLocator,
-}
-
-impl FileSource {
-    /// Create a new file source from a file location.
-    pub fn new<T: Into<FileLocator>>(src: T) -> FileSource {
-        FileSource {
-            file: src.into(),
-        }
-    }
-    /// Callback-based reading from a file source. Calls the function `callback` with
-    /// chunks of the data until finished. Synchronous; blocks execution.
-    pub fn read_chunks<F>(&self, mut callback: F) -> Result<()> where F: FnMut(&[u8]) {
-        match self.file {
-            FileLocator::File(ref path) => {
-                let file = File::open(path)?;
-                const DEFAULT_BUF_SIZE: usize = 8 * 1024;
-                let mut reader = BufReader::with_capacity(DEFAULT_BUF_SIZE, file);
-                let mut buf = [0; DEFAULT_BUF_SIZE];
-                loop {
-                    let bytes_read = reader.read(&mut buf)?;
-                    if bytes_read > 0 {
-                        callback(&buf[0..bytes_read]);
-                    } else {
-                        break;
-                    }
-                }
-            },
-            FileLocator::Http(ref uri) => {
-                let mut core = Core::new()?;
-                let handle = core.handle();
-                let client = Client::configure()
-                    .connector(HttpsConnector::new(4, &handle)?)
-                    .build(&handle);
-                let work = client.get(uri.clone()).and_then(|res| {
-                    res.body().for_each(|chunk| Ok(callback(&*chunk)))
-                });
-                core.run(work)?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl<T: Into<FileLocator>> From<T> for FileSource {
-    fn from(orig: T) -> FileSource {
-        FileSource::new(orig)
-    }
-}
-*/
-
 #[derive(Debug)]
 pub struct LocalFileReader {
     file: File
@@ -229,10 +173,12 @@ enum State {
     Empty
 }
 
-/// Struct that implements `Read` for file sources.
+/// Abstract general file reader, implementing `Read`.
 #[derive(Debug)]
 pub enum FileReader {
+    /// Implements `Read` for local files
     Local(LocalFileReader),
+    /// Implements `Read` for http-served files
     Http(HttpFileReader),
 }
 

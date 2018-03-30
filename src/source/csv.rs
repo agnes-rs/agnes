@@ -13,6 +13,8 @@ use error::*;
 use store::DataStore;
 use field::{FieldIdent, TypedFieldIdent, SrcField};
 
+/// CSV Data source. Contains location of data file, and computes CSV metadata. Can be turned into
+/// `CsvReader` object.
 #[derive(Debug)]
 pub struct CsvSource {
     // File source object for the CSV file
@@ -22,6 +24,11 @@ pub struct CsvSource {
 }
 
 impl CsvSource {
+    /// Create a new `CsvSource` object with provided file location. This constructor will analyze
+    /// (sniff) the file to detect its metadata (delimiter, quote character, field types, etc.)
+    ///
+    /// # Error
+    /// Fails if unable to open the file at the provided location, or if CSV analysis fails.
     pub fn new(loc: FileLocator) -> Result<CsvSource> {
         //TODO: make sample size configurable?
         let mut file_reader = LocalFileReader::new(&loc)?;
@@ -32,112 +39,11 @@ impl CsvSource {
             metadata: metadata
         })
     }
-}
-
-/*
-/// Specification of whether or not a header row exists. Typically, this will be either `Yes` or
-/// `No`, but occasionally CSV data files have a few headers lines before the data starts, which
-/// can be ignored using `NoSkip` or `YesSkip`, indicating no header exists and skip a certain
-/// number of lines, or a header row exists after skipping a certain number of lines, respectively.
-#[derive(Debug, Clone)]
-pub enum HasHeaders {
-    /// No header row, start parsing data at first row.
-    No,
-    /// Top row is the header. Data is following and subsequent rows.
-    Yes,
-    /// No header row. Ignore the top X rows, start parsing immediately after.
-    NoSkip(usize),
-    /// Header row after X rows. Ignore the top X rows, next work is the header, data is after that.
-    YesSkip(usize)
-}
-impl HasHeaders {
-    /// Returns `true` if file has a header row (either `HasHeaders::Yes` or
-    /// `HasHeaders::YesSkip(_)`). Returns `false` otherwise.
-    pub fn is_yes(&self) -> bool {
-        match *self {
-            HasHeaders::Yes | HasHeaders::YesSkip(_) => true,
-            _ => false
-        }
-    }
-    /// Return the number of skipped lines at beginning of file, if any. Returns `None` if no lines
-    /// were skipped (i.e. `HasHeaders::Yes` or `HasHeader::No`).
-    pub fn skip_count(&self) -> Option<usize> {
-        match *self {
-            HasHeaders::YesSkip(skip) | HasHeaders::NoSkip(skip) => Some(skip),
-            _ => None
-        }
+    /// Return the compute `Metadata` for this CSV source.
+    pub fn metadata(&self) -> &Metadata {
+        &self.metadata
     }
 }
-
-/// Source information for a CSV file.
-#[derive(Debug, Clone)]
-pub struct CsvSource {
-    /// File source object for the CSV file
-    src: FileSource,
-    /// Whether or not the first row of this CSV file contains the column headers
-    has_headers: HasHeaders,
-    /// CSV delimiter (default ',')
-    delimiter: u8,
-    /// List of fields (columns) to be included from this CSV source
-    fields: Vec<TypedFieldIdent>
-}
-
-
-/// Builder for `CsvSource` object.
-#[derive(Debug, Clone)]
-pub struct CsvSourceBuilder {
-    /// File source object for the CSV file
-    src: FileSource,
-    /// Whether or not the first row of this CSV file contains the column headers
-    has_headers: Option<HasHeaders>,
-    /// CSV delimiter (default ',')
-    delimiter: Option<u8>,
-    /// List of fields (columns) to be included from this CSV source
-    fields: Option<Vec<TypedFieldIdent>>,
-}
-impl CsvSourceBuilder {
-    /// Start building a `CsvSource` object, starting with a `FileSource`.
-    pub fn new<T: Into<FileSource>>(file_source: T) -> CsvSourceBuilder {
-        CsvSourceBuilder {
-            src: file_source.into(),
-            has_headers: None,
-            delimiter: None,
-            fields: None,
-        }
-    }
-    /// Update this builder with `HasHeaders` information indicating whether or not (and where)
-    /// a CSV file has a header row. If not specified, will default the value to `HasHeaders::Yes`.
-    pub fn has_headers<T: Into<HasHeaders>>(&mut self, has_headers: T) -> &mut CsvSourceBuilder {
-        self.has_headers = Some(has_headers.into());
-        self
-    }
-    /// Update this builder with the specification of the delimiter used in this CSV file. If not
-    /// specified, will default the value to `b','` (a comma).
-    pub fn delimiter<T: Into<u8>>(&mut self, delimiter: T) -> &mut CsvSourceBuilder {
-        self.delimiter = Some(delimiter.into());
-        self
-    }
-    /// Update this builder with the specification of the fields to pull from this CSV file. NOTE:
-    /// if not specified, this `CsvSource` will provide no fields (and thus no data).
-    pub fn fields<T: Into<Vec<TypedFieldIdent>>>(&mut self, fields: T) -> &mut CsvSourceBuilder {
-        self.fields = Some(fields.into());
-        self
-    }
-    /// Finalize building, producing a `CsvSource`.
-    pub fn build(&self) -> CsvSource {
-        CsvSource {
-            src: self.src.clone(),
-            has_headers: if let Some(ref has_headers) = self.has_headers {
-                has_headers.clone()
-            } else {
-                HasHeaders::Yes
-            },
-            delimiter: if let Some(delimiter) = self.delimiter { delimiter } else { b',' },
-            fields: if let Some(ref fields) = self.fields { fields.clone() } else { vec![] }
-        }
-    }
-}
-*/
 
 /// Reader object responsible for converting a CSV file into a data store.
 #[derive(Debug)]

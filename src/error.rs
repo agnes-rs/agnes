@@ -25,8 +25,6 @@ pub enum AgnesError {
     CsvSniffer(csv_sniffer::error::SnifferError),
     /// CSV dialect error
     CsvDialect(String),
-    /// Field access error.
-    Field(String),
     /// Parsing error (failure parsing as specified type).
     Parse(ParseError),
     /// Charset Decoding error.
@@ -50,7 +48,6 @@ impl fmt::Display for AgnesError {
             AgnesError::Csv(ref err) => write!(f, "CSV error: {}", err),
             AgnesError::CsvSniffer(ref err) => write!(f, "CSV sniffer error: {}", err),
             AgnesError::CsvDialect(ref s) => write!(f, "CSV structure error: {}", s),
-            AgnesError::Field(ref s) => write!(f, "Field error: {}", s),
             AgnesError::Parse(ref err) => write!(f, "Parse error: {}", err),
             AgnesError::Decode(ref s) => write!(f, "Decode error: {}", s),
             AgnesError::FieldNotFound(ref ident) =>
@@ -69,7 +66,6 @@ impl Error for AgnesError {
             AgnesError::Csv(ref err) => err.description(),
             AgnesError::CsvSniffer(ref err) => err.description(),
             AgnesError::CsvDialect(ref s) => s,
-            AgnesError::Field(ref s) => s,
             AgnesError::Parse(ref err) => err.description(),
             AgnesError::Decode(ref s) => s,
             AgnesError::FieldNotFound(_) => "missing source field",
@@ -86,7 +82,6 @@ impl Error for AgnesError {
             AgnesError::CsvSniffer(ref err) => Some(err),
             AgnesError::CsvDialect(_) => None,
             AgnesError::Parse(ref err) => Some(err),
-            AgnesError::Field(_) => None,
             AgnesError::Decode(_) => None,
             AgnesError::FieldNotFound(_) => None,
             AgnesError::DimensionMismatch(_) => None,

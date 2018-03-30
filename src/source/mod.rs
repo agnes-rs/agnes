@@ -10,5 +10,3 @@ mod csv;
 pub use self::csv::{CsvSource, CsvReader};
 
 pub(crate) mod decode;
-
-pub(crate) mod sample;
