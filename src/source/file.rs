@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::mem;
 use std::io::{self, Read, Write, Seek, SeekFrom};
 use std::fs::File;
@@ -11,16 +12,51 @@ use tempfile;
 use hyper_tls::HttpsConnector;
 use tokio_core::reactor::Core;
 
-use source::FileLocator;
 use error::*;
 
+/// Identifiers / paths to find file locations.
+#[derive(Debug, Clone)]
+pub enum FileLocator {
+    /// A web-based location (URI)
+    Http(hyper::Uri),
+    /// A local file
+    File(PathBuf)
+}
+
+impl<'a> From<&'a Path> for FileLocator {
+    fn from(orig: &'a Path) -> FileLocator {
+        FileLocator::File(orig.to_path_buf())
+    }
+}
+impl<'a, P: AsRef<Path>> From<&'a P> for FileLocator {
+    fn from(orig: &'a P) -> FileLocator {
+        FileLocator::File(orig.as_ref().to_path_buf())
+    }
+}
+impl From<PathBuf> for FileLocator {
+    fn from(orig: PathBuf) -> FileLocator {
+        FileLocator::File(orig)
+    }
+}
+impl From<hyper::Uri> for FileLocator {
+    fn from(orig: hyper::Uri) -> FileLocator {
+        FileLocator::Http(orig)
+    }
+}
+
+
+/// File reader for reading from files locally.
 #[derive(Debug)]
 pub struct LocalFileReader {
     file: File
 }
 impl LocalFileReader {
-    /// Create new reader from a file locator, creating a temporary locl file if the file specified
+    /// Create new reader from a file locator, creating a temporary local file if the file specified
     /// by the locator is non-local.
+    ///
+    /// # Errors
+    /// Can fail if there are problems accessing local files, if unable to download a remote file,
+    /// or if unable to properly write to a temporary local file.
     pub fn new(loc: &FileLocator) -> Result<LocalFileReader> {
         match *loc {
             FileLocator::File(ref path) => {
@@ -62,12 +98,18 @@ impl Seek for LocalFileReader {
     }
 }
 
+/// File reader for files served over HTTP.
 #[derive(Debug)]
 pub struct HttpFileReader {
     core: Core,
     response_state: State,
 }
 impl HttpFileReader {
+    /// Create a new reader from a file locator.
+    ///
+    /// # Errors
+    /// Fails if `FileLocator` points to a local file, or if there are errors connecting retrieving
+    /// the remote file.
     pub fn new(loc: &FileLocator) -> Result<HttpFileReader> {
         match *loc {
             FileLocator::File(_) => {

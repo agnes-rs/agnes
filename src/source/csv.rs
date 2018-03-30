@@ -6,8 +6,7 @@ use csv;
 use csv_sniffer::Sniffer;
 use csv_sniffer::metadata::Metadata;
 
-use source::file::LocalFileReader;
-use source::file_locator::FileLocator;
+use source::{LocalFileReader, FileLocator};
 use source::decode::decode;
 use error::*;
 use store::DataStore;
