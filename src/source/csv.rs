@@ -1,16 +1,40 @@
 //! CSV-based source and reader objects and implentation.
 
-use std::io::{BufRead, BufReader};
 use std::collections::HashMap;
 
 use csv;
+use csv_sniffer::Sniffer;
+use csv_sniffer::metadata::Metadata;
 
-use source::{FileSource, FileReader};
+use source::file::LocalFileReader;
+use source::file_locator::FileLocator;
 use source::decode::decode;
 use error::*;
 use store::DataStore;
 use field::{FieldIdent, TypedFieldIdent, SrcField};
 
+#[derive(Debug)]
+pub struct CsvSource {
+    // File source object for the CSV file
+    src: FileLocator,
+    // CSV file metadata (from `csv-sniffer` crate)
+    metadata: Metadata
+}
+
+impl CsvSource {
+    pub fn new(loc: FileLocator) -> Result<CsvSource> {
+        //TODO: make sample size configurable?
+        let mut file_reader = LocalFileReader::new(&loc)?;
+        let metadata = Sniffer::new().sniff_reader(&mut file_reader)?;
+
+        Ok(CsvSource {
+            src: loc,
+            metadata: metadata
+        })
+    }
+}
+
+/*
 /// Specification of whether or not a header row exists. Typically, this will be either `Yes` or
 /// `No`, but occasionally CSV data files have a few headers lines before the data starts, which
 /// can be ignored using `NoSkip` or `YesSkip`, indicating no header exists and skip a certain
@@ -57,6 +81,7 @@ pub struct CsvSource {
     /// List of fields (columns) to be included from this CSV source
     fields: Vec<TypedFieldIdent>
 }
+
 
 /// Builder for `CsvSource` object.
 #[derive(Debug, Clone)]
@@ -112,75 +137,49 @@ impl CsvSourceBuilder {
         }
     }
 }
+*/
 
 /// Reader object responsible for converting a CSV file into a data store.
 #[derive(Debug)]
 pub struct CsvReader {
-    reader: csv::Reader<BufReader<FileReader>>,
+    reader: csv::Reader<LocalFileReader>,
     field_coll: FieldCollection
 }
 
 impl CsvReader {
     /// Create a new CSV reader from a CSV source specification. This will process header row (if
     /// exists), and verify the fields specified in the `CsvSource` object exist in this CSV file.
-    pub fn new(mut src: CsvSource) -> Result<CsvReader> {
-        let mut file_reader = BufReader::new(FileReader::new(src.src)?);
-        if let Some(skip) = src.has_headers.skip_count() {
-            let mut devnull = String::new();
-            for _ in 0..skip { file_reader.read_line(&mut devnull)?; }
-        }
-
-        let mut rdr = csv::ReaderBuilder::new()
-            .has_headers(src.has_headers.is_yes())
-            .delimiter(src.delimiter)
-            .from_reader(file_reader);
-
-        let mut fields_map: HashMap<FieldIdent, TypedFieldIdent> = HashMap::new();
-        for field in src.fields.drain(..) {
-            fields_map.insert(field.ident.clone(), field);
-        }
+    pub fn new(src: CsvSource) -> Result<CsvReader> {
+        let file_reader = LocalFileReader::new(&src.src)?;
+        let mut csv_reader = src.metadata.dialect.open_reader(file_reader)?;
         let mut field_coll = FieldCollection::new();
 
         {
-            let headers = rdr.headers()?;
-            if src.has_headers.is_yes() {
+            let headers = csv_reader.headers()?;
+            debug_assert_eq!(src.metadata.num_fields, src.metadata.types.len());
+            if src.metadata.dialect.header.has_header_row {
+                if headers.len() != src.metadata.num_fields {
+                    return Err(AgnesError::CsvDialect(
+                        "header row must match number of fields in CSV file".into()));
+                }
                 for (i, header) in headers.iter().enumerate() {
-                    match fields_map.remove(&FieldIdent::Name(header.to_string())) {
-                        Some(info) => field_coll.add(info, i),
-                        None => {
-                            match fields_map.remove(&FieldIdent::Index(i)) {
-                                Some(info) => field_coll.add(info, i),
-                                None => {} // exists in CSV headers, not in specified field list
-                                           // skip
-                            }
-                        }
-                    }
+                    field_coll.add(TypedFieldIdent::new(
+                        FieldIdent::Name(header.into()),
+                        src.metadata.types[i].into()
+                    ), i);
                 }
             } else {
-                // the first row isn't headers, but will still give us the len
-                //TODO: determine if this consumes the first row
-                for i in 0..headers.len() {
-                    match fields_map.remove(&FieldIdent::Index(i)) {
-                        Some(info) => field_coll.add(info, i),
-                        None => {} // exists in CSV headers, not in specified field list; skip
-                    }
+                for i in 0..src.metadata.num_fields {
+                    field_coll.add(TypedFieldIdent::new(
+                        FieldIdent::Index(i),
+                        src.metadata.types[i].into()
+                    ), i);
                 }
             }
         }
 
-        if !fields_map.is_empty() {
-            let column_list = fields_map.keys().map(|ident| {
-                match *ident {
-                    FieldIdent::Index(i) => format!("Field {}", i),
-                    FieldIdent::Name(ref s)  => s.clone()
-                }
-            }).collect::<Vec<_>>().join(",");
-            return Err(AgnesError::Field(
-                format!("Field names not found in CSV: {}", column_list)));
-        }
-
         Ok(CsvReader {
-            reader: rdr,
+            reader: csv_reader,
             field_coll: field_coll,
         })
     }

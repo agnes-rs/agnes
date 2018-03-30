@@ -3,6 +3,8 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
+use csv_sniffer;
+
 /// Identifier for a field in the source.
 #[derive(Debug, Clone)]
 pub enum FieldIdent {
@@ -68,6 +70,17 @@ pub enum FieldType {
     Boolean,
     /// Floating-point field
     Float
+}
+impl From<csv_sniffer::Type> for FieldType {
+    fn from(orig: csv_sniffer::Type) -> FieldType {
+        match orig {
+            csv_sniffer::Type::Unsigned => FieldType::Unsigned,
+            csv_sniffer::Type::Signed   => FieldType::Signed,
+            csv_sniffer::Type::Text     => FieldType::Text,
+            csv_sniffer::Type::Boolean  => FieldType::Boolean,
+            csv_sniffer::Type::Float     => FieldType::Float,
+        }
+    }
 }
 
 /// Field identifier along with an associated type.
