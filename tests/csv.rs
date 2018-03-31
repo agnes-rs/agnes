@@ -13,7 +13,7 @@ fn csv_load_test() {
     let dv: DataView = csv_rdr.read().unwrap().into();
     assert_eq!(dv.nrows(), 264);
     assert_eq!(dv.nfields(), 63);
-    // println!("{}", &dv%["Country Name", "1983"]);
+    // println!("{}", dv.v(["Country Name", "1983"]));
     // println!("{}", dv.v(["Country Name", "1983"]).v(["Country Name"]));
 }
 
@@ -25,5 +25,5 @@ fn csv_load_test_skip() {
     let dv: DataView = csv_rdr.read().unwrap().into();
     assert_eq!(dv.nrows(), 264);
     assert_eq!(dv.nfields(), 63);
-    // println!("{}", &dv%["Country Name", "1983"]);
+    // println!("{}", dv.v(["Country Name", "1983"]));
 }

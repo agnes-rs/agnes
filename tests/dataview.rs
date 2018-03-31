@@ -8,6 +8,17 @@ mod common;
 use agnes::view::DataView;
 
 #[test]
+fn subview() {
+    let (mut csv_rdr, _) = common::load_csv_file("gdp.csv");
+    let dv: DataView = csv_rdr.read().unwrap().into();
+    assert_eq!(dv.nrows(), 264);
+    assert_eq!(dv.nfields(), 63);
+    let subview = dv.v(["Country Name", "1983"]);
+    assert_eq!(subview.nrows(), 264);
+    assert_eq!(subview.nfields(), 2);
+}
+
+#[test]
 fn rename() {
     let (mut csv_rdr, _) = common::load_csv_file("sample1.csv");
 

@@ -14,7 +14,6 @@ parameters.
 
 */
 use std::fmt::{self, Display, Formatter};
-use std::ops::Rem;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
@@ -132,15 +131,6 @@ impl DataView {
             stores: new_stores,
             fields: new_fields
         })
-    }
-}
-
-/// A shortcut for `dataview.v`
-impl<'a, L: IntoFieldList> Rem<L> for &'a DataView {
-    type Output = DataView;
-
-    fn rem(self, s: L) -> DataView {
-        self.v(s)
     }
 }
 
