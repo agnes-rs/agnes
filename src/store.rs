@@ -4,7 +4,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use field::{FieldIdent, SrcField, DsField, FieldType};
+use field::{FieldIdent, SrcField, TypedFieldIdent, DsField, FieldType};
 use masked::{FieldData, MaskedData};
 use error::*;
 use MaybeNa;
@@ -31,10 +31,12 @@ pub struct DataStore {
     /// Storage for floating-point numbers
     float: TypeData<f64>,
 }
-fn max_len<K, T>(h: &HashMap<K, MaskedData<T>>) -> usize where K: Eq + Hash {
+fn max_len<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>) -> usize where K: Eq + Hash {
     h.values().fold(0, |acc, v| max(acc, v.len()))
 }
-fn is_hm_homogeneous<K, T>(h: &HashMap<K, MaskedData<T>>) -> Option<usize> where K: Eq + Hash {
+fn is_hm_homogeneous<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>) -> Option<usize>
+    where K: Eq + Hash
+{
     let mut all_same_len = true;
     let mut target_len = 0;
     let mut first = true;
@@ -47,8 +49,9 @@ fn is_hm_homogeneous<K, T>(h: &HashMap<K, MaskedData<T>>) -> Option<usize> where
     }
     if all_same_len { Some(target_len) } else { None }
 }
-fn is_hm_homogeneous_with<K, T>(h: &HashMap<K, MaskedData<T>>, value: usize) -> Option<usize>
-        where K: Eq + Hash {
+fn is_hm_homogeneous_with<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>, value: usize)
+    -> Option<usize> where K: Eq + Hash
+{
     is_hm_homogeneous(h).and_then(|x| {
         if x == 0 && value != 0 {
             Some(value)
@@ -57,7 +60,7 @@ fn is_hm_homogeneous_with<K, T>(h: &HashMap<K, MaskedData<T>>, value: usize) -> 
         } else { None }
     })
 }
-fn insert_value<T: Default>(
+fn insert_value<T: Default + PartialOrd>(
     h: &mut HashMap<FieldIdent, MaskedData<T>>,
     k: FieldIdent,
     v: MaybeNa<T>)
@@ -69,7 +72,9 @@ fn insert_value<T: Default>(
         h.insert(k, MaskedData::new_with_elem(v));
     }
 }
-fn parse<T, F>(value_str: String, f: F) -> Result<MaybeNa<T>> where F: Fn(String) -> Result<T> {
+fn parse<T: PartialOrd, F>(value_str: String, f: F) -> Result<MaybeNa<T>> where F: Fn(String)
+    -> Result<T>
+{
     if value_str.trim().len() == 0 {
         Ok(MaybeNa::Na)
     } else {
@@ -114,20 +119,40 @@ impl DataStore {
         }
     }
 
-    fn add_field(&mut self, field: SrcField) {
-        let ident = field.ty_ident.ident.clone();
+    fn add_field(&mut self, field: TypedFieldIdent) {
+        let ident = field.ident.clone();
         if !self.field_map.contains_key(&ident) {
             let index = self.fields.len();
-            self.fields.push(DsField::from_src(&field, index));
+            self.fields.push(DsField::from_typed_field_ident(field, index));
             self.field_map.insert(ident, index);
         }
+    }
+
+    // Create a new `DataStore` which will contain the provided fields.
+    pub fn with_fields(mut fields: Vec<TypedFieldIdent>) -> DataStore {
+        let mut ds = DataStore {
+            fields: Vec::with_capacity(fields.len()),
+            field_map: HashMap::with_capacity(fields.len()),
+
+            // could precompute lengths here to guess capacity, not sure if it'd be necessarily
+            // faster
+            unsigned: HashMap::new(),
+            signed: HashMap::new(),
+            text: HashMap::new(),
+            boolean: HashMap::new(),
+            float: HashMap::new(),
+        };
+        for field in fields.drain(..) {
+            ds.add_field(field);
+        }
+        ds
     }
 
     /// Insert a value (provided in unparsed string form) for specified field
     pub fn insert(&mut self, field: SrcField, value_str: String) -> Result<()> {
         let ident = field.ty_ident.ident.clone();
         let fty = field.ty_ident.ty;
-        self.add_field(field);
+        self.add_field(field.ty_ident.clone());
         Ok(match fty {
             FieldType::Unsigned => insert_value(&mut self.unsigned, ident,
                 parse(value_str, parse_unsigned)?),
@@ -187,8 +212,9 @@ impl DataStore {
     }
 
     /// Get the field information struct for a given field name
-    pub fn get_field_info(&self, ident: &FieldIdent) -> Option<&DsField> {
-        self.field_map.get(ident).and_then(|&index| self.fields.get(index))
+    pub fn get_field_type(&self, ident: &FieldIdent) -> Option<FieldType> {
+        self.field_map.get(ident)
+            .and_then(|&index| self.fields.get(index).map(|&ref dsfield| dsfield.ty_ident.ty))
     }
 
     /// Get the list of field information structs for this data store

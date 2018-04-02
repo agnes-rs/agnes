@@ -22,28 +22,23 @@ use prettytable as pt;
 
 use store::DataStore;
 use masked::FieldData;
-use field::FieldIdent;
+use field::{FieldIdent, RFieldIdent};
 use error;
+use join::{Join, Predicate, hash_join, sort_merge_join, compute_merged_stores,
+    compute_merged_field_list};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct ViewField {
-    ident: FieldIdent,
-    store_idx: usize,
-    rename: Option<String>
+pub struct ViewField {
+    pub rident: RFieldIdent,
+    pub store_idx: usize,
 }
-impl ViewField {
-    /// Produce a string representation of this view field. Uses the renamed name (if exists),
-    /// of the result of `to_string` on the underlying `FieldIdent`.
-    pub fn to_string(&self) -> String {
-        self.rename.clone().unwrap_or(self.ident.to_string())
-    }
-}
+
 
 /// A 'view' into a data store. The primary struct for viewing and manipulating data.
 #[derive(Debug, Clone, Default)]
 pub struct DataView {
-    stores:  Vec<Rc<DataStore>>,
-    fields: IndexMap<String, ViewField>,
+    pub(crate) stores: Vec<Rc<DataStore>>,
+    pub(crate) fields: IndexMap<String, ViewField>,
 }
 
 impl DataView {
@@ -69,6 +64,10 @@ impl DataView {
         self.fields.len()
     }
 
+    pub(crate) fn get_field_data(&self, view_field: &ViewField) -> Option<FieldData> {
+        self.stores[view_field.store_idx].get_field_data(&view_field.rident.ident)
+    }
+
     /// Rename a field of this DataView.
     pub fn rename<T, U>(&mut self, orig: T, new: U) -> error::Result<()> where
         T: Into<FieldIdent>,
@@ -77,14 +76,16 @@ impl DataView {
         let (orig, new) = (orig.into(), new.into());
         let new_vf = if let Some(ref orig_vf) = self.fields.get(&orig.to_string()) {
             ViewField {
-                ident: orig_vf.ident.clone(),
+                rident: RFieldIdent {
+                    ident: orig_vf.rident.ident.clone(),
+                    rename: Some(new.to_string())
+                },
                 store_idx: orig_vf.store_idx,
-                rename: Some(new.to_string())
             }
         } else {
             return Err(error::AgnesError::FieldNotFound(orig));
         };
-        self.fields.insert(new_vf.to_string(), new_vf);
+        self.fields.insert(new_vf.rident.to_string(), new_vf);
         self.fields.swap_remove(&orig.to_string());
         Ok(())
     }
@@ -97,40 +98,33 @@ impl DataView {
                 "number of rows mismatch in merge".into()));
         }
 
-        // new store vector is combination, without repetition, of existing store vectors. also
-        // keep track of the store indices (for store_idx) of the 'other' fields
-        let mut new_stores = self.stores.clone();
-        let mut other_store_indices = vec![];
-        for oth_store in &other.stores {
-            match new_stores.iter().enumerate().find(|&(_, store)| Rc::ptr_eq(store, oth_store)) {
-                Some((idx, _)) => {
-                    other_store_indices.push(idx);
-                },
-                None => {
-                    other_store_indices.push(new_stores.len());
-                    new_stores.push(oth_store.clone());
-                }
-            }
-        }
+        // compute merged stores (and mapping from 'other' store index references to combined
+        // store vector)
+        let (new_stores, other_store_indices) = compute_merged_stores(self, other);
 
-        // build new fields vector, updating the store indices in the ViewFields copied
-        // from the 'other' fields list
-        let mut new_fields = self.fields.clone();
-        for (oth_fieldname, oth_field) in &other.fields {
-            if new_fields.contains_key(oth_fieldname) {
-                return Err(error::AgnesError::FieldCollision(oth_fieldname.clone()));
-            }
-            new_fields.insert(oth_fieldname.clone(), ViewField {
-                ident: oth_field.ident.clone(),
-                store_idx: other_store_indices[oth_field.store_idx],
-                rename: oth_field.rename.clone()
-            });
-        }
+        // compute merged field list
+        let new_fields = compute_merged_field_list(self, other, &other_store_indices)?;
 
         Ok(DataView {
             stores: new_stores,
             fields: new_fields
         })
+    }
+
+    /// Combine two `DataView` objects using specified join, creating a new `DataStore` object with
+    /// a subset of records from the two source `DataView`s according to the join parameters.
+    ///
+    /// Note that since this is creating a new `DataStore` object, it will be allocated new data to
+    /// store the contents of the joined `DataView`s.
+    pub fn join(&self, other: &DataView, join: Join) -> error::Result<DataStore> {
+        match join.predicate {
+            Predicate::Equal => {
+                hash_join(self, other, join)
+            },
+            _ => {
+                sort_merge_join(self, other, join)
+            }
+        }
     }
 }
 
@@ -140,9 +134,11 @@ impl From<DataStore> for DataView {
         for field in &store.fields {
             let ident = field.ty_ident.ident.clone();
             fields.insert(ident.to_string(), ViewField {
-                ident: ident.clone(),
+                rident: RFieldIdent {
+                    ident: ident.clone(),
+                    rename: None
+                },
                 store_idx: 0,
-                rename: None
             });
         }
         DataView {
@@ -166,7 +162,7 @@ impl Display for DataView {
             .filter_map(|field| {
                 // this should be guaranteed by construction of the DataView
                 assert_eq!(nrows, self.stores[field.store_idx].nrows());
-                self.stores[field.store_idx].get_field_data(&field.ident)
+                self.stores[field.store_idx].get_field_data(&field.rident.ident)
             })
             .collect::<Vec<_>>();
         for i in 0..nrows.min(MAX_ROWS) {
@@ -193,9 +189,9 @@ impl Serialize for DataView {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let mut map = serializer.serialize_map(Some(self.fields.len()))?;
         for field in self.fields.values() {
-            if let Some(data) = self.stores[field.store_idx].get_field_data(&field.ident) {
+            if let Some(data) = self.stores[field.store_idx].get_field_data(&field.rident.ident) {
                 assert!(self.stores[field.store_idx].nrows() == data.len());
-                map.serialize_entry(&field.to_string(), &data)?;
+                map.serialize_entry(&field.rident.to_string(), &data)?;
             }
         }
         map.end()
@@ -211,16 +207,16 @@ impl<T> SerializeAsVec for Vec<T> where T: Serialize {}
 #[derive(Debug, Clone)]
 pub struct FieldView {
     store: Rc<DataStore>,
-    field: FieldIdent,
+    field: RFieldIdent,
 }
 
 impl Serialize for FieldView {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
             where S: Serializer {
-        if let Some(data) = self.store.get_field_data(&self.field) {
+        if let Some(data) = self.store.get_field_data(&self.field.ident) {
             data.serialize(serializer)
         } else {
-            Err(ser::Error::custom(format!("missing field: {}", self.field)))
+            Err(ser::Error::custom(format!("missing field: {}", self.field.to_string())))
         }
     }
 }
@@ -240,7 +236,7 @@ impl DataView {
 
             Some(FieldView {
                 store: self.stores[field.store_idx].clone(),
-                field: field.ident.clone(),
+                field: field.rident.clone(),
             })
         }
     }

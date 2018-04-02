@@ -83,6 +83,22 @@ impl From<csv_sniffer::Type> for FieldType {
     }
 }
 
+/// Possible-renamed field identifier
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RFieldIdent {
+    /// Original field identifier
+    pub ident: FieldIdent,
+    /// Renamed name (if exists)
+    pub rename: Option<String>,
+}
+impl RFieldIdent {
+    /// Produce a string representation of this `RFieldIdent`. Uses the renamed name (if exists),
+    /// of the result of `to_string` on the underlying `FieldIdent`.
+    pub fn to_string(&self) -> String {
+        self.rename.clone().unwrap_or(self.ident.to_string())
+    }
+}
+
 /// Field identifier along with an associated type.
 #[derive(Debug, Clone)]
 pub struct TypedFieldIdent {
@@ -140,6 +156,13 @@ impl DsField {
     pub fn new(ident: FieldIdent, ty: FieldType, ds_index: usize) -> DsField {
         DsField {
             ty_ident: TypedFieldIdent::new(ident, ty),
+            ds_index: ds_index,
+        }
+    }
+    /// Create a new `DsField` from a typed field identifier and a data store index
+    pub fn from_typed_field_ident(ty_ident: TypedFieldIdent, ds_index: usize) -> DsField {
+        DsField {
+            ty_ident: ty_ident,
             ds_index: ds_index,
         }
     }

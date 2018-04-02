@@ -5,17 +5,26 @@ use serde::ser::{Serialize, Serializer, SerializeSeq};
 use bit_vec::BitVec;
 
 /// Missing value container.
-pub enum MaybeNa<T> {
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MaybeNa<T: PartialOrd> {
     /// Indicates a missing (NA) value.
     Na,
     /// Indicates an existing value.
     Exists(T)
 }
-impl<T: ToString> ToString for MaybeNa<T> {
+impl<T: ToString + PartialOrd> ToString for MaybeNa<T> {
     fn to_string(&self) -> String {
         match *self {
             MaybeNa::Na => "NA".into(),
             MaybeNa::Exists(ref t) => t.to_string()
+        }
+    }
+}
+impl<T: PartialOrd> MaybeNa<T> {
+    pub fn unwrap(self) -> T {
+        match self {
+            MaybeNa::Na => { panic!("unwrap() called on NA value"); },
+            MaybeNa::Exists(t) => t
         }
     }
 }
@@ -27,7 +36,7 @@ pub struct MaskedData<T> {
     mask: BitVec,
     data: Vec<T>
 }
-impl<T> MaskedData<T> {
+impl<T: PartialOrd> MaskedData<T> {
     /// Length of this data vector
     pub fn len(&self) -> usize {
         assert_eq!(self.mask.len(), self.data.len());
@@ -47,7 +56,13 @@ impl<T> MaskedData<T> {
         }
     }
 }
-impl<T: Default> MaskedData<T> {
+impl<T: Default + PartialOrd> MaskedData<T> {
+    pub fn new() -> MaskedData<T> {
+        MaskedData {
+            data: vec![],
+            mask: BitVec::new()
+        }
+    }
     /// Create new masked data vector with single element.
     pub fn new_with_elem(value: MaybeNa<T>) -> MaskedData<T> {
         if let MaybeNa::Exists(v) = value {
@@ -71,6 +86,22 @@ impl<T: Default> MaskedData<T> {
             self.data.push(T::default());
             self.mask.push(false);
         }
+    }
+    /// Create a `MaskedData` struct from a vector of non-NA values. Resulting `MaskedData` struct
+    /// will have no `MaybeNa::Na` values.
+    pub fn from_vec(v: Vec<T>) -> MaskedData<T> {
+        MaskedData {
+            mask: BitVec::from_elem(v.len(), true),
+            data: v,
+        }
+    }
+    /// Create a `MaskedData` struct from a vector of masked values.
+    pub fn from_masked_vec(mut v: Vec<MaybeNa<T>>) -> MaskedData<T> {
+        let mut ret = MaskedData::new();
+        for elem in v.drain(..) {
+            ret.push(elem);
+        }
+        ret
     }
 }
 impl<T: Serialize> Serialize for MaskedData<T> {

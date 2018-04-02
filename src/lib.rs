@@ -24,5 +24,7 @@ pub mod field;
 pub mod error;
 pub mod view;
 pub use view::{SerializeAsVec, DataView};
+pub mod join;
+pub use join::{Join, JoinKind};
 pub mod masked;
 pub use masked::MaybeNa;
