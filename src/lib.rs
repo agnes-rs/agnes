@@ -19,7 +19,7 @@ extern crate csv_sniffer;
 extern crate tempfile;
 
 pub mod source;
-pub mod store;
+#[macro_use] pub mod store;
 pub mod field;
 pub mod error;
 pub mod view;

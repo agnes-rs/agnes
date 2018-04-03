@@ -31,6 +31,162 @@ pub struct DataStore {
     /// Storage for floating-point numbers
     float: TypeData<f64>,
 }
+impl DataStore {
+    /// Generate and return an empty data store
+    pub fn empty() -> DataStore {
+        DataStore {
+            fields: Vec::new(),
+            field_map: HashMap::new(),
+
+            unsigned: HashMap::new(),
+            signed: HashMap::new(),
+            text: HashMap::new(),
+            boolean: HashMap::new(),
+            float: HashMap::new(),
+        }
+    }
+
+    fn add_field(&mut self, field: TypedFieldIdent) {
+        let ident = field.ident.clone();
+        if !self.field_map.contains_key(&ident) {
+            let index = self.fields.len();
+            self.fields.push(DsField::from_typed_field_ident(field, index));
+            self.field_map.insert(ident, index);
+        }
+    }
+
+    // Create a new `DataStore` which will contain the provided fields.
+    pub fn with_fields(mut fields: Vec<TypedFieldIdent>) -> DataStore {
+        let mut ds = DataStore {
+            fields: Vec::with_capacity(fields.len()),
+            field_map: HashMap::with_capacity(fields.len()),
+
+            // could precompute lengths here to guess capacity, not sure if it'd be necessarily
+            // faster
+            unsigned: HashMap::new(),
+            signed: HashMap::new(),
+            text: HashMap::new(),
+            boolean: HashMap::new(),
+            float: HashMap::new(),
+        };
+        for field in fields.drain(..) {
+            ds.add_field(field);
+        }
+        ds
+    }
+
+    pub fn add_unsigned(&mut self, ident: FieldIdent, value: MaybeNa<u64>) {
+        insert_value(&mut self.unsigned, ident, value)
+    }
+    pub fn add_signed(&mut self, ident: FieldIdent, value: MaybeNa<i64>) {
+        insert_value(&mut self.signed, ident, value)
+    }
+    pub fn add_text(&mut self, ident: FieldIdent, value: MaybeNa<String>) {
+        insert_value(&mut self.text, ident, value)
+    }
+    pub fn add_boolean(&mut self, ident: FieldIdent, value: MaybeNa<bool>) {
+        insert_value(&mut self.boolean, ident, value)
+    }
+    pub fn add_float(&mut self, ident: FieldIdent, value: MaybeNa<f64>) {
+        insert_value(&mut self.float, ident, value)
+    }
+
+    /// Insert a value (provided in unparsed string form) for specified field
+    pub fn insert(&mut self, field: SrcField, value_str: String) -> Result<()> {
+        let ident = field.ty_ident.ident.clone();
+        let fty = field.ty_ident.ty;
+        self.add_field(field.ty_ident.clone());
+        Ok(match fty {
+            FieldType::Unsigned => self.add_unsigned(ident, parse(value_str, parse_unsigned)?),
+            FieldType::Signed   => self.add_signed(ident, parse(value_str, parse_signed)?),
+            FieldType::Text     => self.add_text(ident, parse(value_str, |val| Ok(val))?),
+            FieldType::Boolean  => self.add_boolean(ident, parse(value_str,
+                |val| Ok(val.parse()?))?),
+            FieldType::Float    => self.add_float(ident, parse(value_str, |val| Ok(val.parse()?))?)
+        })
+    }
+
+    /// Retrieve an unsigned integer field
+    pub fn get_unsigned_field(&self, ident: &FieldIdent) -> Option<&MaskedData<u64>> {
+        self.unsigned.get(ident)
+    }
+    /// Retrieve a signed integer field
+    pub fn get_signed_field(&self, ident: &FieldIdent) -> Option<&MaskedData<i64>> {
+        self.signed.get(ident)
+    }
+    /// Retrieve a string field
+    pub fn get_text_field(&self, ident: &FieldIdent) -> Option<&MaskedData<String>> {
+        self.text.get(ident)
+    }
+    /// Retrieve a boolean field
+    pub fn get_boolean_field(&self, ident: &FieldIdent) -> Option<&MaskedData<bool>> {
+        self.boolean.get(ident)
+    }
+    /// Retrieve a floating-point field
+    pub fn get_float_field(&self, ident: &FieldIdent) -> Option<&MaskedData<f64>> {
+        self.float.get(ident)
+    }
+    /// Get all the data for a field, returned within the `FieldData` common data enum. Returns
+    /// `None` if the specified `FieldIdent` object does not exist.
+    pub fn get_field_data(&self, ident: &FieldIdent) -> Option<FieldData> {
+        self.field_map.get(ident).and_then(|&idx| {
+            match self.fields[idx].ty_ident.ty {
+                FieldType::Unsigned => self.get_unsigned_field(ident).map(
+                    |f| FieldData::Unsigned(f)
+                ),
+                FieldType::Signed => self.get_signed_field(ident).map(
+                    |f| FieldData::Signed(f)
+                ),
+                FieldType::Text => self.get_text_field(ident).map(
+                    |f| FieldData::Text(f)
+                ),
+                FieldType::Boolean => self.get_boolean_field(ident).map(
+                    |f| FieldData::Boolean(f)
+                ),
+                FieldType::Float => self.get_float_field(ident).map(
+                    |f| FieldData::Float(f)
+                ),
+            }
+        })
+    }
+
+    /// Get the field information struct for a given field name
+    pub fn get_field_type(&self, ident: &FieldIdent) -> Option<FieldType> {
+        self.field_map.get(ident)
+            .and_then(|&index| self.fields.get(index).map(|&ref dsfield| dsfield.ty_ident.ty))
+    }
+
+    /// Get the list of field information structs for this data store
+    pub fn fields(&self) -> Vec<&TypedFieldIdent> {
+        self.fields.iter().map(|&ref s| &s.ty_ident).collect()
+    }
+    /// Get the field names in this data store
+    pub fn fieldnames(&self) -> Vec<String> {
+        self.fields.iter().map(|ref fi| fi.ty_ident.ident.to_string()).collect()
+    }
+
+    /// Check if datastore is "homogenous": all columns (regardless of field type) are the same
+    /// length
+    pub fn is_homogeneous(&self) -> bool {
+        is_hm_homogeneous(&self.unsigned)
+            .and_then(|x| is_hm_homogeneous_with(&self.signed, x))
+            .and_then(|x| is_hm_homogeneous_with(&self.text, x))
+            .and_then(|x| is_hm_homogeneous_with(&self.boolean, x))
+            .and_then(|x| is_hm_homogeneous_with(&self.float, x))
+            .is_some()
+    }
+    /// Retrieve number of rows for this data store
+    pub fn nrows(&self) -> usize {
+        [max_len(&self.unsigned), max_len(&self.signed), max_len(&self.text),
+            max_len(&self.boolean), max_len(&self.float)].iter().fold(0, |acc, l| max(acc, *l))
+    }
+}
+impl Default for DataStore {
+    fn default() -> DataStore {
+        DataStore::empty()
+    }
+}
+
 fn max_len<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>) -> usize where K: Eq + Hash {
     h.values().fold(0, |acc, v| max(acc, v.len()))
 }
@@ -103,147 +259,4 @@ fn parse_signed(value_str: String) -> Result<i64> {
         // try parsing as float
         value_str.parse::<f64>().map(|f| f as i64).or(Err(e))
     })?)
-}
-impl DataStore {
-    /// Generate and return an empty data store
-    pub fn empty() -> DataStore {
-        DataStore {
-            fields: Vec::new(),
-            field_map: HashMap::new(),
-
-            unsigned: HashMap::new(),
-            signed: HashMap::new(),
-            text: HashMap::new(),
-            boolean: HashMap::new(),
-            float: HashMap::new(),
-        }
-    }
-
-    fn add_field(&mut self, field: TypedFieldIdent) {
-        let ident = field.ident.clone();
-        if !self.field_map.contains_key(&ident) {
-            let index = self.fields.len();
-            self.fields.push(DsField::from_typed_field_ident(field, index));
-            self.field_map.insert(ident, index);
-        }
-    }
-
-    // Create a new `DataStore` which will contain the provided fields.
-    pub fn with_fields(mut fields: Vec<TypedFieldIdent>) -> DataStore {
-        let mut ds = DataStore {
-            fields: Vec::with_capacity(fields.len()),
-            field_map: HashMap::with_capacity(fields.len()),
-
-            // could precompute lengths here to guess capacity, not sure if it'd be necessarily
-            // faster
-            unsigned: HashMap::new(),
-            signed: HashMap::new(),
-            text: HashMap::new(),
-            boolean: HashMap::new(),
-            float: HashMap::new(),
-        };
-        for field in fields.drain(..) {
-            ds.add_field(field);
-        }
-        ds
-    }
-
-    /// Insert a value (provided in unparsed string form) for specified field
-    pub fn insert(&mut self, field: SrcField, value_str: String) -> Result<()> {
-        let ident = field.ty_ident.ident.clone();
-        let fty = field.ty_ident.ty;
-        self.add_field(field.ty_ident.clone());
-        Ok(match fty {
-            FieldType::Unsigned => insert_value(&mut self.unsigned, ident,
-                parse(value_str, parse_unsigned)?),
-            FieldType::Signed   => insert_value(&mut self.signed, ident,
-                parse(value_str, parse_signed)?),
-            FieldType::Text     => insert_value(&mut self.text, ident,
-                parse(value_str, |val| Ok(val))?),
-            FieldType::Boolean  => insert_value(&mut self.boolean, ident,
-                parse(value_str, |val| Ok(val.parse()?))?),
-            FieldType::Float    => insert_value(&mut self.float, ident,
-                parse(value_str, |val| Ok(val.parse()?))?)
-        })
-    }
-
-    /// Retrieve an unsigned integer field
-    pub fn get_unsigned_field(&self, ident: &FieldIdent) -> Option<&MaskedData<u64>> {
-        self.unsigned.get(ident)
-    }
-    /// Retrieve a signed integer field
-    pub fn get_signed_field(&self, ident: &FieldIdent) -> Option<&MaskedData<i64>> {
-        self.signed.get(ident)
-    }
-    /// Retrieve a string field
-    pub fn get_text_field(&self, ident: &FieldIdent) -> Option<&MaskedData<String>> {
-        self.text.get(ident)
-    }
-    /// Retrieve a boolean field
-    pub fn get_boolean_field(&self, ident: &FieldIdent) -> Option<&MaskedData<bool>> {
-        self.boolean.get(ident)
-    }
-    /// Retrieve a floating-point field
-    pub fn get_float_field(&self, ident: &FieldIdent) -> Option<&MaskedData<f64>> {
-        self.float.get(ident)
-    }
-    /// Get all the data for a field, returned within the `FieldData` common data enum. Returns
-    /// `None` if the specified `FieldIdent` object does not exist.
-    pub fn get_field_data(&self, ident: &FieldIdent) -> Option<FieldData> {
-        self.field_map.get(ident).and_then(|&idx| {
-            match self.fields[idx].ty_ident.ty {
-                FieldType::Unsigned => self.get_unsigned_field(ident).map(
-                    |f| FieldData::Unsigned(f)
-                ),
-                FieldType::Signed => self.get_signed_field(ident).map(
-                    |f| FieldData::Signed(f)
-                ),
-                FieldType::Text => self.get_text_field(ident).map(
-                    |f| FieldData::Text(f)
-                ),
-                FieldType::Boolean => self.get_boolean_field(ident).map(
-                    |f| FieldData::Boolean(f)
-                ),
-                FieldType::Float => self.get_float_field(ident).map(
-                    |f| FieldData::Float(f)
-                ),
-            }
-        })
-    }
-
-    /// Get the field information struct for a given field name
-    pub fn get_field_type(&self, ident: &FieldIdent) -> Option<FieldType> {
-        self.field_map.get(ident)
-            .and_then(|&index| self.fields.get(index).map(|&ref dsfield| dsfield.ty_ident.ty))
-    }
-
-    /// Get the list of field information structs for this data store
-    pub fn fields(&self) -> Vec<&DsField> {
-        self.fields.iter().map(|&ref s| s).collect()
-    }
-    /// Get the field names in this data store
-    pub fn fieldnames(&self) -> Vec<String> {
-        self.fields.iter().map(|ref fi| fi.ty_ident.ident.to_string()).collect()
-    }
-
-    /// Check if datastore is "homogenous": all columns (regardless of field type) are the same
-    /// length
-    pub fn is_homogeneous(&self) -> bool {
-        is_hm_homogeneous(&self.unsigned)
-            .and_then(|x| is_hm_homogeneous_with(&self.signed, x))
-            .and_then(|x| is_hm_homogeneous_with(&self.text, x))
-            .and_then(|x| is_hm_homogeneous_with(&self.boolean, x))
-            .and_then(|x| is_hm_homogeneous_with(&self.float, x))
-            .is_some()
-    }
-    /// Retrieve number of rows for this data store
-    pub fn nrows(&self) -> usize {
-        [max_len(&self.unsigned), max_len(&self.signed), max_len(&self.text),
-            max_len(&self.boolean), max_len(&self.float)].iter().fold(0, |acc, l| max(acc, *l))
-    }
-}
-impl Default for DataStore {
-    fn default() -> DataStore {
-        DataStore::empty()
-    }
 }

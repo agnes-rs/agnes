@@ -3,6 +3,7 @@
 use serde::ser::{Serialize, Serializer, SerializeSeq};
 
 use bit_vec::BitVec;
+use field::FieldType;
 
 /// Missing value container.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -25,6 +26,14 @@ impl<T: PartialOrd> MaybeNa<T> {
         match self {
             MaybeNa::Na => { panic!("unwrap() called on NA value"); },
             MaybeNa::Exists(t) => t
+        }
+    }
+}
+impl<'a, T: PartialOrd + Clone> MaybeNa<&'a T> {
+    pub fn cloned(self) -> MaybeNa<T> {
+        match self {
+            MaybeNa::Exists(t) => MaybeNa::Exists(t.clone()),
+            MaybeNa::Na => MaybeNa::Na
         }
     }
 }
@@ -142,7 +151,22 @@ impl<'a> FieldData<'a> {
             FieldData::Float(v)    => v.data.len(),
         }
     }
+    /// Whether this data's field is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// Returns the `FieldType` for this field.
+    pub fn get_field_type(&self) -> FieldType {
+        match *self {
+            FieldData::Unsigned(_)  => FieldType::Unsigned,
+            FieldData::Signed(_)    => FieldType::Signed,
+            FieldData::Text(_)      => FieldType::Text,
+            FieldData::Boolean(_)   => FieldType::Boolean,
+            FieldData::Float(_)     => FieldType::Float,
+        }
+    }
 }
+
 impl<'a> Serialize for FieldData<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         match *self {

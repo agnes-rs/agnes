@@ -118,9 +118,9 @@ impl DataView {
     /// store the contents of the joined `DataView`s.
     pub fn join(&self, other: &DataView, join: Join) -> error::Result<DataStore> {
         match join.predicate {
-            Predicate::Equal => {
-                hash_join(self, other, join)
-            },
+            // Predicate::Equal => {
+            //     hash_join(self, other, join)
+            // },
             _ => {
                 sort_merge_join(self, other, join)
             }
