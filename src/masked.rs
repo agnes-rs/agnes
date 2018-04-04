@@ -98,10 +98,10 @@ impl<T: Default + PartialOrd> MaskedData<T> {
     }
     /// Create a `MaskedData` struct from a vector of non-NA values. Resulting `MaskedData` struct
     /// will have no `MaybeNa::Na` values.
-    pub fn from_vec(v: Vec<T>) -> MaskedData<T> {
+    pub fn from_vec<U: Into<T>>(mut v: Vec<U>) -> MaskedData<T> {
         MaskedData {
             mask: BitVec::from_elem(v.len(), true),
-            data: v,
+            data: v.drain(..).map(|value| value.into()).collect(),
         }
     }
     /// Create a `MaskedData` struct from a vector of masked values.
@@ -111,6 +111,11 @@ impl<T: Default + PartialOrd> MaskedData<T> {
             ret.push(elem);
         }
         ret
+    }
+}
+impl<T: PartialOrd + Default, U: Into<T>> From<Vec<U>> for MaskedData<T> {
+    fn from(other: Vec<U>) -> MaskedData<T> {
+        MaskedData::from_vec(other)
     }
 }
 impl<T: Serialize> Serialize for MaskedData<T> {

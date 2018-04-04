@@ -24,7 +24,7 @@ use store::DataStore;
 use masked::FieldData;
 use field::{FieldIdent, RFieldIdent};
 use error;
-use join::{Join, Predicate, hash_join, sort_merge_join, compute_merged_stores,
+use join::{Join, sort_merge_join, compute_merged_stores,
     compute_merged_field_list};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -64,7 +64,12 @@ impl DataView {
         self.fields.len()
     }
 
-    pub(crate) fn get_field_data(&self, view_field: &ViewField) -> Option<FieldData> {
+    pub(crate) fn get_field_data(&self, field_name: &str) -> Option<FieldData> {
+        self.fields.get(field_name).and_then(|view_field: &ViewField| {
+            self.get_viewfield_data(view_field)
+        })
+    }
+    pub(crate) fn get_viewfield_data(&self, view_field: &ViewField) -> Option<FieldData> {
         self.stores[view_field.store_idx].get_field_data(&view_field.rident.ident)
     }
 
@@ -103,7 +108,7 @@ impl DataView {
         let (new_stores, other_store_indices) = compute_merged_stores(self, other);
 
         // compute merged field list
-        let new_fields = compute_merged_field_list(self, other, &other_store_indices)?;
+        let (new_fields, _) = compute_merged_field_list(self, other, &other_store_indices, None)?;
 
         Ok(DataView {
             stores: new_stores,

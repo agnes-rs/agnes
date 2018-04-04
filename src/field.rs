@@ -99,8 +99,8 @@ impl RFieldIdent {
     }
     pub fn to_renamed_field_ident(&self) -> FieldIdent {
         match self.rename {
-            Some(renamed) => FieldIdent::Name(renamed),
-            None          => self.ident
+            Some(ref renamed) => FieldIdent::Name(renamed.clone()),
+            None              => self.ident.clone()
         }
     }
 }

@@ -33,8 +33,8 @@ pub enum AgnesError {
     FieldNotFound(FieldIdent),
     /// Dimension mismatch
     DimensionMismatch(String),
-    /// Field collision when merging
-    FieldCollision(String),
+    /// Field collision(s) when merging
+    FieldCollision(Vec<String>),
     /// Type mismatch
     TypeMismatch(String),
 }
@@ -55,7 +55,8 @@ impl fmt::Display for AgnesError {
             AgnesError::FieldNotFound(ref ident) =>
                 write!(f, "Missing source field: {}", ident.to_string()),
             AgnesError::DimensionMismatch(ref s) => write!(f, "Dimension mismatch: {}", s),
-            AgnesError::FieldCollision(ref s) => write!(f, "Field collision: {}", s),
+            AgnesError::FieldCollision(ref s) => write!(f, "Field collision: {}",
+                &s[..].join(", ")),
             AgnesError::TypeMismatch(ref s) => write!(f, "Type collision: {}", s),
         }
     }

@@ -97,7 +97,7 @@ impl CsvReader {
             for field in &self.field_coll.fields {
                 let value = decode(record.get(field.src_index).ok_or(
                     AgnesError::FieldNotFound(field.ty_ident.ident.clone()))?)?;
-                ds.insert(field.clone(), value.clone())?;
+                ds.insert(field.ty_ident.clone(), value.clone())?;
             }
         }
         Ok(ds)

@@ -15,63 +15,69 @@ use error::*;
 pub struct Join {
     pub kind: JoinKind,
     pub predicate: Predicate,
-    pub(crate) left_field: ViewField,
-    pub(crate) right_field: ViewField,
+    pub(crate) left_field: String,
+    pub(crate) right_field: String,
 }
 impl Join {
-    pub fn new(kind: JoinKind, predicate: Predicate, left_field: ViewField,
-        right_field: ViewField) -> Join
+    pub fn new<L: Into<String>, R: Into<String>>(kind: JoinKind, predicate: Predicate,
+        left_field: L, right_field: R) -> Join
     {
         Join {
             kind,
             predicate,
-            left_field,
-            right_field
+            left_field: left_field.into(),
+            right_field: right_field.into()
         }
     }
 
-    pub fn equal(kind: JoinKind, left_field: ViewField, right_field: ViewField) -> Join {
+    pub fn equal<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L, right_field: R)
+        -> Join
+    {
         Join {
             kind,
             predicate: Predicate::Equal,
-            left_field,
-            right_field,
+            left_field: left_field.into(),
+            right_field: right_field.into(),
         }
     }
-    pub fn less_than(kind: JoinKind, left_field: ViewField, right_field: ViewField) -> Join {
+    pub fn less_than<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L,
+        right_field: R) -> Join
+    {
         Join {
             kind,
             predicate: Predicate::LessThan,
-            left_field,
-            right_field,
+            left_field: left_field.into(),
+            right_field: right_field.into(),
         }
     }
-    pub fn less_than_equal(kind: JoinKind, left_field: ViewField, right_field: ViewField)
-        -> Join
+    pub fn less_than_equal<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L,
+        right_field: R) -> Join
     {
         Join {
             kind,
             predicate: Predicate::LessThanEqual,
-            left_field,
-            right_field,
+            left_field: left_field.into(),
+            right_field: right_field.into(),
         }
     }
-    pub fn greater_than(kind: JoinKind, left_field: ViewField, right_field: ViewField) -> Join {
+    pub fn greater_than<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L,
+        right_field: R) -> Join
+    {
         Join {
             kind,
             predicate: Predicate::GreaterThan,
-            left_field,
-            right_field,
+            left_field: left_field.into(),
+            right_field: right_field.into(),
         }
     }
-    pub fn greater_than_equal(kind: JoinKind, left_field: ViewField, right_field: ViewField)
-        -> Join
+    pub fn greater_than_equal<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L,
+        right_field: R) -> Join
     {
         Join {
             kind,
             predicate: Predicate::GreaterThanEqual,
-            left_field,
-            right_field,
+            left_field: left_field.into(),
+            right_field: right_field.into(),
         }
     }
 
@@ -107,9 +113,9 @@ pub fn hash_join(_left: &DataView, _right: &DataView, join: Join) -> Result<Data
 pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<DataStore> {
     // get the data for this field
     let left_key_data = left.get_field_data(&join.left_field)
-        .ok_or(AgnesError::FieldNotFound(join.left_field.rident.ident))?;
+        .ok_or(AgnesError::FieldNotFound(join.left_field.clone().into()))?;
     let right_key_data = right.get_field_data(&join.right_field)
-        .ok_or(AgnesError::FieldNotFound(join.right_field.rident.ident))?;
+        .ok_or(AgnesError::FieldNotFound(join.right_field.clone().into()))?;
     if left_key_data.get_field_type() != right_key_data.get_field_type() {
         return Err(AgnesError::TypeMismatch("unable to join on fields of different types".into()));
     }
@@ -129,7 +135,8 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
     // compute merged store list and field list for the new datastore
     // compute the field list for the new datastore
     let (new_stores, other_store_indices) = compute_merged_stores(left, right);
-    let new_fields = compute_merged_field_list(left, right, &other_store_indices)?;
+    let (new_fields, right_skip) =
+        compute_merged_field_list(left, right, &other_store_indices, &join)?;
 
     // create new datastore with fields of both left and right
     let mut ds = DataStore::with_fields(
@@ -149,7 +156,7 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
         let add_value = |ds: &mut DataStore, data: &DataView, field: &ViewField, idx| {
             // col.get(i).unwrap() should be safe: indices originally generated from view nrows
             let renfield = field.rident.to_renamed_field_ident();
-            match data.get_field_data(field).unwrap() {
+            match data.get_viewfield_data(field).unwrap() {
                 FieldData::Unsigned(col) => ds.add_unsigned(renfield,
                     col.get(idx).unwrap().cloned()),
                 FieldData::Signed(col) => ds.add_signed(renfield,
@@ -166,6 +173,14 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
             add_value(&mut ds, left, left_field, left_idx);
         }
         for right_field in right.fields.values() {
+            match right_skip {
+                Some(ref right_skip) => {
+                    if &right_field.rident.to_string() == right_skip {
+                        continue;
+                    }
+                },
+                None => {}
+            }
             add_value(&mut ds, right, right_field, right_idx);
         }
     }
@@ -224,7 +239,30 @@ fn merge_masked_data<'a, T: PartialOrd>(
     let mut merge_indices = vec![];
     while left_perm_iter.peek().is_some() && right_perm_iter.peek().is_some() {
         if left_pos.value == right_pos.value {
-            merge_indices.push((left_pos.idx, right_pos.idx));
+            // generate subsets of left values and right values of same value
+            let mut left_subset = vec![];
+            let mut right_subset = vec![];
+            while left_perm_iter.peek().is_some()
+                && left_key_data.get(**left_perm_iter.peek().unwrap()).unwrap() == left_pos.value
+            {
+                left_subset.push(left_pos.idx);
+                left_pos = advance(left_key_data, &mut left_perm_iter);
+            }
+            while right_perm_iter.peek().is_some()
+                && right_key_data.get(**right_perm_iter.peek().unwrap()).unwrap() == right_pos.value
+            {
+                right_subset.push(right_pos.idx);
+                right_pos = advance(right_key_data, &mut right_perm_iter);
+            }
+            left_subset.push(left_pos.idx);
+            right_subset.push(right_pos.idx);
+            // add cross product of subsets to merge indices
+            for left_idx in &left_subset {
+                for right_idx in &right_subset {
+                    merge_indices.push((*left_idx, *right_idx));
+                }
+            }
+            // move on to next
             left_pos = advance(left_key_data, &mut left_perm_iter);
             right_pos = advance(right_key_data, &mut right_perm_iter);
         } else if left_pos.value < right_pos.value {
@@ -233,6 +271,10 @@ fn merge_masked_data<'a, T: PartialOrd>(
             // left_pos.value > right_pos.value
             right_pos = advance(right_key_data, &mut right_perm_iter);
         }
+    }
+    // add last value, if matches
+    if left_pos.value == right_pos.value {
+        merge_indices.push((left_pos.idx, right_pos.idx));
     }
     merge_indices
 }
@@ -258,22 +300,37 @@ pub(crate) fn compute_merged_stores(left: &DataView, right: &DataView)
     (new_stores, right_store_indices)
 }
 
-pub(crate) fn compute_merged_field_list(left: &DataView, right: &DataView,
-    right_store_mapping: &Vec<usize>) -> Result<IndexMap<String, ViewField>>
+pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &DataView,
+    right: &DataView, right_store_mapping: &Vec<usize>, join: T)
+    -> Result<(IndexMap<String, ViewField>, Option<String>)>
 {
     // build new fields vector, updating the store indices in the ViewFields copied
     // from the 'right' fields list
     let mut new_fields = left.fields.clone();
+    let mut field_coll = vec![];
     for (right_fieldname, right_field) in &right.fields {
         if new_fields.contains_key(right_fieldname) {
-            return Err(AgnesError::FieldCollision(right_fieldname.clone()));
+            field_coll.push(right_fieldname.clone());
+            continue;
         }
         new_fields.insert(right_fieldname.clone(), ViewField {
             rident: right_field.rident.clone(),
             store_idx: right_store_mapping[right_field.store_idx],
         });
     }
-    Ok(new_fields)
+    // return the fields if a join is specified, and the only field collision is the join field
+    if let Some(join) = join.into() {
+        if field_coll.len() == 1 && join.left_field == join.right_field
+            && field_coll[0] == join.left_field
+        {
+            return Ok((new_fields, Some(join.right_field.clone())));
+        }
+    }
+    if field_coll.is_empty() {
+        Ok((new_fields, None))
+    } else {
+        Err(AgnesError::FieldCollision(field_coll))
+    }
 }
 
 type SortedOrder = Vec<usize>;
@@ -335,24 +392,26 @@ impl<'a> SortOrder for FieldData<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::SortOrder;
+    use super::*;
     use masked::{MaybeNa, MaskedData};
+    use store::DataStore;
 
     #[test]
     fn sort_order_no_na() {
-        let masked_data = MaskedData::from_vec(vec![2u64, 5, 3, 1, 8]);
+        let masked_data: MaskedData<u64> = MaskedData::from_vec(vec![2u64, 5, 3, 1, 8]);
         let sort_order = masked_data.sort_order();
         assert_eq!(sort_order, vec![3, 0, 2, 1, 4]);
 
-        let masked_data = MaskedData::from_vec(vec![2.0, 5.4, 3.1, 1.1, 8.2]);
+        let masked_data: MaskedData<f64> = MaskedData::from_vec(vec![2.0, 5.4, 3.1, 1.1, 8.2]);
         let sort_order = masked_data.sort_order();
         assert_eq!(sort_order, vec![3, 0, 2, 1, 4]);
 
-        let masked_data = MaskedData::from_vec(vec![2.0, ::std::f64::NAN, 3.1, 1.1, 8.2]);
+        let masked_data: MaskedData<f64> =
+            MaskedData::from_vec(vec![2.0, ::std::f64::NAN, 3.1, 1.1, 8.2]);
         let sort_order = masked_data.sort_order();
         assert_eq!(sort_order, vec![1, 3, 0, 2, 4]);
 
-        let masked_data = MaskedData::from_vec(vec![2.0, ::std::f64::NAN, 3.1,
+        let masked_data: MaskedData<f64> = MaskedData::from_vec(vec![2.0, ::std::f64::NAN, 3.1,
             ::std::f64::INFINITY, 8.2]);
         let sort_order = masked_data.sort_order();
         assert_eq!(sort_order, vec![1, 0, 2, 4, 3]);
@@ -399,5 +458,61 @@ mod tests {
         ]);
         let sort_order = masked_data.sort_order();
         assert_eq!(sort_order, vec![2, 1, 0, 4, 3]);
+    }
+
+    #[test]
+    fn inner_equi_join() {
+        // use field::FieldIdent;
+        // let unsigned: Vec<(FieldIdent, Vec<u64>)> = vec![
+        //     ("EmpId".into(), vec![0u64, 2, 5, 6, 8, 9]),
+        //     ("DeptId".into(), vec![1u64, 2, 1, 1, 3, 4])
+        // ];
+        // let text: Vec<(FieldIdent, Vec<&str>)> = vec![
+        //     ("EmpName".into(), vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise"])
+        // ];
+        let ds1 = DataStore::with_data(
+            // unsigned
+            vec![
+                ("EmpId".into(), vec![0u64, 2, 5, 6, 8, 9].into()),
+                ("DeptId".into(), vec![1u64, 2, 1, 1, 3, 4].into())
+            ],
+            // signed
+            None,
+            // text
+            vec![
+                ("EmpName".into(), vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise"].into())
+            ],
+            // boolean
+            None,
+            // float
+            None
+        );
+
+        let ds2 = DataStore::with_data(
+            // unsigned
+            vec![
+                ("DeptId".into(), vec![1u64, 2, 3, 4].into())
+            ],
+            // signed
+            None,
+            // text
+            vec![
+                ("DeptName".into(), vec!["Marketing", "Sales", "Manufacturing", "R&D"].into())
+            ],
+            // boolean
+            None,
+            // float
+            None
+        );
+
+        let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
+        println!("{}", dv1);
+        println!("{}", dv2);
+        let joined_dv: DataView = dv1.join(&dv2, Join::equal(
+            JoinKind::Inner,
+            "DeptId",
+            "DeptId"
+        )).expect("join failure").into();
+        println!("{}", joined_dv);
     }
 }

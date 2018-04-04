@@ -4,7 +4,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use field::{FieldIdent, SrcField, TypedFieldIdent, DsField, FieldType};
+use field::{FieldIdent, TypedFieldIdent, DsField, FieldType};
 use masked::{FieldData, MaskedData};
 use error::*;
 use MaybeNa;
@@ -13,7 +13,7 @@ type TypeData<T> = HashMap<FieldIdent, MaskedData<T>>;
 
 /// Data storage underlying a dataframe. Data is retrievable both by index (of the fields vector)
 /// and by field name.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DataStore {
     /// List of fields within the data store
     pub fields: Vec<DsField>,
@@ -75,6 +75,52 @@ impl DataStore {
         ds
     }
 
+    /// Create a new `DataStore` with provided data. Data is provided in type-specific vectors of
+    /// field identifiers along with data for the identifier.
+    ///
+    /// NOTE: This function provides no protection against field name collisions.
+    pub fn with_data<U, S, T, B, F>(
+    // pub fn with_data<U, UFI, UMD, S, SFI, SMD, T, TFI, TMD, B, BFI, BMD, F, FFI, FMD>(
+        unsigned: U, signed: S, text: T, boolean: B, float: F
+        ) -> DataStore
+        where U: Into<Option<Vec<(FieldIdent, MaskedData<u64>)>>>,
+              // UFI: Into<FieldIdent>,
+              // UMD: Into<MaskedData<u64>>,
+              S: Into<Option<Vec<(FieldIdent, MaskedData<i64>)>>>,
+              // SFI: Into<FieldIdent>,
+              // SMD: Into<MaskedData<i64>>,
+              T: Into<Option<Vec<(FieldIdent, MaskedData<String>)>>>,
+              // TFI: Into<FieldIdent>,
+              // TMD: Into<MaskedData<String>>,
+              B: Into<Option<Vec<(FieldIdent, MaskedData<bool>)>>>,
+              // BFI: Into<FieldIdent>,
+              // BMD: Into<MaskedData<bool>>,
+              F: Into<Option<Vec<(FieldIdent, MaskedData<f64>)>>>,
+              // FFI: Into<FieldIdent>,
+              // FMD: Into<MaskedData<f64>>
+    {
+        let mut ds = DataStore::empty();
+        macro_rules! add_to_ds {
+            ($($hm:tt; $fty:path)*) => {$({
+                if let Some(src_h) = $hm.into() {
+                    for (ident, data) in src_h {
+                        // let ident = ident.into();
+                        ds.add_field(TypedFieldIdent { ident: ident.clone(), ty: $fty });
+                        ds.$hm.insert(ident, data.into());
+                    }
+                }
+            })*}
+        }
+        add_to_ds!(
+            unsigned; FieldType::Unsigned
+            signed;   FieldType::Signed
+            text;     FieldType::Text
+            boolean;  FieldType::Boolean
+            float;    FieldType::Float
+        );
+        ds
+    }
+
     pub fn add_unsigned(&mut self, ident: FieldIdent, value: MaybeNa<u64>) {
         insert_value(&mut self.unsigned, ident, value)
     }
@@ -92,10 +138,10 @@ impl DataStore {
     }
 
     /// Insert a value (provided in unparsed string form) for specified field
-    pub fn insert(&mut self, field: SrcField, value_str: String) -> Result<()> {
-        let ident = field.ty_ident.ident.clone();
-        let fty = field.ty_ident.ty;
-        self.add_field(field.ty_ident.clone());
+    pub fn insert(&mut self, ty_ident: TypedFieldIdent, value_str: String) -> Result<()> {
+        let ident = ty_ident.ident.clone();
+        let fty = ty_ident.ty;
+        self.add_field(ty_ident.clone());
         Ok(match fty {
             FieldType::Unsigned => self.add_unsigned(ident, parse(value_str, parse_unsigned)?),
             FieldType::Signed   => self.add_signed(ident, parse(value_str, parse_signed)?),
@@ -221,12 +267,7 @@ fn insert_value<T: Default + PartialOrd>(
     k: FieldIdent,
     v: MaybeNa<T>)
 {
-    if h.contains_key(&k) {
-        // h contains the key k, so unwrap is safe
-        h.get_mut(&k).unwrap().push(v);
-    } else {
-        h.insert(k, MaskedData::new_with_elem(v));
-    }
+    h.entry(k).or_insert(MaskedData::new()).push(v);
 }
 fn parse<T: PartialOrd, F>(value_str: String, f: F) -> Result<MaybeNa<T>> where F: Fn(String)
     -> Result<T>
