@@ -79,32 +79,22 @@ impl DataStore {
     /// field identifiers along with data for the identifier.
     ///
     /// NOTE: This function provides no protection against field name collisions.
-    pub fn with_data<U, S, T, B, F>(
-    // pub fn with_data<U, UFI, UMD, S, SFI, SMD, T, TFI, TMD, B, BFI, BMD, F, FFI, FMD>(
+    pub fn with_data<FI, U, S, T, B, F>(
         unsigned: U, signed: S, text: T, boolean: B, float: F
         ) -> DataStore
-        where U: Into<Option<Vec<(FieldIdent, MaskedData<u64>)>>>,
-              // UFI: Into<FieldIdent>,
-              // UMD: Into<MaskedData<u64>>,
-              S: Into<Option<Vec<(FieldIdent, MaskedData<i64>)>>>,
-              // SFI: Into<FieldIdent>,
-              // SMD: Into<MaskedData<i64>>,
-              T: Into<Option<Vec<(FieldIdent, MaskedData<String>)>>>,
-              // TFI: Into<FieldIdent>,
-              // TMD: Into<MaskedData<String>>,
-              B: Into<Option<Vec<(FieldIdent, MaskedData<bool>)>>>,
-              // BFI: Into<FieldIdent>,
-              // BMD: Into<MaskedData<bool>>,
-              F: Into<Option<Vec<(FieldIdent, MaskedData<f64>)>>>,
-              // FFI: Into<FieldIdent>,
-              // FMD: Into<MaskedData<f64>>
+        where FI: Into<FieldIdent>,
+              U: Into<Option<Vec<(FI, MaskedData<u64>)>>>,
+              S: Into<Option<Vec<(FI, MaskedData<i64>)>>>,
+              T: Into<Option<Vec<(FI, MaskedData<String>)>>>,
+              B: Into<Option<Vec<(FI, MaskedData<bool>)>>>,
+              F: Into<Option<Vec<(FI, MaskedData<f64>)>>>,
     {
         let mut ds = DataStore::empty();
         macro_rules! add_to_ds {
             ($($hm:tt; $fty:path)*) => {$({
                 if let Some(src_h) = $hm.into() {
                     for (ident, data) in src_h {
-                        // let ident = ident.into();
+                        let ident: FieldIdent = ident.into();
                         ds.add_field(TypedFieldIdent { ident: ident.clone(), ty: $fty });
                         ds.$hm.insert(ident, data.into());
                     }

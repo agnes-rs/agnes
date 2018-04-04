@@ -462,25 +462,17 @@ mod tests {
 
     #[test]
     fn inner_equi_join() {
-        // use field::FieldIdent;
-        // let unsigned: Vec<(FieldIdent, Vec<u64>)> = vec![
-        //     ("EmpId".into(), vec![0u64, 2, 5, 6, 8, 9]),
-        //     ("DeptId".into(), vec![1u64, 2, 1, 1, 3, 4])
-        // ];
-        // let text: Vec<(FieldIdent, Vec<&str>)> = vec![
-        //     ("EmpName".into(), vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise"])
-        // ];
         let ds1 = DataStore::with_data(
             // unsigned
             vec![
-                ("EmpId".into(), vec![0u64, 2, 5, 6, 8, 9].into()),
-                ("DeptId".into(), vec![1u64, 2, 1, 1, 3, 4].into())
+                ("EmpId", vec![0u64, 2, 5, 6, 8, 9].into()),
+                ("DeptId", vec![1u64, 2, 1, 1, 3, 4].into())
             ],
             // signed
             None,
             // text
             vec![
-                ("EmpName".into(), vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise"].into())
+                ("EmpName", vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise"].into())
             ],
             // boolean
             None,
@@ -491,13 +483,13 @@ mod tests {
         let ds2 = DataStore::with_data(
             // unsigned
             vec![
-                ("DeptId".into(), vec![1u64, 2, 3, 4].into())
+                ("DeptId", vec![1u64, 2, 3, 4].into())
             ],
             // signed
             None,
             // text
             vec![
-                ("DeptName".into(), vec!["Marketing", "Sales", "Manufacturing", "R&D"].into())
+                ("DeptName", vec!["Marketing", "Sales", "Manufacturing", "R&D"].into())
             ],
             // boolean
             None,
