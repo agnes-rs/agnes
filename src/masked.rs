@@ -64,6 +64,15 @@ impl<T: PartialOrd> MaskedData<T> {
             }
         }
     }
+    pub fn as_vec(&self) -> Vec<MaybeNa<&T>> {
+        self.data.iter().enumerate().map(|(idx, value)| {
+            if self.mask[idx] {
+                MaybeNa::Exists(value)
+            } else {
+                MaybeNa::Na
+            }
+        }).collect()
+    }
 }
 impl<T: Default + PartialOrd> MaskedData<T> {
     pub fn new() -> MaskedData<T> {
@@ -183,3 +192,19 @@ impl<'a> Serialize for FieldData<'a> {
         }
     }
 }
+macro_rules! impl_from_masked_data {
+    ($($variant:path: $data_type:ty)*) => {$(
+        impl<'a> From<&'a MaskedData<$data_type>> for FieldData<'a> {
+            fn from(other: &'a MaskedData<$data_type>) -> FieldData<'a> {
+                $variant(other)
+            }
+        }
+    )*}
+}
+impl_from_masked_data!(
+    FieldData::Unsigned: u64
+    FieldData::Signed:   i64
+    FieldData::Text:     String
+    FieldData::Boolean:  bool
+    FieldData::Float:    f64
+);
