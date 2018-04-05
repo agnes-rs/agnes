@@ -3,19 +3,53 @@
 use serde::ser::{Serialize, Serializer, SerializeSeq};
 
 use bit_vec::BitVec;
+use field::FieldType;
 
 /// Missing value container.
-pub enum MaybeNa<T> {
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MaybeNa<T: PartialOrd> {
     /// Indicates a missing (NA) value.
     Na,
     /// Indicates an existing value.
     Exists(T)
 }
-impl<T: ToString> ToString for MaybeNa<T> {
+impl<T: ToString + PartialOrd> ToString for MaybeNa<T> {
     fn to_string(&self) -> String {
         match *self {
             MaybeNa::Na => "NA".into(),
             MaybeNa::Exists(ref t) => t.to_string()
+        }
+    }
+}
+impl<T: PartialOrd> MaybeNa<T> {
+    /// Unwrap a `MaybeNa`, revealing the data contained within. Panics if called on an `Na` value.
+    pub fn unwrap(self) -> T {
+        match self {
+            MaybeNa::Na => { panic!("unwrap() called on NA value"); },
+            MaybeNa::Exists(t) => t
+        }
+    }
+    /// Test if a `MaybeNa` contains a value.
+    pub fn exists(&self) -> bool {
+        match *self {
+            MaybeNa::Exists(_) => true,
+            MaybeNa::Na => false,
+        }
+    }
+    /// Test if a `MaybeNa` is NA.
+    pub fn is_na(&self) -> bool {
+        match *self {
+            MaybeNa::Exists(_) => false,
+            MaybeNa::Na => true,
+        }
+    }
+}
+impl<'a, T: PartialOrd + Clone> MaybeNa<&'a T> {
+    /// Create a owner `MaybeNa` out of a reference-holding `MaybeNa` using `clone()`.
+    pub fn cloned(self) -> MaybeNa<T> {
+        match self {
+            MaybeNa::Exists(t) => MaybeNa::Exists(t.clone()),
+            MaybeNa::Na => MaybeNa::Na
         }
     }
 }
@@ -27,7 +61,7 @@ pub struct MaskedData<T> {
     mask: BitVec,
     data: Vec<T>
 }
-impl<T> MaskedData<T> {
+impl<T: PartialOrd> MaskedData<T> {
     /// Length of this data vector
     pub fn len(&self) -> usize {
         assert_eq!(self.mask.len(), self.data.len());
@@ -46,8 +80,25 @@ impl<T> MaskedData<T> {
             }
         }
     }
+    /// Interpret `MaskedData` as a `Vec` of `MaybeNa` objects.
+    pub fn as_vec(&self) -> Vec<MaybeNa<&T>> {
+        self.data.iter().enumerate().map(|(idx, value)| {
+            if self.mask[idx] {
+                MaybeNa::Exists(value)
+            } else {
+                MaybeNa::Na
+            }
+        }).collect()
+    }
 }
-impl<T: Default> MaskedData<T> {
+impl<T: Default + PartialOrd> MaskedData<T> {
+    /// Create new empty `MaskedData` struct.
+    pub fn new() -> MaskedData<T> {
+        MaskedData {
+            data: vec![],
+            mask: BitVec::new()
+        }
+    }
     /// Create new masked data vector with single element.
     pub fn new_with_elem(value: MaybeNa<T>) -> MaskedData<T> {
         if let MaybeNa::Exists(v) = value {
@@ -71,6 +122,27 @@ impl<T: Default> MaskedData<T> {
             self.data.push(T::default());
             self.mask.push(false);
         }
+    }
+    /// Create a `MaskedData` struct from a vector of non-NA values. Resulting `MaskedData` struct
+    /// will have no `MaybeNa::Na` values.
+    pub fn from_vec<U: Into<T>>(mut v: Vec<U>) -> MaskedData<T> {
+        MaskedData {
+            mask: BitVec::from_elem(v.len(), true),
+            data: v.drain(..).map(|value| value.into()).collect(),
+        }
+    }
+    /// Create a `MaskedData` struct from a vector of masked values.
+    pub fn from_masked_vec(mut v: Vec<MaybeNa<T>>) -> MaskedData<T> {
+        let mut ret = MaskedData::new();
+        for elem in v.drain(..) {
+            ret.push(elem);
+        }
+        ret
+    }
+}
+impl<T: PartialOrd + Default, U: Into<T>> From<Vec<U>> for MaskedData<T> {
+    fn from(other: Vec<U>) -> MaskedData<T> {
+        MaskedData::from_vec(other)
     }
 }
 impl<T: Serialize> Serialize for MaskedData<T> {
@@ -111,7 +183,22 @@ impl<'a> FieldData<'a> {
             FieldData::Float(v)    => v.data.len(),
         }
     }
+    /// Whether this data's field is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// Returns the `FieldType` for this field.
+    pub fn get_field_type(&self) -> FieldType {
+        match *self {
+            FieldData::Unsigned(_)  => FieldType::Unsigned,
+            FieldData::Signed(_)    => FieldType::Signed,
+            FieldData::Text(_)      => FieldType::Text,
+            FieldData::Boolean(_)   => FieldType::Boolean,
+            FieldData::Float(_)     => FieldType::Float,
+        }
+    }
 }
+
 impl<'a> Serialize for FieldData<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         match *self {
@@ -123,3 +210,19 @@ impl<'a> Serialize for FieldData<'a> {
         }
     }
 }
+macro_rules! impl_from_masked_data {
+    ($($variant:path: $data_type:ty)*) => {$(
+        impl<'a> From<&'a MaskedData<$data_type>> for FieldData<'a> {
+            fn from(other: &'a MaskedData<$data_type>) -> FieldData<'a> {
+                $variant(other)
+            }
+        }
+    )*}
+}
+impl_from_masked_data!(
+    FieldData::Unsigned: u64
+    FieldData::Signed:   i64
+    FieldData::Text:     String
+    FieldData::Boolean:  bool
+    FieldData::Float:    f64
+);

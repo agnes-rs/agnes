@@ -4,7 +4,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use field::{FieldIdent, SrcField, DsField, FieldType};
+use field::{FieldIdent, TypedFieldIdent, DsField, FieldType};
 use masked::{FieldData, MaskedData};
 use error::*;
 use MaybeNa;
@@ -13,7 +13,7 @@ type TypeData<T> = HashMap<FieldIdent, MaskedData<T>>;
 
 /// Data storage underlying a dataframe. Data is retrievable both by index (of the fields vector)
 /// and by field name.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DataStore {
     /// List of fields within the data store
     pub fields: Vec<DsField>,
@@ -31,74 +31,6 @@ pub struct DataStore {
     /// Storage for floating-point numbers
     float: TypeData<f64>,
 }
-fn max_len<K, T>(h: &HashMap<K, MaskedData<T>>) -> usize where K: Eq + Hash {
-    h.values().fold(0, |acc, v| max(acc, v.len()))
-}
-fn is_hm_homogeneous<K, T>(h: &HashMap<K, MaskedData<T>>) -> Option<usize> where K: Eq + Hash {
-    let mut all_same_len = true;
-    let mut target_len = 0;
-    let mut first = true;
-    for (_, v) in h {
-        if first {
-            target_len = v.len();
-            first = false;
-        }
-        all_same_len &= v.len() == target_len;
-    }
-    if all_same_len { Some(target_len) } else { None }
-}
-fn is_hm_homogeneous_with<K, T>(h: &HashMap<K, MaskedData<T>>, value: usize) -> Option<usize>
-        where K: Eq + Hash {
-    is_hm_homogeneous(h).and_then(|x| {
-        if x == 0 && value != 0 {
-            Some(value)
-        } else if (value == 0 && x != 0) || x == value {
-            Some(x)
-        } else { None }
-    })
-}
-fn insert_value<T: Default>(
-    h: &mut HashMap<FieldIdent, MaskedData<T>>,
-    k: FieldIdent,
-    v: MaybeNa<T>)
-{
-    if h.contains_key(&k) {
-        // h contains the key k, so unwrap is safe
-        h.get_mut(&k).unwrap().push(v);
-    } else {
-        h.insert(k, MaskedData::new_with_elem(v));
-    }
-}
-fn parse<T, F>(value_str: String, f: F) -> Result<MaybeNa<T>> where F: Fn(String) -> Result<T> {
-    if value_str.trim().len() == 0 {
-        Ok(MaybeNa::Na)
-    } else {
-        Ok(MaybeNa::Exists(f(value_str)?))
-    }
-}
-/// A forgiving unsigned integer parser. If normal unsigned integer parsing fails, tries to parse
-/// as a signed integer; if successful, assumes that the integer is negative and translates that
-/// to '0'. If that fails, tries to parse as a float; if successful, converts to unsigned integer
-/// (or '0' if negative)
-fn parse_unsigned(value_str: String) -> Result<u64> {
-    Ok(value_str.parse::<u64>().or_else(|e| {
-        // try parsing as a signed int...if successful, it's negative, so just set it to 0
-        value_str.parse::<i64>().map(|_| 0u64).or_else(|_| {
-            // try parsing as a float
-            value_str.parse::<f64>().map(|f| {
-                if f < 0.0 { 0u64 } else { f as u64 }
-            }).or(Err(e))
-        })
-    })?)
-}
-/// A forgiving signed integer parser. If normal signed integer parsing fails, tries to parse as
-/// a float; if successful, converts to a signed integer.
-fn parse_signed(value_str: String) -> Result<i64> {
-    Ok(value_str.parse::<i64>().or_else(|e| {
-        // try parsing as float
-        value_str.parse::<f64>().map(|f| f as i64).or(Err(e))
-    })?)
-}
 impl DataStore {
     /// Generate and return an empty data store
     pub fn empty() -> DataStore {
@@ -114,31 +46,104 @@ impl DataStore {
         }
     }
 
-    fn add_field(&mut self, field: SrcField) {
-        let ident = field.ty_ident.ident.clone();
+    fn add_field(&mut self, field: TypedFieldIdent) {
+        let ident = field.ident.clone();
         if !self.field_map.contains_key(&ident) {
             let index = self.fields.len();
-            self.fields.push(DsField::from_src(&field, index));
+            self.fields.push(DsField::from_typed_field_ident(field, index));
             self.field_map.insert(ident, index);
         }
     }
 
+    /// Create a new `DataStore` which will contain the provided fields.
+    pub fn with_fields(mut fields: Vec<TypedFieldIdent>) -> DataStore {
+        let mut ds = DataStore {
+            fields: Vec::with_capacity(fields.len()),
+            field_map: HashMap::with_capacity(fields.len()),
+
+            // could precompute lengths here to guess capacity, not sure if it'd be necessarily
+            // faster
+            unsigned: HashMap::new(),
+            signed: HashMap::new(),
+            text: HashMap::new(),
+            boolean: HashMap::new(),
+            float: HashMap::new(),
+        };
+        for field in fields.drain(..) {
+            ds.add_field(field);
+        }
+        ds
+    }
+
+    /// Create a new `DataStore` with provided data. Data is provided in type-specific vectors of
+    /// field identifiers along with data for the identifier.
+    ///
+    /// NOTE: This function provides no protection against field name collisions.
+    pub fn with_data<FI, U, S, T, B, F>(
+        unsigned: U, signed: S, text: T, boolean: B, float: F
+        ) -> DataStore
+        where FI: Into<FieldIdent>,
+              U: Into<Option<Vec<(FI, MaskedData<u64>)>>>,
+              S: Into<Option<Vec<(FI, MaskedData<i64>)>>>,
+              T: Into<Option<Vec<(FI, MaskedData<String>)>>>,
+              B: Into<Option<Vec<(FI, MaskedData<bool>)>>>,
+              F: Into<Option<Vec<(FI, MaskedData<f64>)>>>,
+    {
+        let mut ds = DataStore::empty();
+        macro_rules! add_to_ds {
+            ($($hm:tt; $fty:path)*) => {$({
+                if let Some(src_h) = $hm.into() {
+                    for (ident, data) in src_h {
+                        let ident: FieldIdent = ident.into();
+                        ds.add_field(TypedFieldIdent { ident: ident.clone(), ty: $fty });
+                        ds.$hm.insert(ident, data.into());
+                    }
+                }
+            })*}
+        }
+        add_to_ds!(
+            unsigned; FieldType::Unsigned
+            signed;   FieldType::Signed
+            text;     FieldType::Text
+            boolean;  FieldType::Boolean
+            float;    FieldType::Float
+        );
+        ds
+    }
+
+    /// Add a single unsigned integer value to the specified field.
+    pub fn add_unsigned(&mut self, ident: FieldIdent, value: MaybeNa<u64>) {
+        insert_value(&mut self.unsigned, ident, value)
+    }
+    /// Add a single signed integer value to the specified field.
+    pub fn add_signed(&mut self, ident: FieldIdent, value: MaybeNa<i64>) {
+        insert_value(&mut self.signed, ident, value)
+    }
+    /// Add a single text value to the specified field.
+    pub fn add_text(&mut self, ident: FieldIdent, value: MaybeNa<String>) {
+        insert_value(&mut self.text, ident, value)
+    }
+    /// Add a single boolean value to the specified field.
+    pub fn add_boolean(&mut self, ident: FieldIdent, value: MaybeNa<bool>) {
+        insert_value(&mut self.boolean, ident, value)
+    }
+    /// Add a single floating-point value to the specified field.
+    pub fn add_float(&mut self, ident: FieldIdent, value: MaybeNa<f64>) {
+        insert_value(&mut self.float, ident, value)
+    }
+
     /// Insert a value (provided in unparsed string form) for specified field
-    pub fn insert(&mut self, field: SrcField, value_str: String) -> Result<()> {
-        let ident = field.ty_ident.ident.clone();
-        let fty = field.ty_ident.ty;
-        self.add_field(field);
+    pub fn insert(&mut self, ty_ident: TypedFieldIdent, value_str: String) -> Result<()> {
+        let ident = ty_ident.ident.clone();
+        let fty = ty_ident.ty;
+        self.add_field(ty_ident.clone());
         Ok(match fty {
-            FieldType::Unsigned => insert_value(&mut self.unsigned, ident,
-                parse(value_str, parse_unsigned)?),
-            FieldType::Signed   => insert_value(&mut self.signed, ident,
-                parse(value_str, parse_signed)?),
-            FieldType::Text     => insert_value(&mut self.text, ident,
-                parse(value_str, |val| Ok(val))?),
-            FieldType::Boolean  => insert_value(&mut self.boolean, ident,
-                parse(value_str, |val| Ok(val.parse()?))?),
-            FieldType::Float    => insert_value(&mut self.float, ident,
-                parse(value_str, |val| Ok(val.parse()?))?)
+            FieldType::Unsigned => self.add_unsigned(ident, parse(value_str, parse_unsigned)?),
+            FieldType::Signed   => self.add_signed(ident, parse(value_str, parse_signed)?),
+            FieldType::Text     => self.add_text(ident, parse(value_str, |val| Ok(val))?),
+            FieldType::Boolean  => self.add_boolean(ident, parse(value_str,
+                |val| Ok(val.parse()?))?),
+            FieldType::Float    => self.add_float(ident, parse(value_str, |val| Ok(val.parse()?))?)
         })
     }
 
@@ -187,13 +192,14 @@ impl DataStore {
     }
 
     /// Get the field information struct for a given field name
-    pub fn get_field_info(&self, ident: &FieldIdent) -> Option<&DsField> {
-        self.field_map.get(ident).and_then(|&index| self.fields.get(index))
+    pub fn get_field_type(&self, ident: &FieldIdent) -> Option<FieldType> {
+        self.field_map.get(ident)
+            .and_then(|&index| self.fields.get(index).map(|&ref dsfield| dsfield.ty_ident.ty))
     }
 
     /// Get the list of field information structs for this data store
-    pub fn fields(&self) -> Vec<&DsField> {
-        self.fields.iter().map(|&ref s| s).collect()
+    pub fn fields(&self) -> Vec<&TypedFieldIdent> {
+        self.fields.iter().map(|&ref s| &s.ty_ident).collect()
     }
     /// Get the field names in this data store
     pub fn fieldnames(&self) -> Vec<String> {
@@ -220,4 +226,73 @@ impl Default for DataStore {
     fn default() -> DataStore {
         DataStore::empty()
     }
+}
+
+fn max_len<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>) -> usize where K: Eq + Hash {
+    h.values().fold(0, |acc, v| max(acc, v.len()))
+}
+fn is_hm_homogeneous<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>) -> Option<usize>
+    where K: Eq + Hash
+{
+    let mut all_same_len = true;
+    let mut target_len = 0;
+    let mut first = true;
+    for (_, v) in h {
+        if first {
+            target_len = v.len();
+            first = false;
+        }
+        all_same_len &= v.len() == target_len;
+    }
+    if all_same_len { Some(target_len) } else { None }
+}
+fn is_hm_homogeneous_with<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>, value: usize)
+    -> Option<usize> where K: Eq + Hash
+{
+    is_hm_homogeneous(h).and_then(|x| {
+        if x == 0 && value != 0 {
+            Some(value)
+        } else if (value == 0 && x != 0) || x == value {
+            Some(x)
+        } else { None }
+    })
+}
+fn insert_value<T: Default + PartialOrd>(
+    h: &mut HashMap<FieldIdent, MaskedData<T>>,
+    k: FieldIdent,
+    v: MaybeNa<T>)
+{
+    h.entry(k).or_insert(MaskedData::new()).push(v);
+}
+fn parse<T: PartialOrd, F>(value_str: String, f: F) -> Result<MaybeNa<T>> where F: Fn(String)
+    -> Result<T>
+{
+    if value_str.trim().len() == 0 {
+        Ok(MaybeNa::Na)
+    } else {
+        Ok(MaybeNa::Exists(f(value_str)?))
+    }
+}
+/// A forgiving unsigned integer parser. If normal unsigned integer parsing fails, tries to parse
+/// as a signed integer; if successful, assumes that the integer is negative and translates that
+/// to '0'. If that fails, tries to parse as a float; if successful, converts to unsigned integer
+/// (or '0' if negative)
+fn parse_unsigned(value_str: String) -> Result<u64> {
+    Ok(value_str.parse::<u64>().or_else(|e| {
+        // try parsing as a signed int...if successful, it's negative, so just set it to 0
+        value_str.parse::<i64>().map(|_| 0u64).or_else(|_| {
+            // try parsing as a float
+            value_str.parse::<f64>().map(|f| {
+                if f < 0.0 { 0u64 } else { f as u64 }
+            }).or(Err(e))
+        })
+    })?)
+}
+/// A forgiving signed integer parser. If normal signed integer parsing fails, tries to parse as
+/// a float; if successful, converts to a signed integer.
+fn parse_signed(value_str: String) -> Result<i64> {
+    Ok(value_str.parse::<i64>().or_else(|e| {
+        // try parsing as float
+        value_str.parse::<f64>().map(|f| f as i64).or(Err(e))
+    })?)
 }
