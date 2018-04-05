@@ -29,6 +29,20 @@ impl<T: PartialOrd> MaybeNa<T> {
             MaybeNa::Exists(t) => t
         }
     }
+    /// Test if a `MaybeNa` contains a value.
+    pub fn exists(&self) -> bool {
+        match *self {
+            MaybeNa::Exists(_) => true,
+            MaybeNa::Na => false,
+        }
+    }
+    /// Test if a `MaybeNa` is NA.
+    pub fn is_na(&self) -> bool {
+        match *self {
+            MaybeNa::Exists(_) => false,
+            MaybeNa::Na => true,
+        }
+    }
 }
 impl<'a, T: PartialOrd + Clone> MaybeNa<&'a T> {
     /// Create a owner `MaybeNa` out of a reference-holding `MaybeNa` using `clone()`.

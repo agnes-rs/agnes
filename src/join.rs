@@ -8,7 +8,7 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use field::{RFieldIdent, TypedFieldIdent};
-use masked::{MaskedData, FieldData};
+use masked::{MaskedData, FieldData, MaybeNa};
 use view::{DataView, ViewField};
 use store::DataStore;
 use error::*;
@@ -122,17 +122,17 @@ pub enum Predicate {
     GreaterThanEqual,
 }
 impl Predicate {
-    fn is_equality(&self) -> bool {
+    fn is_equality_pred(&self) -> bool {
         *self == Predicate::Equal || *self == Predicate::GreaterThanEqual
             || *self == Predicate::LessThanEqual
     }
-    fn is_greater_than(&self) -> bool {
+    fn is_greater_than_pred(&self) -> bool {
         *self == Predicate::GreaterThan || *self == Predicate::GreaterThanEqual
     }
-    fn is_less_than(&self) -> bool {
+    fn is_less_than_pred(&self) -> bool {
         *self == Predicate::LessThan || *self == Predicate::LessThanEqual
     }
-    fn apply<T: PartialOrd>(&self, left: &T, right: &T) -> PredResults {
+    fn apply<T: PartialOrd>(&self, left: &MaybeNa<T>, right: &MaybeNa<T>) -> PredResults {
         match *self {
             Predicate::Equal => {
                 if left == right {
@@ -316,7 +316,7 @@ fn merge_masked_data<'a, T: PartialOrd>(
                 let mut left_subset = vec![left_idx];
                 let mut right_subset = vec![right_idx];
                 let (mut left_idx_end, mut right_idx_end);
-                if predicate.is_equality() {
+                if predicate.is_equality_pred() {
                     // for equality predicates, add all records with same value
                     left_idx_end = left_idx + 1;
                     while left_idx_end < left_perm.len() && left_val == lval(left_idx_end) {
@@ -334,14 +334,14 @@ fn merge_masked_data<'a, T: PartialOrd>(
                     right_idx_end = right_idx + 1;
                 }
                 let (left_eq_end, right_eq_end) = (left_idx_end, right_idx_end);
-                if predicate.is_greater_than() {
+                if predicate.is_greater_than_pred() {
                     // for greater-than predicates, we can add the rest of the left values
                     while left_idx_end < left_perm.len() {
                         left_subset.push(left_idx_end);
                         left_idx_end += 1;
                     }
                 }
-                if predicate.is_less_than() {
+                if predicate.is_less_than_pred() {
                     // for less-than predicates, we can add the rest of the right values
                     while right_idx_end < right_perm.len() {
                         right_subset.push(right_idx_end);
@@ -350,8 +350,14 @@ fn merge_masked_data<'a, T: PartialOrd>(
                 }
                 // add cross product of subsets to merge indices
                 for lidx in &left_subset {
-                    for ridx in &right_subset {
-                        merge_indices.push((left_perm[*lidx], right_perm[*ridx]));
+                    // NAs shouldn't match a predicate, only add if value exists
+                    if lval(*lidx).exists() {
+                        for ridx in &right_subset {
+                            if rval(*ridx).exists() {
+                                merge_indices.push((left_perm[*lidx], right_perm[*ridx]));
+                            }
+                        }
+
                     }
                 }
                 // advance as needed
@@ -585,18 +591,27 @@ mod tests {
         assert_eq!(sort_order, vec![2, 1, 0, 4, 3]);
     }
 
-    fn emp_table() -> DataStore {
+    fn sample_emp_table() -> DataStore {
+        emp_table(vec![0u64, 2, 5, 6, 8, 9, 10], vec![1u64, 2, 1, 1, 3, 4, 4],
+            vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"])
+    }
+    fn emp_table(empids: Vec<u64>, deptids: Vec<u64>, names: Vec<&str>) -> DataStore {
+        emp_table_from_masked(empids.into(), deptids.into(), names.into())
+    }
+    fn emp_table_from_masked(empids: MaskedData<u64>, deptids: MaskedData<u64>,
+        names: MaskedData<String>) -> DataStore
+    {
         DataStore::with_data(
             // unsigned
             vec![
-                ("EmpId", vec![0u64, 2, 5, 6, 8, 9, 10].into()),
-                ("DeptId", vec![1u64, 2, 1, 1, 3, 4, 4].into())
+                ("EmpId", empids),
+                ("DeptId", deptids)
             ],
             // signed
             None,
             // text
             vec![
-                ("EmpName", vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"].into())
+                ("EmpName", names)
             ],
             // boolean
             None,
@@ -605,36 +620,23 @@ mod tests {
         )
     }
 
-    fn dept_table() -> DataStore {
-        DataStore::with_data(
-            // unsigned
-            vec![
-                ("DeptId", vec![1u64, 2, 3, 4].into())
-            ],
-            // signed
-            None,
-            // text
-            vec![
-                ("DeptName", vec!["Marketing", "Sales", "Manufacturing", "R&D"].into())
-            ],
-            // boolean
-            None,
-            // float
-            None
-        )
+    fn sample_dept_table() -> DataStore {
+        dept_table(vec![1u64, 2, 3, 4], vec!["Marketing", "Sales", "Manufacturing", "R&D"])
     }
-
-    fn abbreviated_dept_table(deptids: Vec<u64>, names: Vec<&str>) -> DataStore {
+    fn dept_table(deptids: Vec<u64>, names: Vec<&str>) -> DataStore {
+        dept_table_from_masked(deptids.into(), names.into())
+    }
+    fn dept_table_from_masked(deptids: MaskedData<u64>, names: MaskedData<String>) -> DataStore {
         DataStore::with_data(
             // unsigned
             vec![
-                ("DeptId", deptids.into())
+                ("DeptId", deptids)
             ],
             // signed
             None,
             // text
             vec![
-                ("DeptName", names.into())
+                ("DeptName", names)
             ],
             // boolean
             None,
@@ -687,8 +689,8 @@ mod tests {
 
     #[test]
     fn inner_equi_join() {
-        let ds1 = emp_table();
-        let ds2 = dept_table();
+        let ds1 = sample_emp_table();
+        let ds2 = sample_dept_table();
 
         let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
         println!("{}", dv1);
@@ -716,10 +718,109 @@ mod tests {
     }
 
     #[test]
+    fn inner_equi_join_missing_dept_id() {
+        // dept id missing from dept table, should remove the entire marketing department from join
+        let ds1 = sample_emp_table();
+        let ds2 = dept_table_from_masked(
+            MaskedData::from_masked_vec(vec![
+                MaybeNa::Na,
+                MaybeNa::Exists(2),
+                MaybeNa::Exists(3),
+                MaybeNa::Exists(4)
+            ]),
+            MaskedData::from_masked_vec(vec![
+                MaybeNa::Exists("Marketing".into()),
+                MaybeNa::Exists("Sales".into()),
+                MaybeNa::Exists("Manufacturing".into()),
+                MaybeNa::Exists("R&D".into()),
+            ])
+        );
+
+        let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
+        println!("{}", dv1);
+        println!("{}", dv2);
+        let joined_dv: DataView = dv1.join(&dv2, Join::equal(
+            JoinKind::Inner,
+            "DeptId",
+            "DeptId"
+        )).expect("join failure").into();
+        println!("{}", joined_dv);
+        assert_eq!(joined_dv.nrows(), 4);
+        assert_eq!(joined_dv.nfields(), 5);
+        unsigned::assert_sorted_eq(joined_dv.get_field_data("EmpId").unwrap(),
+            vec![2, 8, 9, 10]);
+        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId.0").unwrap(),
+            vec![2, 3, 4, 4]);
+        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId.1").unwrap(),
+            vec![2, 3, 4, 4]);
+        text::assert_sorted_eq(joined_dv.get_field_data("EmpName").unwrap(),
+            vec!["Jamie", "Louis", "Louise", "Ann"]
+                .iter().map(|name| name.to_string()).collect());
+        text::assert_sorted_eq(joined_dv.get_field_data("DeptName").unwrap(),
+            vec!["Sales", "Manufacturing", "R&D", "R&D"]
+                .iter().map(|name| name.to_string()).collect());
+
+        // dept id missing from emp table, should remove single employee from join
+        let ds1 = emp_table_from_masked(
+            MaskedData::from_masked_vec(vec![
+                MaybeNa::Exists(0),
+                MaybeNa::Exists(2),
+                MaybeNa::Exists(5),
+                MaybeNa::Exists(6),
+                MaybeNa::Exists(8),
+                MaybeNa::Exists(9),
+                MaybeNa::Exists(10),
+            ]),
+            MaskedData::from_masked_vec(vec![
+                MaybeNa::Exists(1),
+                MaybeNa::Exists(2),
+                MaybeNa::Na, // Bob's department isn't specified
+                MaybeNa::Exists(1),
+                MaybeNa::Exists(3),
+                MaybeNa::Exists(4),
+                MaybeNa::Exists(4),
+            ]),
+            MaskedData::from_masked_vec(vec![
+                MaybeNa::Exists("Sally".into()),
+                MaybeNa::Exists("Jamie".into()),
+                MaybeNa::Exists("Bob".into()),
+                MaybeNa::Exists("Cara".into()),
+                MaybeNa::Exists("Louis".into()),
+                MaybeNa::Exists("Louise".into()),
+                MaybeNa::Exists("Ann".into()),
+            ]),
+        );
+        let ds2 = sample_dept_table();
+        let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
+        println!("{}", dv1);
+        println!("{}", dv2);
+        let joined_dv: DataView = dv1.join(&dv2, Join::equal(
+            JoinKind::Inner,
+            "DeptId",
+            "DeptId"
+        )).expect("join failure").into();
+        println!("{}", joined_dv);
+        assert_eq!(joined_dv.nrows(), 6);
+        assert_eq!(joined_dv.nfields(), 5);
+        unsigned::assert_sorted_eq(joined_dv.get_field_data("EmpId").unwrap(),
+            vec![0, 2, 6, 8, 9, 10]);
+        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId.0").unwrap(),
+            vec![1, 2, 1, 3, 4, 4]);
+        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId.1").unwrap(),
+            vec![1, 2, 1, 3, 4, 4]);
+        text::assert_sorted_eq(joined_dv.get_field_data("EmpName").unwrap(),
+            vec!["Sally", "Jamie", "Louis", "Louise", "Cara", "Ann"]
+                .iter().map(|name| name.to_string()).collect());
+        text::assert_sorted_eq(joined_dv.get_field_data("DeptName").unwrap(),
+            vec!["Marketing", "Sales", "Marketing", "Manufacturing", "R&D", "R&D"]
+                .iter().map(|name| name.to_string()).collect());
+    }
+
+    #[test]
     fn inner_nonequi_join() {
         // greater than
-        let ds1 = emp_table();
-        let ds2 = abbreviated_dept_table(vec![1, 2], vec!["Marketing", "Sales"]);
+        let ds1 = sample_emp_table();
+        let ds2 = dept_table(vec![1, 2], vec!["Marketing", "Sales"]);
 
         let (dv1, mut dv2): (DataView, DataView) = (ds1.into(), ds2.into());
         println!("~~\n>\n~~\n{}\n{}", dv1, dv2);
@@ -737,10 +838,10 @@ mod tests {
             |&deptid| deptid >= 2);
 
         // greater than equal
-        let ds1 = emp_table();
-        let ds2 = abbreviated_dept_table(vec![2], vec!["Sales"]);
+        let ds1 = sample_emp_table();
+        let ds2 = dept_table(vec![2], vec!["Sales"]);
         let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
-        println!("~~\n>=\n~~\n{}\n{}", dv1, dv2);
+        println!("~~\n>=\n~~\n+{}\n{}", dv1, dv2);
         let joined_dv: DataView = dv1.join(&dv2, Join::greater_than_equal(
             JoinKind::Inner,
             "DeptId",
@@ -753,8 +854,8 @@ mod tests {
             |&deptid| deptid >= 2);
 
         // less than
-        let ds1 = emp_table();
-        let ds2 = abbreviated_dept_table(vec![2], vec!["Sales"]);
+        let ds1 = sample_emp_table();
+        let ds2 = dept_table(vec![2], vec!["Sales"]);
         let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
         println!("~~\n<\n~~\n{}\n{}", dv1, dv2);
         let joined_dv: DataView = dv1.join(&dv2, Join::less_than(
@@ -769,8 +870,8 @@ mod tests {
             |&deptid| deptid == 1);
 
         // less than equal
-        let ds1 = emp_table();
-        let ds2 = abbreviated_dept_table(vec![2], vec!["Sales"]);
+        let ds1 = sample_emp_table();
+        let ds2 = dept_table(vec![2], vec!["Sales"]);
         let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
         println!("~~\n<=\n~~\n{}\n{}", dv1, dv2);
         let joined_dv: DataView = dv1.join(&dv2, Join::less_than_equal(
