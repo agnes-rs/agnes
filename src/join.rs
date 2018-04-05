@@ -226,7 +226,6 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
         .map(|&ref view_field| {
             let new_ident = view_field.rident.to_renamed_field_ident();
             new_field_idents.push(new_ident.clone());
-            println!("new_ident: {:?}", new_ident);
             let field_type = new_stores[view_field.store_idx]
                 .get_field_type(&view_field.rident.ident)
                 .expect("compute_merged_stores/field_list failed");
@@ -239,9 +238,7 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
 
     for (left_idx, right_idx) in merge_indices {
         let add_value = |ds: &mut DataStore, data: &DataView, field: &ViewField, idx, new_field| {
-            // col.get(i).unwrap() should be safe: indices originally generated from view nrows
-            // let renfield = field.rident.to_renamed_field_ident();
-            println!("renamed field ident: {:?}", new_field);
+            // col.get(idx).unwrap() should be safe: indices originally generated from view nrows
             match data.get_viewfield_data(field).unwrap() {
                 FieldData::Unsigned(col) => ds.add_unsigned(new_field,
                     col.get(idx).unwrap().cloned()),
@@ -301,8 +298,8 @@ fn merge_masked_data<'a, T: PartialOrd>(
 ) -> Vec<(usize, usize)>
 {
     debug_assert!(!left_perm.is_empty() && !right_perm.is_empty());
-    // actual_idx = perm[sorted_idx]
-    // value = key_data.get(actual_idx).unwrap();
+    // NOTE: actual_idx = perm[sorted_idx]
+    // NOTE: value = key_data.get(actual_idx).unwrap();
     let lval = |sorted_idx| left_key_data.get(left_perm[sorted_idx]).unwrap();
     let rval = |sorted_idx| right_key_data.get(right_perm[sorted_idx]).unwrap();
 
@@ -312,9 +309,7 @@ fn merge_masked_data<'a, T: PartialOrd>(
     while left_idx < left_perm.len() && right_idx < right_perm.len() {
         let left_val = lval(left_idx);
         let right_val = rval(right_idx);
-        // println!("testing {}(val={:?}) {}(val={:?})", left_idx, left_val, right_idx, right_val);
         let pred_results = predicate.apply(&left_val, &right_val);
-        println!("{:?}", pred_results);
         match pred_results {
             PredResults::Add => {
                 // figure out subsets
@@ -354,7 +349,6 @@ fn merge_masked_data<'a, T: PartialOrd>(
                     }
                 }
                 // add cross product of subsets to merge indices
-                println!("left:{:?} right:{:?}", left_subset, right_subset);
                 for lidx in &left_subset {
                     for ridx in &right_subset {
                         merge_indices.push((left_perm[*lidx], right_perm[*ridx]));
@@ -382,11 +376,9 @@ fn merge_masked_data<'a, T: PartialOrd>(
             },
             PredResults::Advance { left, right } => {
                 if left {
-                    println!("no add, advance left");
                     left_idx += 1;
                 }
                 if right {
-                    println!("no add, advance right");
                     right_idx += 1;
                 }
             }
@@ -632,17 +624,17 @@ mod tests {
         )
     }
 
-    fn abbreviated_dept_table() -> DataStore {
+    fn abbreviated_dept_table(deptids: Vec<u64>, names: Vec<&str>) -> DataStore {
         DataStore::with_data(
             // unsigned
             vec![
-                ("DeptId", vec![1u64, 2].into())
+                ("DeptId", deptids.into())
             ],
             // signed
             None,
             // text
             vec![
-                ("DeptName", vec!["Marketing", "Sales"].into())
+                ("DeptName", names.into())
             ],
             // boolean
             None,
@@ -651,10 +643,11 @@ mod tests {
         )
     }
 
-    macro_rules! impl_assert_sorted_eq {
+    macro_rules! impl_test_helpers {
         ($name:tt; $variant:path, $dtype:ty) => {
             mod $name {
                 use super::{FieldData, MaybeNa};
+                #[allow(dead_code)]
                 pub fn assert_sorted_eq(left: FieldData, right: Vec<$dtype>) {
                     if let $variant(masked) = left {
                         let mut masked = masked.as_vec();
@@ -666,14 +659,31 @@ mod tests {
                             assert_eq!(lval, rval);
                         }
                     } else {
-                        panic!("assert_$name_sorted_eq called with non-unsigned FieldData")
+                        panic!("$name::assert_sorted_eq called with incorrect type FieldData")
+                    }
+                }
+                #[allow(dead_code)]
+                pub fn assert_pred<F: Fn(&$dtype) -> bool>(left: FieldData, f: F) {
+                    if let $variant(masked) = left {
+                        for val in masked.as_vec().iter() {
+                            match val {
+                                &MaybeNa::Exists(&ref val) => {
+                                    assert!(f(val), "predicate failed");
+                                },
+                                &MaybeNa::Na => {
+                                    panic!("$name::assert_pred called with NA value");
+                                }
+                            }
+                        };
+                    } else {
+                        panic!("$name::assert_pred called with incorrect type FieldData")
                     }
                 }
             }
         }
     }
-    impl_assert_sorted_eq!(unsigned; FieldData::Unsigned, u64);
-    impl_assert_sorted_eq!(text;     FieldData::Text,     String);
+    impl_test_helpers!(unsigned; FieldData::Unsigned, u64);
+    impl_test_helpers!(text;     FieldData::Text,     String);
 
     #[test]
     fn inner_equi_join() {
@@ -707,12 +717,13 @@ mod tests {
 
     #[test]
     fn inner_nonequi_join() {
+        // greater than
         let ds1 = emp_table();
-        let ds2 = abbreviated_dept_table();
+        let ds2 = abbreviated_dept_table(vec![1, 2], vec!["Marketing", "Sales"]);
 
         let (dv1, mut dv2): (DataView, DataView) = (ds1.into(), ds2.into());
-        println!("{}", dv1);
-        println!("{}", dv2);
+        println!("~~\n>\n~~\n{}\n{}", dv1, dv2);
+        // also test renaming
         dv2.rename("DeptId", "RightDeptId").expect("rename failed");
         let joined_dv: DataView = dv1.join(&dv2, Join::greater_than(
             JoinKind::Inner,
@@ -722,5 +733,55 @@ mod tests {
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 7);
         assert_eq!(joined_dv.nfields(), 5);
+        unsigned::assert_pred(joined_dv.get_field_data("DeptId").unwrap(),
+            |&deptid| deptid >= 2);
+
+        // greater than equal
+        let ds1 = emp_table();
+        let ds2 = abbreviated_dept_table(vec![2], vec!["Sales"]);
+        let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
+        println!("~~\n>=\n~~\n{}\n{}", dv1, dv2);
+        let joined_dv: DataView = dv1.join(&dv2, Join::greater_than_equal(
+            JoinKind::Inner,
+            "DeptId",
+            "DeptId"
+        )).expect("join failure").into();
+        println!("{}", joined_dv);
+        assert_eq!(joined_dv.nrows(), 4);
+        assert_eq!(joined_dv.nfields(), 5);
+        unsigned::assert_pred(joined_dv.get_field_data("DeptId.0").unwrap(),
+            |&deptid| deptid >= 2);
+
+        // less than
+        let ds1 = emp_table();
+        let ds2 = abbreviated_dept_table(vec![2], vec!["Sales"]);
+        let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
+        println!("~~\n<\n~~\n{}\n{}", dv1, dv2);
+        let joined_dv: DataView = dv1.join(&dv2, Join::less_than(
+            JoinKind::Inner,
+            "DeptId",
+            "DeptId"
+        )).expect("join failure").into();
+        println!("{}", joined_dv);
+        assert_eq!(joined_dv.nrows(), 3);
+        assert_eq!(joined_dv.nfields(), 5);
+        unsigned::assert_pred(joined_dv.get_field_data("DeptId.0").unwrap(),
+            |&deptid| deptid == 1);
+
+        // less than equal
+        let ds1 = emp_table();
+        let ds2 = abbreviated_dept_table(vec![2], vec!["Sales"]);
+        let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
+        println!("~~\n<=\n~~\n{}\n{}", dv1, dv2);
+        let joined_dv: DataView = dv1.join(&dv2, Join::less_than_equal(
+            JoinKind::Inner,
+            "DeptId",
+            "DeptId"
+        )).expect("join failure").into();
+        println!("{}", joined_dv);
+        assert_eq!(joined_dv.nrows(), 4);
+        assert_eq!(joined_dv.nfields(), 5);
+        unsigned::assert_pred(joined_dv.get_field_data("DeptId.0").unwrap(),
+            |&deptid| deptid <= 2);
     }
 }
