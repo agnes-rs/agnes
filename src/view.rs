@@ -111,7 +111,7 @@ impl DataView {
         let (new_stores, other_store_indices) = compute_merged_stores(self, other);
 
         // compute merged field list
-        let (new_fields, _) = compute_merged_field_list(self, other, &other_store_indices, None)?;
+        let new_fields = compute_merged_field_list(self, other, &other_store_indices, None)?;
 
         Ok(DataView {
             stores: new_stores,

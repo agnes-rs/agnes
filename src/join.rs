@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use indexmap::IndexMap;
 
-use field::TypedFieldIdent;
+use field::{RFieldIdent, TypedFieldIdent};
 use masked::{MaskedData, FieldData};
 use view::{DataView, ViewField};
 use store::DataStore;
@@ -217,53 +217,52 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
     // compute merged store list and field list for the new datastore
     // compute the field list for the new datastore
     let (new_stores, other_store_indices) = compute_merged_stores(left, right);
-    let (new_fields, right_skip) =
-        compute_merged_field_list(left, right, &other_store_indices, &join)?;
+    let new_fields = compute_merged_field_list(left, right, &other_store_indices, &join)?;
 
     // create new datastore with fields of both left and right
+    let mut new_field_idents = vec![];
     let mut ds = DataStore::with_fields(
         new_fields.values()
         .map(|&ref view_field| {
-            let ident = view_field.rident.to_renamed_field_ident();
-            let field_type = new_stores[view_field.store_idx].get_field_type(&ident)
+            let new_ident = view_field.rident.to_renamed_field_ident();
+            new_field_idents.push(new_ident.clone());
+            println!("new_ident: {:?}", new_ident);
+            let field_type = new_stores[view_field.store_idx]
+                .get_field_type(&view_field.rident.ident)
                 .expect("compute_merged_stores/field_list failed");
             TypedFieldIdent {
-                ident,
+                ident: new_ident,
                 ty: field_type,
             }
         })
         .collect::<Vec<_>>());
 
     for (left_idx, right_idx) in merge_indices {
-        let add_value = |ds: &mut DataStore, data: &DataView, field: &ViewField, idx| {
+        let add_value = |ds: &mut DataStore, data: &DataView, field: &ViewField, idx, new_field| {
             // col.get(i).unwrap() should be safe: indices originally generated from view nrows
-            let renfield = field.rident.to_renamed_field_ident();
+            // let renfield = field.rident.to_renamed_field_ident();
+            println!("renamed field ident: {:?}", new_field);
             match data.get_viewfield_data(field).unwrap() {
-                FieldData::Unsigned(col) => ds.add_unsigned(renfield,
+                FieldData::Unsigned(col) => ds.add_unsigned(new_field,
                     col.get(idx).unwrap().cloned()),
-                FieldData::Signed(col) => ds.add_signed(renfield,
+                FieldData::Signed(col) => ds.add_signed(new_field,
                     col.get(idx).unwrap().cloned()),
-                FieldData::Text(col) => ds.add_text(renfield,
+                FieldData::Text(col) => ds.add_text(new_field,
                     col.get(idx).unwrap().cloned()),
-                FieldData::Boolean(col) => ds.add_boolean(renfield,
+                FieldData::Boolean(col) => ds.add_boolean(new_field,
                     col.get(idx).unwrap().cloned()),
-                FieldData::Float(col) => ds.add_float(renfield,
+                FieldData::Float(col) => ds.add_float(new_field,
                     col.get(idx).unwrap().cloned()),
             }
         };
+        let mut field_idx = 0;
         for left_field in left.fields.values() {
-            add_value(&mut ds, left, left_field, left_idx);
+            add_value(&mut ds, left, left_field, left_idx, new_field_idents[field_idx].clone());
+            field_idx += 1;
         }
         for right_field in right.fields.values() {
-            match right_skip {
-                Some(ref right_skip) => {
-                    if &right_field.rident.to_string() == right_skip {
-                        continue;
-                    }
-                },
-                None => {}
-            }
-            add_value(&mut ds, right, right_field, right_idx);
+            add_value(&mut ds, right, right_field, right_idx, new_field_idents[field_idx].clone());
+            field_idx += 1;
         }
     }
 
@@ -419,15 +418,40 @@ pub(crate) fn compute_merged_stores(left: &DataView, right: &DataView)
 
 pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &DataView,
     right: &DataView, right_store_mapping: &Vec<usize>, join: T)
-    -> Result<(IndexMap<String, ViewField>, Option<String>)>
+    -> Result<IndexMap<String, ViewField>>
 {
     // build new fields vector, updating the store indices in the ViewFields copied
     // from the 'right' fields list
     let mut new_fields = left.fields.clone();
     let mut field_coll = vec![];
+    let join = join.into();
     for (right_fieldname, right_field) in &right.fields {
         if new_fields.contains_key(right_fieldname) {
-            field_coll.push(right_fieldname.clone());
+            // possible collision, see if collision is on join field
+            if let Some(join) = join {
+                if join.left_field == join.right_field && &join.left_field == right_fieldname {
+                    // collision on the join field, rename both
+                    // unwrap safe, we can only get here if left_field in new_fields
+                    let mut left_key_field = new_fields.get(&join.left_field).unwrap().clone();
+                    let new_left_field_name = format!("{}.0", join.left_field);
+                    left_key_field.rident.rename = Some(new_left_field_name.clone());
+                    new_fields.insert(new_left_field_name, left_key_field);
+                    new_fields.swap_remove(&join.left_field);
+
+                    let new_right_field_name = format!("{}.1", join.right_field);
+                    new_fields.insert(new_right_field_name.clone(), ViewField {
+                        rident: RFieldIdent {
+                            ident: right_field.rident.ident.clone(),
+                            rename: Some(new_right_field_name),
+                        },
+                        store_idx: right_store_mapping[right_field.store_idx]
+                    });
+                } else {
+                    field_coll.push(right_fieldname.clone());
+                }
+            } else {
+                field_coll.push(right_fieldname.clone());
+            }
             continue;
         }
         new_fields.insert(right_fieldname.clone(), ViewField {
@@ -435,16 +459,8 @@ pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &Da
             store_idx: right_store_mapping[right_field.store_idx],
         });
     }
-    // return the fields if a join is specified, and the only field collision is the join field
-    if let Some(join) = join.into() {
-        if field_coll.len() == 1 && join.left_field == join.right_field
-            && field_coll[0] == join.left_field
-        {
-            return Ok((new_fields, Some(join.right_field.clone())));
-        }
-    }
     if field_coll.is_empty() {
-        Ok((new_fields, None))
+        Ok(new_fields)
     } else {
         Err(AgnesError::FieldCollision(field_coll))
     }
@@ -674,10 +690,12 @@ mod tests {
         )).expect("join failure").into();
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 7);
-        assert_eq!(joined_dv.nfields(), 4);
+        assert_eq!(joined_dv.nfields(), 5);
         unsigned::assert_sorted_eq(joined_dv.get_field_data("EmpId").unwrap(),
             vec![0, 2, 5, 6, 8, 9, 10]);
-        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId").unwrap(),
+        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId.0").unwrap(),
+            vec![1, 2, 1, 1, 3, 4, 4]);
+        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId.1").unwrap(),
             vec![1, 2, 1, 1, 3, 4, 4]);
         text::assert_sorted_eq(joined_dv.get_field_data("EmpName").unwrap(),
             vec!["Sally", "Jamie", "Bob", "Louis", "Louise", "Cara", "Ann"]
@@ -692,16 +710,17 @@ mod tests {
         let ds1 = emp_table();
         let ds2 = abbreviated_dept_table();
 
-        let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
+        let (dv1, mut dv2): (DataView, DataView) = (ds1.into(), ds2.into());
         println!("{}", dv1);
         println!("{}", dv2);
+        dv2.rename("DeptId", "RightDeptId").expect("rename failed");
         let joined_dv: DataView = dv1.join(&dv2, Join::greater_than(
             JoinKind::Inner,
             "DeptId",
-            "DeptId"
+            "RightDeptId"
         )).expect("join failure").into();
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 7);
-        assert_eq!(joined_dv.nfields(), 4);
+        assert_eq!(joined_dv.nfields(), 5);
     }
 }
