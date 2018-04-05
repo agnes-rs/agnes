@@ -55,7 +55,7 @@ impl DataStore {
         }
     }
 
-    // Create a new `DataStore` which will contain the provided fields.
+    /// Create a new `DataStore` which will contain the provided fields.
     pub fn with_fields(mut fields: Vec<TypedFieldIdent>) -> DataStore {
         let mut ds = DataStore {
             fields: Vec::with_capacity(fields.len()),
@@ -111,18 +111,23 @@ impl DataStore {
         ds
     }
 
+    /// Add a single unsigned integer value to the specified field.
     pub fn add_unsigned(&mut self, ident: FieldIdent, value: MaybeNa<u64>) {
         insert_value(&mut self.unsigned, ident, value)
     }
+    /// Add a single signed integer value to the specified field.
     pub fn add_signed(&mut self, ident: FieldIdent, value: MaybeNa<i64>) {
         insert_value(&mut self.signed, ident, value)
     }
+    /// Add a single text value to the specified field.
     pub fn add_text(&mut self, ident: FieldIdent, value: MaybeNa<String>) {
         insert_value(&mut self.text, ident, value)
     }
+    /// Add a single boolean value to the specified field.
     pub fn add_boolean(&mut self, ident: FieldIdent, value: MaybeNa<bool>) {
         insert_value(&mut self.boolean, ident, value)
     }
+    /// Add a single floating-point value to the specified field.
     pub fn add_float(&mut self, ident: FieldIdent, value: MaybeNa<f64>) {
         insert_value(&mut self.float, ident, value)
     }

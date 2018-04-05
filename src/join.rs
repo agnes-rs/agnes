@@ -1,6 +1,8 @@
+/*!
+`DataView` join structs and implementations.
+*/
+
 use std::cmp::Ordering;
-use std::iter::Peekable;
-use std::slice::Iter;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
@@ -11,14 +13,18 @@ use view::{DataView, ViewField};
 use store::DataStore;
 use error::*;
 
+/// Join information used to describe the type of join being used.
 #[derive(Debug, Clone)]
 pub struct Join {
+    /// Join kind: Inner, Outer, or Cross
     pub kind: JoinKind,
+    /// Join predicate: equijoin, inequality join
     pub predicate: Predicate,
     pub(crate) left_field: String,
     pub(crate) right_field: String,
 }
 impl Join {
+    /// Create a new `Join` over the specified fields.
     pub fn new<L: Into<String>, R: Into<String>>(kind: JoinKind, predicate: Predicate,
         left_field: L, right_field: R) -> Join
     {
@@ -30,6 +36,7 @@ impl Join {
         }
     }
 
+    /// Helper function to create a new `Join` with an 'Equal' predicate.
     pub fn equal<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L, right_field: R)
         -> Join
     {
@@ -40,6 +47,7 @@ impl Join {
             right_field: right_field.into(),
         }
     }
+    /// Helper function to create a new `Join` with an 'Less Than' predicate.
     pub fn less_than<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L,
         right_field: R) -> Join
     {
@@ -50,6 +58,7 @@ impl Join {
             right_field: right_field.into(),
         }
     }
+    /// Helper function to create a new `Join` with an 'Less Than or Equal' predicate.
     pub fn less_than_equal<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L,
         right_field: R) -> Join
     {
@@ -60,6 +69,7 @@ impl Join {
             right_field: right_field.into(),
         }
     }
+    /// Helper function to create a new `Join` with an 'Greater Than' predicate.
     pub fn greater_than<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L,
         right_field: R) -> Join
     {
@@ -70,6 +80,7 @@ impl Join {
             right_field: right_field.into(),
         }
     }
+    /// Helper function to create a new `Join` with an 'Greater Than or Equal' predicate.
     pub fn greater_than_equal<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L,
         right_field: R) -> Join
     {
@@ -84,6 +95,7 @@ impl Join {
 
 }
 
+/// The kind of join
 #[derive(Debug, Clone, Copy)]
 pub enum JoinKind {
     /// Inner Join
@@ -95,12 +107,18 @@ pub enum JoinKind {
     /// Cross Join (cartesian product)
     Cross,
 }
+/// Join predicate (comparison operator between two sides of the join)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Predicate {
+    /// Comparison 'left == right'
     Equal,
+    /// Comparison 'left < right'
     LessThan,
+    /// Comparison 'left <= right'
     LessThanEqual,
+    /// Comparison 'left > right'
     GreaterThan,
+    /// Comparison 'left >= right'
     GreaterThanEqual,
 }
 impl Predicate {
@@ -118,58 +136,63 @@ impl Predicate {
         match *self {
             Predicate::Equal => {
                 if left == right {
-                    PredResults { add: true, advance_left: true, advance_right: true }
+                    PredResults::Add
                 } else if left < right {
-                    PredResults { add: false, advance_left: true, advance_right: false }
+                    PredResults::Advance { left: true, right: false }
                 } else {
                     // right < left
-                    PredResults { add: false, advance_left: false, advance_right: true }
+                    PredResults::Advance { left: false, right: true }
                 }
             },
             Predicate::LessThan => {
                 if left < right {
-                    PredResults { add: true, advance_left: false, advance_right: true }
+                    PredResults::Add
                 } else {
-                    PredResults { add: false, advance_left: false, advance_right: true }
+                    PredResults::Advance { left: false, right: true }
                 }
             },
             Predicate::LessThanEqual => {
                 if left <= right {
-                    PredResults { add: true, advance_left: false, advance_right: true }
+                    PredResults::Add
                 } else {
-                    PredResults { add: false, advance_left: false, advance_right: true }
+                    PredResults::Advance { left: false, right: true }
                 }
             },
             Predicate::GreaterThan => {
                 if left > right {
-                    PredResults { add: true, advance_left: true, advance_right: false }
+                    PredResults::Add
                 } else {
-                    PredResults { add: false, advance_left: true, advance_right: false }
+                    PredResults::Advance { left: true, right: false }
                 }
             },
             Predicate::GreaterThanEqual => {
                 if left >= right {
-                    PredResults { add: true, advance_left: true, advance_right: false }
+                    PredResults::Add
                 } else {
-                    PredResults { add: false, advance_left: true, advance_right: false }
+                    PredResults::Advance { left: true, right: false }
                 }
             }
         }
     }
 }
 #[derive(Debug, Copy, Clone, PartialEq)]
-struct PredResults {
-    add: bool,
-    advance_left: bool,
-    advance_right: bool,
+enum PredResults {
+    Add,
+    Advance {
+        left: bool,
+        right: bool
+    }
 }
 
+/// Join two dataviews with specified `Join` using hash join algorithm. Only valid for
+/// joins with the 'Equal' predicate.
 pub fn hash_join(_left: &DataView, _right: &DataView, join: Join) -> Result<DataStore> {
     assert_eq!(join.predicate, Predicate::Equal, "hash_join only valid for equijoins");
 
     unimplemented!();
 }
 
+/// Join two dataviews with specified `Join` using the sort-merge algorithm.
 pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<DataStore> {
     // get the data for this field
     let left_key_data = left.get_field_data(&join.left_field)
@@ -270,7 +293,7 @@ fn merge<'a>(
     }
 
 }
-fn merge_masked_data<'a, T: PartialOrd + Debug>(
+fn merge_masked_data<'a, T: PartialOrd>(
     left_perm: Vec<usize>,
     right_perm: Vec<usize>,
     left_key_data: &'a MaskedData<T>,
@@ -286,233 +309,90 @@ fn merge_masked_data<'a, T: PartialOrd + Debug>(
 
     // we know left_perm and right_perm both are non-empty, so there is at least one value
     let (mut left_idx, mut right_idx) = (0, 0);
-    let (mut left_idx_end, mut right_idx_end) = (0, 0);
     let mut merge_indices = vec![];
     while left_idx < left_perm.len() && right_idx < right_perm.len() {
         let left_val = lval(left_idx);
         let right_val = rval(right_idx);
-        println!("testing {}(val={:?}) {}(val={:?})", left_idx, left_val, right_idx, right_val);
+        // println!("testing {}(val={:?}) {}(val={:?})", left_idx, left_val, right_idx, right_val);
         let pred_results = predicate.apply(&left_val, &right_val);
         println!("{:?}", pred_results);
-        if pred_results.add {
-            // figure out subsets
-            let mut left_subset = vec![left_idx];
-            let mut right_subset = vec![right_idx];
-            if predicate.is_equality() {
-                // for equality predicates, add all records with same value
-                left_idx_end = left_idx + 1;
-                while left_idx_end < left_perm.len() && left_val == lval(left_idx_end) {
-                    left_subset.push(left_idx_end);
-                    left_idx_end += 1;
+        match pred_results {
+            PredResults::Add => {
+                // figure out subsets
+                let mut left_subset = vec![left_idx];
+                let mut right_subset = vec![right_idx];
+                let (mut left_idx_end, mut right_idx_end);
+                if predicate.is_equality() {
+                    // for equality predicates, add all records with same value
+                    left_idx_end = left_idx + 1;
+                    while left_idx_end < left_perm.len() && left_val == lval(left_idx_end) {
+                        left_subset.push(left_idx_end);
+                        left_idx_end += 1;
+                    }
+                    right_idx_end = right_idx + 1;
+                    while right_idx_end < right_perm.len() && right_val == rval(right_idx_end)
+                    {
+                        right_subset.push(right_idx_end);
+                        right_idx_end += 1;
+                    }
+                } else {
+                    left_idx_end = left_idx + 1;
+                    right_idx_end = right_idx + 1;
                 }
-                right_idx_end = right_idx + 1;
-                while right_idx_end < right_perm.len() && right_val == rval(right_idx_end)
-                {
-                    right_subset.push(right_idx_end);
-                    right_idx_end += 1;
+                let (left_eq_end, right_eq_end) = (left_idx_end, right_idx_end);
+                if predicate.is_greater_than() {
+                    // for greater-than predicates, we can add the rest of the left values
+                    while left_idx_end < left_perm.len() {
+                        left_subset.push(left_idx_end);
+                        left_idx_end += 1;
+                    }
                 }
-            } else {
-                left_idx_end = left_idx + 1;
-                right_idx_end = right_idx + 1;
-            }
-            let (left_eq_end, right_eq_end) = (left_idx_end, right_idx_end);
-            if predicate.is_greater_than() {
-                // for greater-than predicates, we can add the rest of the left values
-                while left_idx_end < left_perm.len() {
-                    left_subset.push(left_idx_end);
-                    left_idx_end += 1;
+                if predicate.is_less_than() {
+                    // for less-than predicates, we can add the rest of the right values
+                    while right_idx_end < right_perm.len() {
+                        right_subset.push(right_idx_end);
+                        right_idx_end += 1;
+                    }
                 }
-            }
-            if predicate.is_less_than() {
-                // for less-than predicates, we can add the rest of the right values
-                while right_idx_end < right_perm.len() {
-                    right_subset.push(right_idx_end);
-                    right_idx_end += 1;
+                // add cross product of subsets to merge indices
+                println!("left:{:?} right:{:?}", left_subset, right_subset);
+                for lidx in &left_subset {
+                    for ridx in &right_subset {
+                        merge_indices.push((left_perm[*lidx], right_perm[*ridx]));
+                    }
                 }
-            }
-            // add cross product of subsets to merge indices
-            println!("left:{:?} right:{:?}", left_subset, right_subset);
-            for lidx in &left_subset {
-                for ridx in &right_subset {
-                    merge_indices.push((left_perm[*lidx], right_perm[*ridx]));
+                // advance as needed
+                match predicate {
+                    Predicate::Equal => {
+                        left_idx = left_eq_end;
+                        right_idx = right_eq_end;
+                    },
+                    Predicate::GreaterThanEqual => {
+                        right_idx = right_eq_end;
+                    },
+                    Predicate::GreaterThan => {
+                        right_idx = right_idx + 1;
+                    },
+                    Predicate::LessThanEqual => {
+                        left_idx = left_eq_end;
+                    },
+                    Predicate::LessThan => {
+                        left_idx = left_idx + 1;
+                    }
                 }
-            }
-            // advance as needed
-            match predicate {
-                Predicate::Equal => {
-                    left_idx = left_eq_end;
-                    right_idx = right_eq_end;
-                },
-                Predicate::GreaterThanEqual => {
-                    right_idx = right_eq_end;
-                },
-                Predicate::GreaterThan => {
-                    right_idx = right_idx + 1;
-                },
-                Predicate::LessThanEqual => {
-                    left_idx = left_eq_end;
-                },
-                Predicate::LessThan => {
-                    left_idx = left_idx + 1;
+            },
+            PredResults::Advance { left, right } => {
+                if left {
+                    println!("no add, advance left");
+                    left_idx += 1;
                 }
-            }
-        } else {
-            if pred_results.advance_left {
-                println!("no add, advance left");
-                left_idx += 1;
-            }
-            if pred_results.advance_right {
-                println!("no add, advance right");
-                right_idx += 1;
+                if right {
+                    println!("no add, advance right");
+                    right_idx += 1;
+                }
             }
         }
     }
-    merge_indices
-}
-
-use std::fmt::Debug;
-fn merge_masked_data_old<'a, T: PartialOrd + Debug>(
-    mut left_perm_iter: Peekable<Iter<'a, usize>>,
-    mut right_perm_iter: Peekable<Iter<'a, usize>>,
-    left_key_data: &'a MaskedData<T>,
-    right_key_data: &'a MaskedData<T>,
-    predicate: Predicate,
-) -> Vec<(usize, usize)>
-{
-    debug_assert!(left_perm_iter.peek().is_some() && right_perm_iter.peek().is_some());
-    // struct to keep track of current position, and value at that position
-    #[derive(Debug)]
-    struct CurPosition<U> {
-        value: U,
-        idx: usize
-    }
-    // advance position to next index in permutation iterator
-    let advance = |key_data: &'a MaskedData<T>, perm_iter: &mut Peekable<Iter<'a, usize>>| {
-        debug_assert!(perm_iter.peek().is_some());
-        let idx = *perm_iter.next().unwrap();
-        // permutation index is always within range, so unwrap is safe
-        CurPosition { idx, value: key_data.get(idx).unwrap() }
-    };
-    // we know left_perm and right_perm both are non-empty, so there is at least one value and
-    // advance is safe
-    let mut left_pos = advance(left_key_data, &mut left_perm_iter);
-    let mut right_pos = advance(right_key_data, &mut right_perm_iter);
-
-    let mut merge_indices = vec![];
-    while left_perm_iter.peek().is_some() && right_perm_iter.peek().is_some() {
-        println!("testing {:?} {:?}", left_pos.value, right_pos.value);
-        let pred_results = predicate.apply(&left_pos.value, &right_pos.value);
-        if pred_results.add {
-            // generate subsets of left values and right values of same value
-            let mut left_subset = vec![];
-            let mut right_subset = vec![];
-            // add values to the left subset until either we have no more left values or
-            // the next left value is different than the current left value
-            while left_perm_iter.peek().is_some()
-                && left_key_data.get(**left_perm_iter.peek().unwrap()).unwrap()
-                    == left_pos.value
-            {
-                left_subset.push(left_pos.idx);
-                left_pos = advance(left_key_data, &mut left_perm_iter);
-            }
-            // add values to the right subset until either we have no more right values or
-            // the next right value is different than the current right value
-            while right_perm_iter.peek().is_some()
-                && right_key_data.get(**right_perm_iter.peek().unwrap()).unwrap()
-                    == right_pos.value
-            {
-                right_subset.push(right_pos.idx);
-                right_pos = advance(right_key_data, &mut right_perm_iter);
-            }
-            left_subset.push(left_pos.idx);
-            right_subset.push(right_pos.idx);
-            println!("left:{:?} right:{:?}", left_subset, right_subset);
-            // add cross product of subsets to merge indices
-            for left_idx in &left_subset {
-                for right_idx in &right_subset {
-                    merge_indices.push((*left_idx, *right_idx));
-                }
-            }
-            println!("lp:{:?} rp:{:?}", left_pos, right_pos);
-        }
-
-        // move on to next
-        if left_perm_iter.peek().is_some() && pred_results.advance_left {
-            println!("advance left");
-            left_pos = advance(left_key_data, &mut left_perm_iter);
-        }
-        if right_perm_iter.peek().is_some() && pred_results.advance_right {
-            println!("advance right");
-            right_pos = advance(right_key_data, &mut right_perm_iter);
-        }
-    }
-
-    // add remaining values, if predicate applies, starting with left (if applicable)
-    while left_perm_iter.peek().is_some() {
-        // right_perm_iter is empty
-        let pred_results = predicate.apply(&left_pos.value, &right_pos.value);
-        if pred_results.add {
-            // generate subset of left values
-            let mut left_subset = vec![];
-            // add values to the left subset until either we have no more left values or
-            // the next left value is different than the current left value
-            while left_perm_iter.peek().is_some()
-                && left_key_data.get(**left_perm_iter.peek().unwrap()).unwrap()
-                    == left_pos.value
-            {
-                left_subset.push(left_pos.idx);
-                left_pos = advance(left_key_data, &mut left_perm_iter);
-            }
-            left_subset.push(left_pos.idx);
-            println!("left:{:?} right:{:?}", left_subset, right_pos.idx);
-            for left_idx in &left_subset {
-                merge_indices.push((*left_idx, right_pos.idx));
-            }
-        }
-        // move on to next
-        if left_perm_iter.peek().is_some() {
-            if pred_results.advance_left {
-                left_pos = advance(left_key_data, &mut left_perm_iter);
-            } else {
-                // we're not advancing, but we're not empty, so we're done
-                break;
-            }
-        }
-    }
-
-    // now do the right, if applicable
-    while right_perm_iter.peek().is_some() {
-        // left_perm_iter is empty
-        let pred_results = predicate.apply(&left_pos.value, &right_pos.value);
-        println!("{:?}", pred_results);
-        if pred_results.add {
-            // generate subsets of right values
-            let mut right_subset = vec![];
-            // add values to the right subset until either we have no more right values or
-            // the next right value is different than the current right value
-            while right_perm_iter.peek().is_some()
-                && right_key_data.get(**right_perm_iter.peek().unwrap()).unwrap()
-                    == right_pos.value
-            {
-                right_subset.push(right_pos.idx);
-                right_pos = advance(right_key_data, &mut right_perm_iter);
-            }
-            right_subset.push(right_pos.idx);
-            println!("left:{:?} right:{:?}", left_pos.idx, right_subset);
-            for right_idx in &right_subset {
-                merge_indices.push((left_pos.idx, *right_idx));
-            }
-        }
-        if right_perm_iter.peek().is_some() {
-            if pred_results.advance_right {
-                right_pos = advance(right_key_data, &mut right_perm_iter);
-            } else {
-                // we're not advancing, but we're not empty, so we're done
-                break;
-            }
-        }
-    }
-
     merge_indices
 }
 

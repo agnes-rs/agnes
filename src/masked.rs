@@ -22,6 +22,7 @@ impl<T: ToString + PartialOrd> ToString for MaybeNa<T> {
     }
 }
 impl<T: PartialOrd> MaybeNa<T> {
+    /// Unwrap a `MaybeNa`, revealing the data contained within. Panics if called on an `Na` value.
     pub fn unwrap(self) -> T {
         match self {
             MaybeNa::Na => { panic!("unwrap() called on NA value"); },
@@ -30,6 +31,7 @@ impl<T: PartialOrd> MaybeNa<T> {
     }
 }
 impl<'a, T: PartialOrd + Clone> MaybeNa<&'a T> {
+    /// Create a owner `MaybeNa` out of a reference-holding `MaybeNa` using `clone()`.
     pub fn cloned(self) -> MaybeNa<T> {
         match self {
             MaybeNa::Exists(t) => MaybeNa::Exists(t.clone()),
@@ -64,6 +66,7 @@ impl<T: PartialOrd> MaskedData<T> {
             }
         }
     }
+    /// Interpret `MaskedData` as a `Vec` of `MaybeNa` objects.
     pub fn as_vec(&self) -> Vec<MaybeNa<&T>> {
         self.data.iter().enumerate().map(|(idx, value)| {
             if self.mask[idx] {
@@ -75,6 +78,7 @@ impl<T: PartialOrd> MaskedData<T> {
     }
 }
 impl<T: Default + PartialOrd> MaskedData<T> {
+    /// Create new empty `MaskedData` struct.
     pub fn new() -> MaskedData<T> {
         MaskedData {
             data: vec![],

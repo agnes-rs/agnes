@@ -83,7 +83,7 @@ impl From<csv_sniffer::Type> for FieldType {
     }
 }
 
-/// Possible-renamed field identifier
+/// Possibly-renamed field identifier
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RFieldIdent {
     /// Original field identifier
@@ -97,6 +97,8 @@ impl RFieldIdent {
     pub fn to_string(&self) -> String {
         self.rename.clone().unwrap_or(self.ident.to_string())
     }
+    /// Produce a new `FieldIdent` using the `rename` value of this `RFieldIdent` (if exists), or
+    /// simply a clone of the underlying `FieldIdent`.
     pub fn to_renamed_field_ident(&self) -> FieldIdent {
         match self.rename {
             Some(ref renamed) => FieldIdent::Name(renamed.clone()),

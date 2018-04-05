@@ -27,12 +27,15 @@ use error;
 use join::{Join, sort_merge_join, compute_merged_stores,
     compute_merged_field_list};
 
+/// A field in a `DataView`. Contains the (possibly-renamed) field identifier and the store index
+/// with the underlying data.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ViewField {
+    /// The field identifier, along with renaming information (if exists)
     pub rident: RFieldIdent,
+    /// Store index of the underlying data
     pub store_idx: usize,
 }
-
 
 /// A 'view' into a data store. The primary struct for viewing and manipulating data.
 #[derive(Debug, Clone, Default)]
