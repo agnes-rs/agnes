@@ -86,6 +86,10 @@ impl DataView {
         U: Into<FieldIdent>
     {
         let (orig, new) = (orig.into(), new.into());
+        let new_as_string = new.to_string();
+        if self.fields.contains_key(&new_as_string) {
+            return Err(error::AgnesError::FieldCollision(vec![new_as_string]));
+        }
         let new_vf = if let Some(ref orig_vf) = self.fields.get(&orig.to_string()) {
             ViewField {
                 rident: RFieldIdent {
@@ -398,5 +402,51 @@ mod tests {
             },
             Err(e) => { panic!("Incorrect error: {:?}", e); }
         }
+    }
+
+    #[test]
+    fn rename() {
+        let ds = sample_emp_table();
+        let mut dv: DataView = ds.into();
+        println!("{}", dv);
+        assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+        dv.rename("DeptId", "Department Id").expect("rename failed");
+        println!("{}", dv);
+        assert_eq!(dv.fieldnames(), vec!["EmpId", "Department Id", "EmpName"]);
+        dv.rename("Department Id", "DeptId").expect("rename failed");
+        println!("{}", dv);
+        assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+    }
+
+    #[test]
+    fn rename_field_collision() {
+        let ds = sample_emp_table();
+        let mut dv: DataView = ds.into();
+        println!("{}", dv);
+        assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+        match dv.rename("DeptId", "EmpId") {
+            Ok(_) => { panic!("Rename expected to fail (field collision), but succeeded"); },
+            Err(AgnesError::FieldCollision(fields)) => {
+                assert_eq!(fields, vec!["EmpId"]);
+            },
+            Err(e) => { panic!("Incorrect error: {:?}", e); }
+        }
+        println!("{}", dv);
+    }
+
+    #[test]
+    fn rename_field_not_found() {
+        let ds = sample_emp_table();
+        let mut dv: DataView = ds.into();
+        println!("{}", dv);
+        assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+        match dv.rename("Department Id", "DepartmentId") {
+            Ok(_) => { panic!("Rename expected to fail (field not found), but succeeded"); },
+            Err(AgnesError::FieldNotFound(field)) => {
+                assert_eq!(field, FieldIdent::Name("Department Id".to_string()));
+            },
+            Err(e) => { panic!("Incorrect error: {:?}", e); }
+        }
+        println!("{}", dv);
     }
 }
