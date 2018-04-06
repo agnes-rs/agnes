@@ -31,7 +31,7 @@ fn rename() {
 }
 
 #[test]
-fn aggregate() {
+fn merge() {
     let (mut csv_rdr, _) = common::load_csv_file("gdp.csv");
     let mut dv_gdp: DataView = DataView::from(csv_rdr.read().unwrap())
         .v(["Country Name", "Country Code", "1983"]);
