@@ -66,6 +66,10 @@ impl DataView {
     pub fn nfields(&self) -> usize {
         self.fields.len()
     }
+    /// Field names in this data view
+    pub fn fieldnames(&self) -> Vec<&String> {
+        self.fields.keys().collect()
+    }
 
     pub(crate) fn get_field_data(&self, field_name: &str) -> Option<FieldData> {
         self.fields.get(field_name).and_then(|view_field: &ViewField| {
@@ -338,3 +342,61 @@ impl_into_field_list_string_arr!(17);
 impl_into_field_list_string_arr!(18);
 impl_into_field_list_string_arr!(19);
 impl_into_field_list_string_arr!(20);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test_utils::*;
+    use error::*;
+
+    #[test]
+    fn merge() {
+        let ds1 = sample_emp_table();
+        let ds2 = sample_emp_table_extra();
+
+        let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
+        println!("{}", dv1);
+        println!("{}", dv2);
+        let merged_dv: DataView = dv1.merge(&dv2).expect("merge failed");
+        println!("{}", merged_dv);
+        assert_eq!(merged_dv.nrows(), 7);
+        assert_eq!(merged_dv.nfields(), 5);
+        for (left, right) in merged_dv.fieldnames().iter()
+            .zip(vec!["EmpId", "DeptId", "EmpName", "DidTraining", "VacationHrs"])
+        {
+            assert_eq!(left, &right);
+        }
+    }
+
+    #[test]
+    fn merge_dimension_mismatch() {
+        let ds1 = sample_emp_table();
+        let ds2 = sample_dept_table();
+
+        let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
+        println!("{}", dv1);
+        println!("{}", dv2);
+        match dv1.merge(&dv2) {
+            Ok(_) => { panic!("Merge was expected to fail (dimension mismatch), but succeeded"); },
+            Err(AgnesError::DimensionMismatch(_)) => { /* expected */ },
+            Err(e) => { panic!("Incorrect error: {:?}", e); },
+        };
+    }
+
+    #[test]
+    fn merge_field_collision() {
+        let ds1 = sample_emp_table();
+        let ds2 = sample_emp_table();
+
+        let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
+        println!("{}", dv1);
+        println!("{}", dv2);
+        match dv1.merge(&dv2) {
+            Ok(_) => { panic!("Merge expected to fail (field collision), but succeeded"); },
+            Err(AgnesError::FieldCollision(fields)) => {
+                assert_eq!(fields, vec!["EmpId", "DeptId", "EmpName"]);
+            },
+            Err(e) => { panic!("Incorrect error: {:?}", e); }
+        }
+    }
+}

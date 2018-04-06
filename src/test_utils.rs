@@ -29,6 +29,19 @@ pub(crate) fn emp_table_from_masked(empids: MaskedData<u64>, deptids: MaskedData
         None
     )
 }
+pub(crate) fn sample_emp_table_extra() -> DataStore {
+    DataStore::with_data(
+        None,
+        None,
+        None,
+        vec![
+            ("DidTraining", vec![false, false, true, true, true, false, true].into())
+        ],
+        vec![
+            ("VacationHrs", vec![47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5].into()),
+        ]
+    )
+}
 
 pub(crate) fn sample_dept_table() -> DataStore {
     dept_table(vec![1u64, 2, 3, 4], vec!["Marketing", "Sales", "Manufacturing", "R&D"])
