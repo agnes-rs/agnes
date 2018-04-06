@@ -3,10 +3,10 @@
 */
 
 use std::cmp::Ordering;
-use std::rc::Rc;
 
 use indexmap::IndexMap;
 
+use frame::DataFrame;
 use field::{RFieldIdent, TypedFieldIdent};
 use masked::{MaskedData, FieldData, MaybeNa};
 use view::{DataView, ViewField};
@@ -214,10 +214,10 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
     let merge_indices = merge(left_perm, right_perm, left_key_data, right_key_data,
         join.predicate);
 
-    // compute merged store list and field list for the new datastore
-    // compute the field list for the new datastore
-    let (new_stores, other_store_indices) = compute_merged_stores(left, right);
-    let new_fields = compute_merged_field_list(left, right, &other_store_indices, &join)?;
+    // compute merged frame list and field list for the new dataframe
+    // compute the field list for the new dataframe
+    let (new_frames, other_frame_indices) = compute_merged_frames(left, right);
+    let new_fields = compute_merged_field_list(left, right, &other_frame_indices, &join)?;
 
     // create new datastore with fields of both left and right
     let mut new_field_idents = vec![];
@@ -226,9 +226,9 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
         .map(|&ref view_field| {
             let new_ident = view_field.rident.to_renamed_field_ident();
             new_field_idents.push(new_ident.clone());
-            let field_type = new_stores[view_field.store_idx]
+            let field_type = new_frames[view_field.frame_idx]
                 .get_field_type(&view_field.rident.ident)
-                .expect("compute_merged_stores/field_list failed");
+                .expect("compute_merged_frames/field_list failed");
             TypedFieldIdent {
                 ident: new_ident,
                 ty: field_type,
@@ -393,32 +393,32 @@ fn merge_masked_data<'a, T: PartialOrd>(
     merge_indices
 }
 
-pub(crate) fn compute_merged_stores(left: &DataView, right: &DataView)
-    -> (Vec<Rc<DataStore>>, Vec<usize>)
+pub(crate) fn compute_merged_frames(left: &DataView, right: &DataView)
+    -> (Vec<DataFrame>, Vec<usize>)
 {
-    // new store vector is combination, without repetition, of existing store vectors. also
-    // keep track of the store indices (for store_idx) of the 'right' fields
-    let mut new_stores = left.stores.clone();
-    let mut right_store_indices = vec![];
-    for right_store in &right.stores {
-        match new_stores.iter().enumerate().find(|&(_, store)| Rc::ptr_eq(store, right_store)) {
+    // new frame vector is combination, without repetition, of existing frame vectors. also
+    // keep track of the frame indices (for frame_idx) of the 'right' fields
+    let mut new_frames = left.frames.clone();
+    let mut right_frame_indices = vec![];
+    for right_frame in &right.frames {
+        match new_frames.iter().enumerate().find(|&(_, frame)| frame.has_same_store(right_frame)) {
             Some((idx, _)) => {
-                right_store_indices.push(idx);
+                right_frame_indices.push(idx);
             },
             None => {
-                right_store_indices.push(new_stores.len());
-                new_stores.push(right_store.clone());
+                right_frame_indices.push(new_frames.len());
+                new_frames.push(right_frame.clone());
             }
         }
     }
-    (new_stores, right_store_indices)
+    (new_frames, right_frame_indices)
 }
 
 pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &DataView,
-    right: &DataView, right_store_mapping: &Vec<usize>, join: T)
+    right: &DataView, right_frame_mapping: &Vec<usize>, join: T)
     -> Result<IndexMap<String, ViewField>>
 {
-    // build new fields vector, updating the store indices in the ViewFields copied
+    // build new fields vector, updating the frame indices in the ViewFields copied
     // from the 'right' fields list
     let mut new_fields = left.fields.clone();
     let mut field_coll = vec![];
@@ -442,7 +442,7 @@ pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &Da
                             ident: right_field.rident.ident.clone(),
                             rename: Some(new_right_field_name),
                         },
-                        store_idx: right_store_mapping[right_field.store_idx]
+                        frame_idx: right_frame_mapping[right_field.frame_idx]
                     });
                 } else {
                     field_coll.push(right_fieldname.clone());
@@ -454,7 +454,7 @@ pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &Da
         }
         new_fields.insert(right_fieldname.clone(), ViewField {
             rident: right_field.rident.clone(),
-            store_idx: right_store_mapping[right_field.store_idx],
+            frame_idx: right_frame_mapping[right_field.frame_idx],
         });
     }
     if field_coll.is_empty() {

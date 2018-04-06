@@ -14,17 +14,17 @@ parameters.
 
 */
 use std::fmt::{self, Display, Formatter};
-use std::rc::Rc;
 
 use indexmap::IndexMap;
 use serde::ser::{self, Serialize, Serializer, SerializeMap};
 use prettytable as pt;
 
-use store::DataStore;
+use frame::DataFrame;
 use masked::FieldData;
 use field::{FieldIdent, RFieldIdent};
 use error;
-use join::{Join, sort_merge_join, compute_merged_stores,
+use store::DataStore;
+use join::{Join, sort_merge_join, compute_merged_frames,
     compute_merged_field_list};
 
 /// A field in a `DataView`. Contains the (possibly-renamed) field identifier and the store index
@@ -33,14 +33,14 @@ use join::{Join, sort_merge_join, compute_merged_stores,
 pub struct ViewField {
     /// The field identifier, along with renaming information (if exists)
     pub rident: RFieldIdent,
-    /// Store index of the underlying data
-    pub store_idx: usize,
+    /// Frame index of the underlying data
+    pub frame_idx: usize,
 }
 
 /// A 'view' into a data store. The primary struct for viewing and manipulating data.
 #[derive(Debug, Clone, Default)]
 pub struct DataView {
-    pub(crate) stores: Vec<Rc<DataStore>>,
+    pub(crate) frames: Vec<DataFrame>,
     pub(crate) fields: IndexMap<String, ViewField>,
 }
 
@@ -54,7 +54,7 @@ impl DataView {
             }
         }
         DataView {
-            stores: self.stores.clone(),
+            frames: self.frames.clone(),
             fields: sub_fields,
         }
     }
@@ -70,13 +70,13 @@ impl DataView {
             }
         }
         Ok(DataView {
-            stores: self.stores.clone(),
+            frames: self.frames.clone(),
             fields: sub_fields,
         })
     }
     /// Number of rows in this data view
     pub fn nrows(&self) -> usize {
-        if self.stores.len() == 0 { 0 } else { self.stores[0].nrows() }
+        if self.frames.len() == 0 { 0 } else { self.frames[0].nrows() }
     }
     /// Number of fields in this data view
     pub fn nfields(&self) -> usize {
@@ -93,7 +93,7 @@ impl DataView {
         })
     }
     pub(crate) fn get_viewfield_data(&self, view_field: &ViewField) -> Option<FieldData> {
-        self.stores[view_field.store_idx].get_field_data(&view_field.rident.ident)
+        self.frames[view_field.frame_idx].get_field_data(&view_field.rident.ident)
     }
 
     /// Rename a field of this DataView.
@@ -112,7 +112,7 @@ impl DataView {
                     ident: orig_vf.rident.ident.clone(),
                     rename: Some(new.to_string())
                 },
-                store_idx: orig_vf.store_idx,
+                frame_idx: orig_vf.frame_idx,
             }
         } else {
             return Err(error::AgnesError::FieldNotFound(orig));
@@ -132,13 +132,13 @@ impl DataView {
 
         // compute merged stores (and mapping from 'other' store index references to combined
         // store vector)
-        let (new_stores, other_store_indices) = compute_merged_stores(self, other);
+        let (new_frames, other_store_indices) = compute_merged_frames(self, other);
 
         // compute merged field list
         let new_fields = compute_merged_field_list(self, other, &other_store_indices, None)?;
 
         Ok(DataView {
-            stores: new_stores,
+            frames: new_frames,
             fields: new_fields
         })
     }
@@ -170,11 +170,11 @@ impl From<DataStore> for DataView {
                     ident: ident.clone(),
                     rename: None
                 },
-                store_idx: 0,
+                frame_idx: 0,
             });
         }
         DataView {
-            stores: vec![Rc::new(store)],
+            frames: vec![store.into()],
             fields: fields
         }
     }
@@ -182,19 +182,19 @@ impl From<DataStore> for DataView {
 
 impl Display for DataView {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        if self.stores.len() == 0 || self.fields.len() == 0 {
+        if self.frames.len() == 0 || self.fields.len() == 0 {
             return write!(f, "Empty DataView");
         }
         const MAX_ROWS: usize = 1000;
-        let nrows = self.stores[0].nrows();
+        let nrows = self.frames[0].nrows();
 
         let mut table = pt::Table::new();
         table.set_titles(self.fields.keys().into());
         let all_data = self.fields.values()
             .filter_map(|field| {
                 // this should be guaranteed by construction of the DataView
-                assert_eq!(nrows, self.stores[field.store_idx].nrows());
-                self.stores[field.store_idx].get_field_data(&field.rident.ident)
+                assert_eq!(nrows, self.frames[field.frame_idx].nrows());
+                self.frames[field.frame_idx].get_field_data(&field.rident.ident)
             })
             .collect::<Vec<_>>();
         for i in 0..nrows.min(MAX_ROWS) {
@@ -221,8 +221,8 @@ impl Serialize for DataView {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let mut map = serializer.serialize_map(Some(self.fields.len()))?;
         for field in self.fields.values() {
-            if let Some(data) = self.stores[field.store_idx].get_field_data(&field.rident.ident) {
-                assert!(self.stores[field.store_idx].nrows() == data.len());
+            if let Some(data) = self.frames[field.frame_idx].get_field_data(&field.rident.ident) {
+                assert!(self.frames[field.frame_idx].nrows() == data.len());
                 map.serialize_entry(&field.rident.to_string(), &data)?;
             }
         }
@@ -234,18 +234,18 @@ impl Serialize for DataView {
 pub trait SerializeAsVec: Serialize {}
 impl<T> SerializeAsVec for Vec<T> where T: Serialize {}
 
-/// A 'view' into a single field's data in a data store. This is a specialty view used to serialize
+/// A 'view' into a single field's data in a data frame. This is a specialty view used to serialize
 /// a `DataView` as a single sequence instead of as a map.
 #[derive(Debug, Clone)]
 pub struct FieldView {
-    store: Rc<DataStore>,
+    frame: DataFrame,
     field: RFieldIdent,
 }
 
 impl Serialize for FieldView {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
             where S: Serializer {
-        if let Some(data) = self.store.get_field_data(&self.field.ident) {
+        if let Some(data) = self.frame.get_field_data(&self.field.ident) {
             data.serialize(serializer)
         } else {
             Err(ser::Error::custom(format!("missing field: {}", self.field.to_string())))
@@ -267,7 +267,7 @@ impl DataView {
             let field = self.fields.values().next().unwrap();
 
             Some(FieldView {
-                store: self.stores[field.store_idx].clone(),
+                frame: self.frames[field.frame_idx].clone(),
                 field: field.rident.clone(),
             })
         }
@@ -470,43 +470,43 @@ mod tests {
     fn subview() {
         let ds = sample_emp_table();
         let dv: DataView = ds.into();
-        assert_eq!(Rc::strong_count(&dv.stores[0]), 1);
+        assert_eq!(dv.frames[0].store_ref_count(), 1);
         assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
 
         let subdv1 = dv.v("EmpId");
-        assert_eq!(Rc::strong_count(&dv.stores[0]), 2);
+        assert_eq!(dv.frames[0].store_ref_count(), 2);
         assert_eq!(subdv1.nrows(), 7);
         assert_eq!(subdv1.nfields(), 1);
         let subdv1 = dv.subview("EmpId").expect("subview failed");
-        assert_eq!(Rc::strong_count(&dv.stores[0]), 3);
+        assert_eq!(dv.frames[0].store_ref_count(), 3);
         assert_eq!(subdv1.nrows(), 7);
         assert_eq!(subdv1.nfields(), 1);
 
         let subdv2 = dv.v(vec!["EmpId", "DeptId"]);
-        assert_eq!(Rc::strong_count(&dv.stores[0]), 4);
+        assert_eq!(dv.frames[0].store_ref_count(), 4);
         assert_eq!(subdv2.nrows(), 7);
         assert_eq!(subdv2.nfields(), 2);
         let subdv2 = dv.subview(vec!["EmpId", "DeptId"]).expect("subview failed");
-        assert_eq!(Rc::strong_count(&dv.stores[0]), 5);
+        assert_eq!(dv.frames[0].store_ref_count(), 5);
         assert_eq!(subdv2.nrows(), 7);
         assert_eq!(subdv2.nfields(), 2);
 
         let subdv3 = dv.v(vec!["EmpId", "DeptId", "EmpName"]);
-        assert_eq!(Rc::strong_count(&dv.stores[0]), 6);
+        assert_eq!(dv.frames[0].store_ref_count(), 6);
         assert_eq!(subdv3.nrows(), 7);
         assert_eq!(subdv3.nfields(), 3);
         let subdv3 = dv.subview(vec!["EmpId", "DeptId", "EmpName"]).expect("subview failed");
-        assert_eq!(Rc::strong_count(&dv.stores[0]), 7);
+        assert_eq!(dv.frames[0].store_ref_count(), 7);
         assert_eq!(subdv3.nrows(), 7);
         assert_eq!(subdv3.nfields(), 3);
 
         // Subview of a subview
         let subdv4 = subdv2.v("DeptId");
-        assert_eq!(Rc::strong_count(&dv.stores[0]), 8);
+        assert_eq!(dv.frames[0].store_ref_count(), 8);
         assert_eq!(subdv4.nrows(), 7);
         assert_eq!(subdv4.nfields(), 1);
         let subdv4 = subdv2.subview("DeptId").expect("subview failed");
-        assert_eq!(Rc::strong_count(&dv.stores[0]), 9);
+        assert_eq!(dv.frames[0].store_ref_count(), 9);
         assert_eq!(subdv4.nrows(), 7);
         assert_eq!(subdv4.nfields(), 1);
     }
@@ -515,12 +515,12 @@ mod tests {
     fn subview_fail() {
         let ds = sample_emp_table();
         let dv: DataView = ds.into();
-        assert_eq!(Rc::strong_count(&dv.stores[0]), 1);
+        assert_eq!(dv.frames[0].store_ref_count(), 1);
         assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
 
         // "Employee Name" does not exist
         let subdv1 = dv.v(vec!["EmpId", "DeptId", "Employee Name"]);
-        assert_eq!(Rc::strong_count(&dv.stores[0]), 2);
+        assert_eq!(dv.frames[0].store_ref_count(), 2);
         assert_eq!(subdv1.nrows(), 7);
         assert_eq!(subdv1.nfields(), 2);
         match dv.subview(vec!["EmpId", "DeptId", "Employee Name"]) {
@@ -532,7 +532,7 @@ mod tests {
         }
 
         let subdv2 = dv.v("Nonexistant");
-        assert_eq!(Rc::strong_count(&dv.stores[0]), 3);
+        assert_eq!(dv.frames[0].store_ref_count(), 3);
         assert_eq!(subdv2.nrows(), 7); // still 7 rows, just no fields
         assert_eq!(subdv2.nfields(), 0);
         match dv.subview(vec!["Nonexistant"]) {
