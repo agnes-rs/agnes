@@ -28,3 +28,5 @@ pub mod join;
 pub use join::{Join, JoinKind};
 pub mod masked;
 pub use masked::MaybeNa;
+
+#[cfg(test)] pub(crate) mod test_utils;
