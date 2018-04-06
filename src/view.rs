@@ -58,6 +58,22 @@ impl DataView {
             fields: sub_fields,
         }
     }
+    /// Generate a new subview of this DataView, generating an error if a specified field does
+    /// not exist.
+    pub fn subview<L: IntoFieldList>(&self, s: L) -> error::Result<DataView> {
+        let mut sub_fields = IndexMap::new();
+        for ident in s.into_field_list().iter() {
+            if let Some(field) = self.fields.get(ident) {
+                sub_fields.insert(ident.clone(), field.clone());
+            } else {
+                return Err(error::AgnesError::FieldNotFound(FieldIdent::Name(ident.clone())));
+            }
+        }
+        Ok(DataView {
+            stores: self.stores.clone(),
+            fields: sub_fields,
+        })
+    }
     /// Number of rows in this data view
     pub fn nrows(&self) -> usize {
         if self.stores.len() == 0 { 0 } else { self.stores[0].nrows() }
@@ -448,5 +464,83 @@ mod tests {
             Err(e) => { panic!("Incorrect error: {:?}", e); }
         }
         println!("{}", dv);
+    }
+
+    #[test]
+    fn subview() {
+        let ds = sample_emp_table();
+        let dv: DataView = ds.into();
+        assert_eq!(Rc::strong_count(&dv.stores[0]), 1);
+        assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+
+        let subdv1 = dv.v("EmpId");
+        assert_eq!(Rc::strong_count(&dv.stores[0]), 2);
+        assert_eq!(subdv1.nrows(), 7);
+        assert_eq!(subdv1.nfields(), 1);
+        let subdv1 = dv.subview("EmpId").expect("subview failed");
+        assert_eq!(Rc::strong_count(&dv.stores[0]), 3);
+        assert_eq!(subdv1.nrows(), 7);
+        assert_eq!(subdv1.nfields(), 1);
+
+        let subdv2 = dv.v(vec!["EmpId", "DeptId"]);
+        assert_eq!(Rc::strong_count(&dv.stores[0]), 4);
+        assert_eq!(subdv2.nrows(), 7);
+        assert_eq!(subdv2.nfields(), 2);
+        let subdv2 = dv.subview(vec!["EmpId", "DeptId"]).expect("subview failed");
+        assert_eq!(Rc::strong_count(&dv.stores[0]), 5);
+        assert_eq!(subdv2.nrows(), 7);
+        assert_eq!(subdv2.nfields(), 2);
+
+        let subdv3 = dv.v(vec!["EmpId", "DeptId", "EmpName"]);
+        assert_eq!(Rc::strong_count(&dv.stores[0]), 6);
+        assert_eq!(subdv3.nrows(), 7);
+        assert_eq!(subdv3.nfields(), 3);
+        let subdv3 = dv.subview(vec!["EmpId", "DeptId", "EmpName"]).expect("subview failed");
+        assert_eq!(Rc::strong_count(&dv.stores[0]), 7);
+        assert_eq!(subdv3.nrows(), 7);
+        assert_eq!(subdv3.nfields(), 3);
+
+        // Subview of a subview
+        let subdv4 = subdv2.v("DeptId");
+        assert_eq!(Rc::strong_count(&dv.stores[0]), 8);
+        assert_eq!(subdv4.nrows(), 7);
+        assert_eq!(subdv4.nfields(), 1);
+        let subdv4 = subdv2.subview("DeptId").expect("subview failed");
+        assert_eq!(Rc::strong_count(&dv.stores[0]), 9);
+        assert_eq!(subdv4.nrows(), 7);
+        assert_eq!(subdv4.nfields(), 1);
+    }
+
+    #[test]
+    fn subview_fail() {
+        let ds = sample_emp_table();
+        let dv: DataView = ds.into();
+        assert_eq!(Rc::strong_count(&dv.stores[0]), 1);
+        assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+
+        // "Employee Name" does not exist
+        let subdv1 = dv.v(vec!["EmpId", "DeptId", "Employee Name"]);
+        assert_eq!(Rc::strong_count(&dv.stores[0]), 2);
+        assert_eq!(subdv1.nrows(), 7);
+        assert_eq!(subdv1.nfields(), 2);
+        match dv.subview(vec!["EmpId", "DeptId", "Employee Name"]) {
+            Ok(_) => { panic!("expected error (field not found), but succeeded"); },
+            Err(AgnesError::FieldNotFound(field)) => {
+                assert_eq!(field, FieldIdent::Name("Employee Name".into()));
+            },
+            Err(e) => { panic!("Incorrect error: {:?}", e); }
+        }
+
+        let subdv2 = dv.v("Nonexistant");
+        assert_eq!(Rc::strong_count(&dv.stores[0]), 3);
+        assert_eq!(subdv2.nrows(), 7); // still 7 rows, just no fields
+        assert_eq!(subdv2.nfields(), 0);
+        match dv.subview(vec!["Nonexistant"]) {
+            Ok(_) => { panic!("expected error (field not found), but succeeded"); },
+            Err(AgnesError::FieldNotFound(field)) => {
+                assert_eq!(field, FieldIdent::Name("Nonexistant".into()));
+            },
+            Err(e) => { panic!("Incorrect error: {:?}", e); }
+        }
     }
 }
