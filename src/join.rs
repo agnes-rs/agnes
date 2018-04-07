@@ -10,7 +10,7 @@ use frame::DataFrame;
 use field::{RFieldIdent, TypedFieldIdent};
 use masked::{MaskedData, FieldData, MaybeNa};
 use view::{DataView, ViewField};
-use store::DataStore;
+use store::{DataStore, AddData};
 use error::*;
 
 /// Join information used to describe the type of join being used.
@@ -240,16 +240,11 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
         let add_value = |ds: &mut DataStore, data: &DataView, field: &ViewField, idx, new_field| {
             // col.get(idx).unwrap() should be safe: indices originally generated from view nrows
             match data.get_viewfield_data(field).unwrap() {
-                FieldData::Unsigned(col) => ds.add_unsigned(new_field,
-                    col.get(idx).unwrap().cloned()),
-                FieldData::Signed(col) => ds.add_signed(new_field,
-                    col.get(idx).unwrap().cloned()),
-                FieldData::Text(col) => ds.add_text(new_field,
-                    col.get(idx).unwrap().cloned()),
-                FieldData::Boolean(col) => ds.add_boolean(new_field,
-                    col.get(idx).unwrap().cloned()),
-                FieldData::Float(col) => ds.add_float(new_field,
-                    col.get(idx).unwrap().cloned()),
+                FieldData::Unsigned(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
+                FieldData::Signed(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
+                FieldData::Text(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
+                FieldData::Boolean(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
+                FieldData::Float(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
             }
         };
         let mut field_idx = 0;

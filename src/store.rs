@@ -111,39 +111,18 @@ impl DataStore {
         ds
     }
 
-    /// Add a single unsigned integer value to the specified field.
-    pub fn add_unsigned(&mut self, ident: FieldIdent, value: MaybeNa<u64>) {
-        insert_value(&mut self.unsigned, ident, value)
-    }
-    /// Add a single signed integer value to the specified field.
-    pub fn add_signed(&mut self, ident: FieldIdent, value: MaybeNa<i64>) {
-        insert_value(&mut self.signed, ident, value)
-    }
-    /// Add a single text value to the specified field.
-    pub fn add_text(&mut self, ident: FieldIdent, value: MaybeNa<String>) {
-        insert_value(&mut self.text, ident, value)
-    }
-    /// Add a single boolean value to the specified field.
-    pub fn add_boolean(&mut self, ident: FieldIdent, value: MaybeNa<bool>) {
-        insert_value(&mut self.boolean, ident, value)
-    }
-    /// Add a single floating-point value to the specified field.
-    pub fn add_float(&mut self, ident: FieldIdent, value: MaybeNa<f64>) {
-        insert_value(&mut self.float, ident, value)
-    }
-
     /// Insert a value (provided in unparsed string form) for specified field
     pub fn insert(&mut self, ty_ident: TypedFieldIdent, value_str: String) -> Result<()> {
         let ident = ty_ident.ident.clone();
         let fty = ty_ident.ty;
         self.add_field(ty_ident.clone());
         Ok(match fty {
-            FieldType::Unsigned => self.add_unsigned(ident, parse(value_str, parse_unsigned)?),
-            FieldType::Signed   => self.add_signed(ident, parse(value_str, parse_signed)?),
-            FieldType::Text     => self.add_text(ident, parse(value_str, |val| Ok(val))?),
-            FieldType::Boolean  => self.add_boolean(ident, parse(value_str,
-                |val| Ok(val.parse()?))?),
-            FieldType::Float    => self.add_float(ident, parse(value_str, |val| Ok(val.parse()?))?)
+            FieldType::Unsigned => self.add(ident, parse(value_str, parse_unsigned)?),
+            FieldType::Signed   => self.add(ident, parse(value_str, parse_signed)?),
+            FieldType::Text     => self.add(ident, parse(value_str, |val| Ok(val))?),
+            FieldType::Boolean  => self.add(ident, parse(value_str,
+                |val| Ok(val.parse::<bool>()?))?),
+            FieldType::Float    => self.add(ident, parse(value_str, |val| Ok(val.parse::<f64>()?))?)
         })
     }
 
@@ -225,6 +204,37 @@ impl DataStore {
 impl Default for DataStore {
     fn default() -> DataStore {
         DataStore::empty()
+    }
+}
+
+/// Trait for adding data (of valid types) to a `DataStore`.
+pub trait AddData<T: PartialOrd> {
+    /// Add a single value to the specified field.
+    fn add(&mut self, ident: FieldIdent, value: MaybeNa<T>);
+}
+impl AddData<u64> for DataStore {
+    fn add(&mut self, ident: FieldIdent, value: MaybeNa<u64>) {
+        insert_value(&mut self.unsigned, ident, value);
+    }
+}
+impl AddData<i64> for DataStore {
+    fn add(&mut self, ident: FieldIdent, value: MaybeNa<i64>) {
+        insert_value(&mut self.signed, ident, value);
+    }
+}
+impl AddData<String> for DataStore {
+    fn add(&mut self, ident: FieldIdent, value: MaybeNa<String>) {
+        insert_value(&mut self.text, ident, value);
+    }
+}
+impl AddData<bool> for DataStore {
+    fn add(&mut self, ident: FieldIdent, value: MaybeNa<bool>) {
+        insert_value(&mut self.boolean, ident, value);
+    }
+}
+impl AddData<f64> for DataStore {
+    fn add(&mut self, ident: FieldIdent, value: MaybeNa<f64>) {
+        insert_value(&mut self.float, ident, value);
     }
 }
 
