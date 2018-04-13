@@ -66,6 +66,7 @@ impl DataFrame {
             None => requested
         }
     }
+    /// Returns `true` if this `DataFrame` contains this field.
     pub fn has_field(&self, s: &FieldIdent) -> bool {
         self.store.has_field(s)
     }

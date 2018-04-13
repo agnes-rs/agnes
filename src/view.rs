@@ -97,6 +97,7 @@ impl DataView {
             self.frames[view_field.frame_idx].get_field_type(&view_field.rident.ident)
         })
     }
+    /// Returns `true` if this `DataView` contains this field.
     pub fn has_field(&self, s: &FieldIdent) -> bool {
         self.fields.contains_key(s)
     }

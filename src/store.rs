@@ -170,6 +170,7 @@ impl DataStore {
     //         }
     //     })
     // }
+    /// Returns `true` if this `DataStore` contains this field.
     pub fn has_field(&self, ident: &FieldIdent) -> bool {
         self.field_map.contains_key(ident)
     }
