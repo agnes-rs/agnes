@@ -5,9 +5,10 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use field::{FieldIdent, TypedFieldIdent, DsField, FieldType};
-use masked::{FieldData, MaskedData};
+use masked::{MaskedData};
 use error::*;
 use MaybeNa;
+use apply::*;
 
 type TypeData<T> = HashMap<FieldIdent, MaskedData<T>>;
 
@@ -126,48 +127,51 @@ impl DataStore {
         })
     }
 
-    /// Retrieve an unsigned integer field
-    pub fn get_unsigned_field(&self, ident: &FieldIdent) -> Option<&MaskedData<u64>> {
+    // Retrieve an unsigned integer field
+    pub(crate) fn get_unsigned_field(&self, ident: &FieldIdent) -> Option<&MaskedData<u64>> {
         self.unsigned.get(ident)
     }
-    /// Retrieve a signed integer field
-    pub fn get_signed_field(&self, ident: &FieldIdent) -> Option<&MaskedData<i64>> {
+    // Retrieve a signed integer field
+    pub(crate) fn get_signed_field(&self, ident: &FieldIdent) -> Option<&MaskedData<i64>> {
         self.signed.get(ident)
     }
-    /// Retrieve a string field
-    pub fn get_text_field(&self, ident: &FieldIdent) -> Option<&MaskedData<String>> {
+    // Retrieve a string field
+    pub(crate) fn get_text_field(&self, ident: &FieldIdent) -> Option<&MaskedData<String>> {
         self.text.get(ident)
     }
-    /// Retrieve a boolean field
-    pub fn get_boolean_field(&self, ident: &FieldIdent) -> Option<&MaskedData<bool>> {
+    // Retrieve a boolean field
+    pub(crate) fn get_boolean_field(&self, ident: &FieldIdent) -> Option<&MaskedData<bool>> {
         self.boolean.get(ident)
     }
-    /// Retrieve a floating-point field
-    pub fn get_float_field(&self, ident: &FieldIdent) -> Option<&MaskedData<f64>> {
+    // Retrieve a floating-point field
+    pub(crate) fn get_float_field(&self, ident: &FieldIdent) -> Option<&MaskedData<f64>> {
         self.float.get(ident)
     }
-    /// Get all the data for a field, returned within the `FieldData` common data enum. Returns
-    /// `None` if the specified `FieldIdent` object does not exist.
-    pub fn get_field_data(&self, ident: &FieldIdent) -> Option<FieldData> {
-        self.field_map.get(ident).and_then(|&idx| {
-            match self.fields[idx].ty_ident.ty {
-                FieldType::Unsigned => self.get_unsigned_field(ident).map(
-                    |f| FieldData::Unsigned(f)
-                ),
-                FieldType::Signed => self.get_signed_field(ident).map(
-                    |f| FieldData::Signed(f)
-                ),
-                FieldType::Text => self.get_text_field(ident).map(
-                    |f| FieldData::Text(f)
-                ),
-                FieldType::Boolean => self.get_boolean_field(ident).map(
-                    |f| FieldData::Boolean(f)
-                ),
-                FieldType::Float => self.get_float_field(ident).map(
-                    |f| FieldData::Float(f)
-                ),
-            }
-        })
+    // /// Get all the data for a field, returned within the `FieldData` common data enum. Returns
+    // /// `None` if the specified `FieldIdent` object does not exist.
+    // pub fn get_field_data(&self, ident: &FieldIdent) -> Option<FieldData> {
+    //     self.field_map.get(ident).and_then(|&idx| {
+    //         match self.fields[idx].ty_ident.ty {
+                // FieldType::Unsigned => self.get_unsigned_field(ident).map(
+                //     |f| FieldData::Unsigned(f)
+                // ),
+                // FieldType::Signed => self.get_signed_field(ident).map(
+                //     |f| FieldData::Signed(f)
+                // ),
+                // FieldType::Text => self.get_text_field(ident).map(
+                //     |f| FieldData::Text(f)
+                // ),
+                // FieldType::Boolean => self.get_boolean_field(ident).map(
+                //     |f| FieldData::Boolean(f)
+                // ),
+                // FieldType::Float => self.get_float_field(ident).map(
+                //     |f| FieldData::Float(f)
+                // ),
+    //         }
+    //     })
+    // }
+    pub fn has_field(&self, ident: &FieldIdent) -> bool {
+        self.field_map.contains_key(ident)
     }
 
     /// Get the field information struct for a given field name
@@ -206,6 +210,123 @@ impl Default for DataStore {
         DataStore::empty()
     }
 }
+
+impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataStore {
+    fn apply_to_elem<F: ElemFn>(&self, f: F, select: FieldIndexSelector) -> Option<F::Output> {
+        let (ident, idx) = select.index();
+        self.field_map.get(ident).and_then(|&field_idx| {
+            match self.fields[field_idx].ty_ident.ty {
+                FieldType::Unsigned => self.get_unsigned_field(ident).and_then(|data| {
+                    data.apply_to_elem(f, IndexSelector(idx))
+                }),
+                FieldType::Signed => self.get_signed_field(ident).and_then(|data| {
+                    data.apply_to_elem(f, IndexSelector(idx))
+                }),
+                FieldType::Text => self.get_text_field(ident).and_then(|data| {
+                    data.apply_to_elem(f, IndexSelector(idx))
+                }),
+                FieldType::Boolean => self.get_boolean_field(ident).and_then(|data| {
+                    data.apply_to_elem(f, IndexSelector(idx))
+                }),
+                FieldType::Float => self.get_float_field(ident).and_then(|data| {
+                    data.apply_to_elem(f, IndexSelector(idx))
+                })
+            }
+        })
+        // self.get(select.index()).map(|value| f.apply_unsigned(value))
+    }
+}
+
+impl<'a> ApplyToField<FieldSelector<'a>> for DataStore {
+    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector) -> Option<F::Output> {
+        let ident = select.index();
+        self.field_map.get(ident).and_then(|&field_idx| {
+            match self.fields[field_idx].ty_ident.ty {
+                FieldType::Unsigned => self.get_unsigned_field(ident).and_then(|data| {
+                    data.apply_to_field(f, NilSelector)
+                }),
+                FieldType::Signed => self.get_signed_field(ident).and_then(|data| {
+                    data.apply_to_field(f, NilSelector)
+                }),
+                FieldType::Text => self.get_text_field(ident).and_then(|data| {
+                    data.apply_to_field(f, NilSelector)
+                }),
+                FieldType::Boolean => self.get_boolean_field(ident).and_then(|data| {
+                    data.apply_to_field(f, NilSelector)
+                }),
+                FieldType::Float => self.get_float_field(ident).and_then(|data| {
+                    data.apply_to_field(f, NilSelector)
+                }),
+            }
+        })
+    }
+}
+
+impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataStore, &'c DataStore) {
+    fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (FieldSelector, FieldSelector))
+        -> Option<T::Output>
+    {
+        let (ident0, ident1) = (select.0.index(), select.1.index());
+        let (field0, field1) = (
+            &self.0.field_map.get(ident0).map(|&field_idx| &self.0.fields[field_idx]),
+            &self.1.field_map.get(ident1).map(|&field_idx| &self.1.fields[field_idx]),
+        );
+        println!("{}:{} {}:{}", ident0, field0.is_some(), ident1, field1.is_some());
+        let (field0, field1) = match (field0, field1) {
+            (&Some(ref field0), &Some(ref field1)) => (field0, field1),
+            _ => { return None; }
+        };
+        match (field0.ty_ident.ty, field1.ty_ident.ty) {
+            (FieldType::Unsigned, FieldType::Unsigned) => (
+                self.0.get_unsigned_field(ident0).unwrap(),
+                self.1.get_unsigned_field(ident1).unwrap()
+            ).apply_to_field2(f, (NilSelector, NilSelector)),
+            (FieldType::Signed, FieldType::Signed) => (
+                self.0.get_signed_field(ident0).unwrap(),
+                self.1.get_signed_field(ident1).unwrap()
+            ).apply_to_field2(f, (NilSelector, NilSelector)),
+            (FieldType::Text, FieldType::Text) => (
+                self.0.get_text_field(ident0).unwrap(),
+                self.1.get_text_field(ident1).unwrap()
+            ).apply_to_field2(f, (NilSelector, NilSelector)),
+            (FieldType::Boolean, FieldType::Boolean) => (
+                self.0.get_boolean_field(ident0).unwrap(),
+                self.1.get_boolean_field(ident1).unwrap()
+            ).apply_to_field2(f, (NilSelector, NilSelector)),
+            (FieldType::Float, FieldType::Float) => (
+                self.0.get_float_field(ident0).unwrap(),
+                self.1.get_float_field(ident1).unwrap()
+            ).apply_to_field2(f, (NilSelector, NilSelector)),
+            (_,_) => None
+        }
+    }
+}
+// impl ApplyToFieldElem for DataStore {
+//     fn apply_to_field_elem<T: ElemFn>(&self, f: T, ident: &FieldIdent, idx: usize)
+//         -> Option<T::Output>
+//     {
+//         self.field_map.get(ident).and_then(|&idx| {
+//             match self.fields[idx].ty_ident.ty {
+//                 FieldType::Unsigned => self.get_unsigned_field(ident).and_then(
+//                     |data| data.apply_to_elem(f, idx)
+//                 ),
+//                 FieldType::Signed => self.get_signed_field(ident).and_then(
+//                     |data| data.apply_to_elem(f, idx)
+//                 ),
+//                 FieldType::Text => self.get_text_field(ident).and_then(
+//                     |data| data.apply_to_elem(f, idx)
+//                 ),
+//                 FieldType::Boolean => self.get_boolean_field(ident).and_then(
+//                     |data| data.apply_to_elem(f, idx)
+//                 ),
+//                 FieldType::Float => self.get_float_field(ident).and_then(
+//                     |data| data.apply_to_elem(f, idx)
+//                 ),
+//             }
+//         })
+//     }
+// }
+
 
 /// Trait for adding data (of valid types) to a `DataStore`.
 pub trait AddData<T: PartialOrd> {

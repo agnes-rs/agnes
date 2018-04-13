@@ -2,15 +2,15 @@
 `DataView` join structs and implementations.
 */
 
-use std::cmp::Ordering;
 
 use indexmap::IndexMap;
 
-use frame::DataFrame;
-use field::{RFieldIdent, TypedFieldIdent};
-use masked::{MaskedData, FieldData, MaybeNa};
+use frame::{DataFrame};
+use field::{RFieldIdent, FieldIdent, TypedFieldIdent};
+use masked::MaybeNa;
 use view::{DataView, ViewField};
 use store::{DataStore, AddData};
+use apply::*;
 use error::*;
 
 /// Join information used to describe the type of join being used.
@@ -20,12 +20,12 @@ pub struct Join {
     pub kind: JoinKind,
     /// Join predicate: equijoin, inequality join
     pub predicate: Predicate,
-    pub(crate) left_field: String,
-    pub(crate) right_field: String,
+    pub(crate) left_field: FieldIdent,
+    pub(crate) right_field: FieldIdent,
 }
 impl Join {
     /// Create a new `Join` over the specified fields.
-    pub fn new<L: Into<String>, R: Into<String>>(kind: JoinKind, predicate: Predicate,
+    pub fn new<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, predicate: Predicate,
         left_field: L, right_field: R) -> Join
     {
         Join {
@@ -37,8 +37,8 @@ impl Join {
     }
 
     /// Helper function to create a new `Join` with an 'Equal' predicate.
-    pub fn equal<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L, right_field: R)
-        -> Join
+    pub fn equal<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, left_field: L,
+        right_field: R) -> Join
     {
         Join {
             kind,
@@ -48,7 +48,7 @@ impl Join {
         }
     }
     /// Helper function to create a new `Join` with an 'Less Than' predicate.
-    pub fn less_than<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L,
+    pub fn less_than<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, left_field: L,
         right_field: R) -> Join
     {
         Join {
@@ -59,7 +59,7 @@ impl Join {
         }
     }
     /// Helper function to create a new `Join` with an 'Less Than or Equal' predicate.
-    pub fn less_than_equal<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L,
+    pub fn less_than_equal<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, left_field: L,
         right_field: R) -> Join
     {
         Join {
@@ -70,7 +70,7 @@ impl Join {
         }
     }
     /// Helper function to create a new `Join` with an 'Greater Than' predicate.
-    pub fn greater_than<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L,
+    pub fn greater_than<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, left_field: L,
         right_field: R) -> Join
     {
         Join {
@@ -81,8 +81,8 @@ impl Join {
         }
     }
     /// Helper function to create a new `Join` with an 'Greater Than or Equal' predicate.
-    pub fn greater_than_equal<L: Into<String>, R: Into<String>>(kind: JoinKind, left_field: L,
-        right_field: R) -> Join
+    pub fn greater_than_equal<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind,
+        left_field: L, right_field: R) -> Join
     {
         Join {
             kind,
@@ -194,25 +194,69 @@ pub fn hash_join(_left: &DataView, _right: &DataView, join: Join) -> Result<Data
 
 /// Join two dataviews with specified `Join` using the sort-merge algorithm.
 pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<DataStore> {
-    // get the data for this field
-    let left_key_data = left.get_field_data(&join.left_field)
-        .ok_or(AgnesError::FieldNotFound(join.left_field.clone().into()))?;
-    let right_key_data = right.get_field_data(&join.right_field)
-        .ok_or(AgnesError::FieldNotFound(join.right_field.clone().into()))?;
-    if left_key_data.get_field_type() != right_key_data.get_field_type() {
+    // return early if fields don't exist, don't match types, or if DataViews are empty
+    if !left.has_field(&join.left_field) {
+        return Err(AgnesError::FieldNotFound(join.left_field.clone().into()));
+    }
+    if !right.has_field(&join.right_field) {
+        return Err(AgnesError::FieldNotFound(join.right_field.clone().into()));
+    }
+    if left.get_field_type(&join.left_field) != right.get_field_type(&join.right_field) {
         return Err(AgnesError::TypeMismatch("unable to join on fields of different types".into()));
     }
-    if left_key_data.is_empty() || right_key_data.is_empty() {
+    if left.is_empty() || right.is_empty() {
         return Ok(DataStore::empty());
     }
 
-    // sort (or rather, get the sorted order for field being merged)
-    let left_perm = left_key_data.sort_order();
-    let right_perm = right_key_data.sort_order();
+    // // get the data for this field
+    // let left_key_data = left.get_field_data(&join.left_field)
+    //     .ok_or(AgnesError::FieldNotFound(join.left_field.clone().into()))?;
+    // let right_key_data = right.get_field_data(&join.right_field)
+    //     .ok_or(AgnesError::FieldNotFound(join.right_field.clone().into()))?;
+    // if left.get_field_type(&join.left_field) != right.get_field_type(&join.right_field) {
+    //     return Err(AgnesError::TypeMismatch("unable to join on fields of different types".into()));
+    // }
+    // if left.is_empty() || right.is_empty() {
+    //     return Ok(DataStore::empty());
+    // }
 
+    // sort (or rather, get the sorted order for field being merged)
+    // we already checks if fields exist in DataViews, so unwraps are safe
+    let left_perm = left.sort_order_by(FieldSelector(&join.left_field)).unwrap();
+    let right_perm = right.sort_order_by(FieldSelector(&join.right_field)).unwrap();
+
+    struct FindMergeIndices {
+        left_perm: Vec<usize>,
+        right_perm: Vec<usize>,
+        predicate: Predicate,
+    }
+    macro_rules! impl_find_merge_indices {
+        ($name:tt; $ty:ty) => {
+            fn $name<'a, T: DataIndex<$ty>>(&mut self, field: &(&T, &T)) -> Vec<(usize, usize)> {
+                merge_masked_data(&self.left_perm, &self.right_perm, field.0, field.1,
+                    self.predicate)
+            }
+        }
+    }
+    impl Field2Fn for FindMergeIndices {
+        type Output = Vec<(usize, usize)>;
+
+        impl_find_merge_indices!(apply_unsigned; u64);
+        impl_find_merge_indices!(apply_signed;   i64);
+        impl_find_merge_indices!(apply_text;     String);
+        impl_find_merge_indices!(apply_boolean;  bool);
+        impl_find_merge_indices!(apply_float;    f64);
+    }
     // find the join indices
-    let merge_indices = merge(left_perm, right_perm, left_key_data, right_key_data,
-        join.predicate);
+    let merge_indices = (left, right).apply_to_field2(FindMergeIndices {
+        left_perm,
+        right_perm,
+        predicate: join.predicate
+    }, (FieldSelector(&join.left_field), FieldSelector(&join.right_field)))
+        .expect("FIXME");
+
+    // let merge_indices = merge_masked_data(left_perm, right_perm, left, join.left_field, right,
+    //     join.right_field, join.predicate);
 
     // compute merged frame list and field list for the new dataframe
     // compute the field list for the new dataframe
@@ -236,16 +280,40 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
         })
         .collect::<Vec<_>>());
 
+    struct AddToDs<'a> {
+        ds: &'a mut DataStore,
+        ident: FieldIdent
+    }
+    macro_rules! impl_add_to_ds {
+        ($name:tt; $ty:ty) => {
+            fn $name(&mut self, value: MaybeNa<&$ty>) {
+                self.ds.add(self.ident.clone(), value.cloned())
+                // self.row.add_cell(cell!(value))
+            }
+        }
+    }
+    impl<'a> ElemFn for AddToDs<'a> {
+        type Output = ();
+        impl_add_to_ds!(apply_unsigned; u64);
+        impl_add_to_ds!(apply_signed;   i64);
+        impl_add_to_ds!(apply_text;     String);
+        impl_add_to_ds!(apply_boolean;  bool);
+        impl_add_to_ds!(apply_float;    f64);
+    }
     for (left_idx, right_idx) in merge_indices {
         let add_value = |ds: &mut DataStore, data: &DataView, field: &ViewField, idx, new_field| {
-            // col.get(idx).unwrap() should be safe: indices originally generated from view nrows
-            match data.get_viewfield_data(field).unwrap() {
-                FieldData::Unsigned(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
-                FieldData::Signed(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
-                FieldData::Text(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
-                FieldData::Boolean(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
-                FieldData::Float(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
-            }
+            data.apply_to_elem(AddToDs { ds, ident: new_field },
+                FieldIndexSelector(&field.rident.ident, idx));
+            // data.get_viewfield_data(field).unwrap().apply_to_elem(
+                // AddToDs { ds, ident: new_field }, idx);
+            // // col.get(idx).unwrap() should be safe: indices originally generated from view nrows
+            // match data.get_viewfield_data(field).unwrap() {
+            //     FieldData::Unsigned(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
+            //     FieldData::Signed(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
+            //     FieldData::Text(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
+            //     FieldData::Boolean(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
+            //     FieldData::Float(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
+            // }
         };
         let mut field_idx = 0;
         for left_field in left.fields.values() {
@@ -261,42 +329,46 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
     Ok(ds)
 }
 
-fn merge<'a>(
-    left_perm_iter: Vec<usize>,
-    right_perm_iter: Vec<usize>,
-    left_key_data: FieldData<'a>,
-    right_key_data: FieldData<'a>,
-    predicate: Predicate
-) -> Vec<(usize, usize)>
-{
-    match (left_key_data, right_key_data) {
-        (FieldData::Unsigned(left_data), FieldData::Unsigned(right_data)) =>
-            merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
-        (FieldData::Signed(left_data), FieldData::Signed(right_data)) =>
-            merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
-        (FieldData::Text(left_data), FieldData::Text(right_data)) =>
-            merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
-        (FieldData::Boolean(left_data), FieldData::Boolean(right_data)) =>
-            merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
-        (FieldData::Float(left_data), FieldData::Float(right_data)) =>
-            merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
-        _ => panic!("attempt to merge non-identical field types")
-    }
-
-}
-fn merge_masked_data<'a, T: PartialOrd>(
-    left_perm: Vec<usize>,
-    right_perm: Vec<usize>,
-    left_key_data: &'a MaskedData<T>,
-    right_key_data: &'a MaskedData<T>,
+// fn merge<'a, T: PartialOrd>(
+//     left_perm_iter: Vec<usize>,
+//     right_perm_iter: Vec<usize>,
+//     left_key_data: MaskedData<T>,
+//     right_key_data: MaskedData<T>,
+//     predicate: Predicate
+// ) -> Vec<(usize, usize)>
+// {
+//     match (left_key_data, right_key_data) {
+//         (FieldData::Unsigned(left_data), FieldData::Unsigned(right_data)) =>
+//             merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
+//         (FieldData::Signed(left_data), FieldData::Signed(right_data)) =>
+//             merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
+//         (FieldData::Text(left_data), FieldData::Text(right_data)) =>
+//             merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
+//         (FieldData::Boolean(left_data), FieldData::Boolean(right_data)) =>
+//             merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
+//         (FieldData::Float(left_data), FieldData::Float(right_data)) =>
+//             merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
+//         _ => panic!("attempt to merge non-identical field types")
+//     }
+// }
+fn merge_masked_data<'a, T: PartialOrd, U: DataIndex<T>>(
+    left_perm: &Vec<usize>,
+    right_perm: &Vec<usize>,
+    // left_view: &DataView,
+    // left_field: &FieldIdent,
+    // right_view: &DataView,
+    // right_field: &FieldIdent,
+    left_key_data: &'a U,
+    right_key_data: &'a U,
     predicate: Predicate,
 ) -> Vec<(usize, usize)>
 {
     debug_assert!(!left_perm.is_empty() && !right_perm.is_empty());
     // NOTE: actual_idx = perm[sorted_idx]
     // NOTE: value = key_data.get(actual_idx).unwrap();
-    let lval = |sorted_idx| left_key_data.get(left_perm[sorted_idx]).unwrap();
-    let rval = |sorted_idx| right_key_data.get(right_perm[sorted_idx]).unwrap();
+
+    let lval = |sorted_idx| left_key_data.get_data(left_perm[sorted_idx]).unwrap();
+    let rval = |sorted_idx| right_key_data.get_data(right_perm[sorted_idx]).unwrap();
 
     // we know left_perm and right_perm both are non-empty, so there is at least one value
     let (mut left_idx, mut right_idx) = (0, 0);
@@ -411,7 +483,7 @@ pub(crate) fn compute_merged_frames(left: &DataView, right: &DataView)
 
 pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &DataView,
     right: &DataView, right_frame_mapping: &Vec<usize>, join: T)
-    -> Result<IndexMap<String, ViewField>>
+    -> Result<IndexMap<FieldIdent, ViewField>>
 {
     // build new fields vector, updating the frame indices in the ViewFields copied
     // from the 'right' fields list
@@ -428,11 +500,11 @@ pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &Da
                     let mut left_key_field = new_fields.get(&join.left_field).unwrap().clone();
                     let new_left_field_name = format!("{}.0", join.left_field);
                     left_key_field.rident.rename = Some(new_left_field_name.clone());
-                    new_fields.insert(new_left_field_name, left_key_field);
+                    new_fields.insert(new_left_field_name.into(), left_key_field);
                     new_fields.swap_remove(&join.left_field);
 
                     let new_right_field_name = format!("{}.1", join.right_field);
-                    new_fields.insert(new_right_field_name.clone(), ViewField {
+                    new_fields.insert(new_right_field_name.clone().into(), ViewField {
                         rident: RFieldIdent {
                             ident: right_field.rident.ident.clone(),
                             rename: Some(new_right_field_name),
@@ -459,62 +531,61 @@ pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &Da
     }
 }
 
-type SortedOrder = Vec<usize>;
-trait SortOrder {
-    fn sort_order(&self) -> SortedOrder;
-}
-// f64 ordering is (arbitrarily) going to be:
-// NA values, followed by NAN values, followed by everything else ascending
-impl SortOrder for MaskedData<f64> {
-    fn sort_order(&self) -> SortedOrder {
-        let mut order = (0..self.len()).collect::<Vec<_>>();
-        order.sort_unstable_by(|&a, &b| {
-            // a, b are always in range, so unwraps are safe
-            let (vala, valb) = (self.get(a).unwrap(), self.get(b).unwrap());
-            vala.partial_cmp(&valb).unwrap_or_else(|| {
-                // partial_cmp doesn't fail for MaybeNa::NA, unwraps safe
-                let (vala, valb) = (vala.unwrap(), valb.unwrap());
-                if vala.is_nan() && !valb.is_nan() {
-                    Ordering::Less
-                } else {
-                    // since partial_cmp only fails for NAN, then !vala.is_nan() && valb.is_nan()
-                    Ordering::Greater
-                }
-            })
-        });
-        order
-    }
-}
+// trait SortOrder {
+//     fn sort_order(&self) -> SortedOrder;
+// }
+// // f64 ordering is (arbitrarily) going to be:
+// // NA values, followed by NAN values, followed by everything else ascending
+// impl SortOrder for MaskedData<f64> {
+//     fn sort_order(&self) -> SortedOrder {
+//         let mut order = (0..self.len()).collect::<Vec<_>>();
+//         order.sort_unstable_by(|&a, &b| {
+//             // a, b are always in range, so unwraps are safe
+//             let (vala, valb) = (self.get(a).unwrap(), self.get(b).unwrap());
+//             vala.partial_cmp(&valb).unwrap_or_else(|| {
+//                 // partial_cmp doesn't fail for MaybeNa::NA, unwraps safe
+//                 let (vala, valb) = (vala.unwrap(), valb.unwrap());
+//                 if vala.is_nan() && !valb.is_nan() {
+//                     Ordering::Less
+//                 } else {
+//                     // since partial_cmp only fails for NAN, then !vala.is_nan() && valb.is_nan()
+//                     Ordering::Greater
+//                 }
+//             })
+//         });
+//         order
+//     }
+// }
 
-macro_rules! impl_masked_sort {
-    ($($t:ty)*) => {$(
-        // ordering is (arbitrarily) going to be:
-        // NA values, followed by everything else ascending
-        impl SortOrder for MaskedData<$t> {
-            fn sort_order(&self) -> SortedOrder {
-                let mut order = (0..self.len()).collect::<Vec<_>>();
-                order.sort_unstable_by(|&a, &b| {
-                    // a, b are always in range, so unwraps are safe
-                    self.get(a).unwrap().cmp(&self.get(b).unwrap())
-                });
-                order
-            }
-        }
-    )*}
-}
-impl_masked_sort![u64 i64 String bool];
+// macro_rules! impl_masked_sort {
+//     ($($t:ty)*) => {$(
+//         // ordering is (arbitrarily) going to be:
+//         // NA values, followed by everything else ascending
+//         impl SortOrder for MaskedData<$t> {
+//             fn sort_order(&self) -> SortedOrder {
+//                 let mut order = (0..self.len()).collect::<Vec<_>>();
+//                 order.sort_unstable_by(|&a, &b| {
+//                     // a, b are always in range, so unwraps are safe
+//                     self.get(a).unwrap().cmp(&self.get(b).unwrap())
+//                 });
+//                 order
+//             }
+//         }
+//     )*}
+// }
+// impl_masked_sort![u64 i64 String bool];
 
-impl<'a> SortOrder for FieldData<'a> {
-    fn sort_order(&self) -> SortedOrder {
-        match *self {
-            FieldData::Unsigned(v)  => v.sort_order(),
-            FieldData::Signed(v)    => v.sort_order(),
-            FieldData::Text(v)      => v.sort_order(),
-            FieldData::Boolean(v)   => v.sort_order(),
-            FieldData::Float(v)     => v.sort_order(),
-        }
-    }
-}
+// impl<'a> SortOrder for FrameFieldData<'a> {
+//     fn sort_order(&self) -> SortedOrder {
+//         match self.field_data {
+//             FieldData::Unsigned(v)  => v.sort_order(),
+//             FieldData::Signed(v)    => v.sort_order(),
+//             FieldData::Text(v)      => v.sort_order(),
+//             FieldData::Boolean(v)   => v.sort_order(),
+//             FieldData::Float(v)     => v.sort_order(),
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -525,22 +596,24 @@ mod tests {
     #[test]
     fn sort_order_no_na() {
         let masked_data: MaskedData<u64> = MaskedData::from_vec(vec![2u64, 5, 3, 1, 8]);
-        let sort_order = masked_data.sort_order();
-        assert_eq!(sort_order, vec![3, 0, 2, 1, 4]);
+        let sorted_order = masked_data.sort_order_by(NilSelector).unwrap();
+        // let sorted_order = masked_data.apply_to_field(SortOrder { len: masked_data.len() },
+        //     NilSelector).unwrap();
+        assert_eq!(sorted_order, vec![3, 0, 2, 1, 4]);
 
         let masked_data: MaskedData<f64> = MaskedData::from_vec(vec![2.0, 5.4, 3.1, 1.1, 8.2]);
-        let sort_order = masked_data.sort_order();
-        assert_eq!(sort_order, vec![3, 0, 2, 1, 4]);
+        let sorted_order = masked_data.sort_order_by(NilSelector).unwrap();
+        assert_eq!(sorted_order, vec![3, 0, 2, 1, 4]);
 
         let masked_data: MaskedData<f64> =
             MaskedData::from_vec(vec![2.0, ::std::f64::NAN, 3.1, 1.1, 8.2]);
-        let sort_order = masked_data.sort_order();
-        assert_eq!(sort_order, vec![1, 3, 0, 2, 4]);
+        let sorted_order = masked_data.sort_order_by(NilSelector).unwrap();
+        assert_eq!(sorted_order, vec![1, 3, 0, 2, 4]);
 
         let masked_data: MaskedData<f64> = MaskedData::from_vec(vec![2.0, ::std::f64::NAN, 3.1,
             ::std::f64::INFINITY, 8.2]);
-        let sort_order = masked_data.sort_order();
-        assert_eq!(sort_order, vec![1, 0, 2, 4, 3]);
+        let sorted_order = masked_data.sort_order_by(NilSelector).unwrap();
+        assert_eq!(sorted_order, vec![1, 0, 2, 4, 3]);
     }
 
     #[test]
@@ -552,8 +625,8 @@ mod tests {
             MaybeNa::Exists(1),
             MaybeNa::Exists(8)
         ]);
-        let sort_order = masked_data.sort_order();
-        assert_eq!(sort_order, vec![2, 3, 0, 1, 4]);
+        let sorted_order = masked_data.sort_order_by(NilSelector).unwrap();
+        assert_eq!(sorted_order, vec![2, 3, 0, 1, 4]);
 
         let masked_data = MaskedData::from_masked_vec(vec![
             MaybeNa::Exists(2.1),
@@ -562,8 +635,8 @@ mod tests {
             MaybeNa::Exists(1.1),
             MaybeNa::Exists(8.2930)
         ]);
-        let sort_order = masked_data.sort_order();
-        assert_eq!(sort_order, vec![2, 3, 0, 1, 4]);
+        let sorted_order = masked_data.sort_order_by(NilSelector).unwrap();
+        assert_eq!(sorted_order, vec![2, 3, 0, 1, 4]);
 
         let masked_data = MaskedData::from_masked_vec(vec![
             MaybeNa::Exists(2.1),
@@ -572,8 +645,8 @@ mod tests {
             MaybeNa::Exists(1.1),
             MaybeNa::Exists(8.2930)
         ]);
-        let sort_order = masked_data.sort_order();
-        assert_eq!(sort_order, vec![2, 1, 3, 0, 4]);
+        let sorted_order = masked_data.sort_order_by(NilSelector).unwrap();
+        assert_eq!(sorted_order, vec![2, 1, 3, 0, 4]);
 
         let masked_data = MaskedData::from_masked_vec(vec![
             MaybeNa::Exists(2.1),
@@ -582,8 +655,8 @@ mod tests {
             MaybeNa::Exists(::std::f64::INFINITY),
             MaybeNa::Exists(8.2930)
         ]);
-        let sort_order = masked_data.sort_order();
-        assert_eq!(sort_order, vec![2, 1, 0, 4, 3]);
+        let sorted_order = masked_data.sort_order_by(NilSelector).unwrap();
+        assert_eq!(sorted_order, vec![2, 1, 0, 4, 3]);
     }
 
     #[test]
@@ -602,16 +675,16 @@ mod tests {
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 7);
         assert_eq!(joined_dv.nfields(), 5);
-        unsigned::assert_sorted_eq(joined_dv.get_field_data("EmpId").unwrap(),
+        unsigned::assert_sorted_eq(&joined_dv, &"EmpId".into(),
             vec![0, 2, 5, 6, 8, 9, 10]);
-        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId.0").unwrap(),
+        unsigned::assert_sorted_eq(&joined_dv, &"DeptId.0".into(),
             vec![1, 2, 1, 1, 3, 4, 4]);
-        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId.1").unwrap(),
+        unsigned::assert_sorted_eq(&joined_dv, &"DeptId.1".into(),
             vec![1, 2, 1, 1, 3, 4, 4]);
-        text::assert_sorted_eq(joined_dv.get_field_data("EmpName").unwrap(),
+        text::assert_sorted_eq(&joined_dv, &"EmpName".into(),
             vec!["Sally", "Jamie", "Bob", "Louis", "Louise", "Cara", "Ann"]
                 .iter().map(|name| name.to_string()).collect());
-        text::assert_sorted_eq(joined_dv.get_field_data("DeptName").unwrap(),
+        text::assert_sorted_eq(&joined_dv, &"DeptName".into(),
             vec!["Marketing", "Sales", "Marketing", "Marketing", "Manufacturing", "R&D", "R&D"]
                 .iter().map(|name| name.to_string()).collect());
     }
@@ -646,16 +719,16 @@ mod tests {
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 4);
         assert_eq!(joined_dv.nfields(), 5);
-        unsigned::assert_sorted_eq(joined_dv.get_field_data("EmpId").unwrap(),
+        unsigned::assert_sorted_eq(&joined_dv, &"EmpId".into(),
             vec![2, 8, 9, 10]);
-        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId.0").unwrap(),
+        unsigned::assert_sorted_eq(&joined_dv, &"DeptId.0".into(),
             vec![2, 3, 4, 4]);
-        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId.1").unwrap(),
+        unsigned::assert_sorted_eq(&joined_dv, &"DeptId.1".into(),
             vec![2, 3, 4, 4]);
-        text::assert_sorted_eq(joined_dv.get_field_data("EmpName").unwrap(),
+        text::assert_sorted_eq(&joined_dv, &"EmpName".into(),
             vec!["Jamie", "Louis", "Louise", "Ann"]
                 .iter().map(|name| name.to_string()).collect());
-        text::assert_sorted_eq(joined_dv.get_field_data("DeptName").unwrap(),
+        text::assert_sorted_eq(&joined_dv, &"DeptName".into(),
             vec!["Sales", "Manufacturing", "R&D", "R&D"]
                 .iter().map(|name| name.to_string()).collect());
 
@@ -701,16 +774,16 @@ mod tests {
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 6);
         assert_eq!(joined_dv.nfields(), 5);
-        unsigned::assert_sorted_eq(joined_dv.get_field_data("EmpId").unwrap(),
+        unsigned::assert_sorted_eq(&joined_dv, &"EmpId".into(),
             vec![0, 2, 6, 8, 9, 10]);
-        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId.0").unwrap(),
+        unsigned::assert_sorted_eq(&joined_dv, &"DeptId.0".into(),
             vec![1, 2, 1, 3, 4, 4]);
-        unsigned::assert_sorted_eq(joined_dv.get_field_data("DeptId.1").unwrap(),
+        unsigned::assert_sorted_eq(&joined_dv, &"DeptId.1".into(),
             vec![1, 2, 1, 3, 4, 4]);
-        text::assert_sorted_eq(joined_dv.get_field_data("EmpName").unwrap(),
+        text::assert_sorted_eq(&joined_dv, &"EmpName".into(),
             vec!["Sally", "Jamie", "Louis", "Louise", "Cara", "Ann"]
                 .iter().map(|name| name.to_string()).collect());
-        text::assert_sorted_eq(joined_dv.get_field_data("DeptName").unwrap(),
+        text::assert_sorted_eq(&joined_dv, &"DeptName".into(),
             vec!["Marketing", "Sales", "Marketing", "Manufacturing", "R&D", "R&D"]
                 .iter().map(|name| name.to_string()).collect());
     }
@@ -733,7 +806,7 @@ mod tests {
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 7);
         assert_eq!(joined_dv.nfields(), 5);
-        unsigned::assert_pred(joined_dv.get_field_data("DeptId").unwrap(),
+        unsigned::assert_pred(&joined_dv, &"DeptId".into(),
             |&deptid| deptid >= 2);
 
         // greater than equal
@@ -749,7 +822,7 @@ mod tests {
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 4);
         assert_eq!(joined_dv.nfields(), 5);
-        unsigned::assert_pred(joined_dv.get_field_data("DeptId.0").unwrap(),
+        unsigned::assert_pred(&joined_dv, &"DeptId.0".into(),
             |&deptid| deptid >= 2);
 
         // less than
@@ -765,7 +838,7 @@ mod tests {
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 3);
         assert_eq!(joined_dv.nfields(), 5);
-        unsigned::assert_pred(joined_dv.get_field_data("DeptId.0").unwrap(),
+        unsigned::assert_pred(&joined_dv, &"DeptId.0".into(),
             |&deptid| deptid == 1);
 
         // less than equal
@@ -781,7 +854,7 @@ mod tests {
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 4);
         assert_eq!(joined_dv.nfields(), 5);
-        unsigned::assert_pred(joined_dv.get_field_data("DeptId.0").unwrap(),
+        unsigned::assert_pred(&joined_dv, &"DeptId.0".into(),
             |&deptid| deptid <= 2);
     }
 }
