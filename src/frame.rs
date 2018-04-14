@@ -3,6 +3,7 @@ Structs and implementation for Frame-level data structure. A `DataFrame` is a re
 underlying data store, along with record-based filtering and sorting details.
 */
 use std::rc::Rc;
+use std::marker::PhantomData;
 
 use bit_vec::BitVec;
 
@@ -92,15 +93,16 @@ impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataFrame {
     }
 }
 impl<'a> ApplyToField<FieldSelector<'a>> for DataFrame {
-    fn apply_to_field<T: FieldFn>(&self, f: T, select: FieldSelector) -> Option<T::Output> {
-        self.store.apply_to_field(f, select)
+    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector) -> Option<F::Output> {
+        self.store.apply_to_field(FrameFieldFn { frame: &self, field_fn: f }, select)
     }
 }
 impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataFrame, &'c DataFrame) {
-    fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (FieldSelector, FieldSelector))
-        -> Option<T::Output>
+    fn apply_to_field2<F: Field2Fn>(&self, f: F, select: (FieldSelector, FieldSelector))
+        -> Option<F::Output>
     {
-        (self.0.store.as_ref(), self.1.store.as_ref()).apply_to_field2(f, select)
+        (self.0.store.as_ref(), self.1.store.as_ref()).apply_to_field2(
+            FrameField2Fn { frames: (&self.0, &self.1), field_fn: f }, select)
     }
 }
 
@@ -113,6 +115,88 @@ impl From<DataStore> for DataFrame {
     }
 }
 
+struct Framed<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> {
+    frame: &'a DataFrame,
+    data: &'b D,
+    dtype: PhantomData<T>,
+}
+impl<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> Framed<'a, 'b, T, D> {
+    fn new(frame: &'a DataFrame, data: &'b D) -> Framed<'a, 'b, T, D> {
+        Framed { frame, data, dtype: PhantomData }
+    }
+}
+impl<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> DataIndex<T> for Framed<'a, 'b, T, D> {
+    fn get_data(&self, idx: usize) -> Option<MaybeNa<&T>> {
+        self.data.get_data(self.frame.map_index(idx))
+    }
+    fn len(&self) -> usize {
+        self.frame.nrows()
+    }
+
+}
+struct FrameFieldFn<'a, F: FieldFn> {
+    frame: &'a DataFrame,
+    field_fn: F,
+}
+impl<'a, F: FieldFn> FieldFn for FrameFieldFn<'a, F> {
+    type Output = F::Output;
+    fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &T) -> F::Output {
+        self.field_fn.apply_unsigned(&Framed::new(self.frame, field))
+    }
+    fn apply_signed<T: DataIndex<i64>>(&mut self, field: &T) -> F::Output {
+        self.field_fn.apply_signed(&Framed::new(self.frame, field))
+    }
+    fn apply_text<T: DataIndex<String>>(&mut self, field: &T) -> F::Output {
+        self.field_fn.apply_text(&Framed::new(self.frame, field))
+    }
+    fn apply_boolean<T: DataIndex<bool>>(&mut self, field: &T) -> F::Output {
+        self.field_fn.apply_boolean(&Framed::new(self.frame, field))
+    }
+    fn apply_float<T: DataIndex<f64>>(&mut self, field: &T) -> F::Output {
+        self.field_fn.apply_float(&Framed::new(self.frame, field))
+    }
+}
+struct FrameField2Fn<'a, 'b, F: Field2Fn> {
+    frames: (&'a DataFrame, &'b DataFrame),
+    field_fn: F,
+}
+impl<'a, 'b, F: Field2Fn> Field2Fn for FrameField2Fn<'a, 'b, F> {
+    type Output = F::Output;
+    fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &(&T, &T)) -> F::Output {
+        self.field_fn.apply_unsigned(&(
+            &Framed::new(self.frames.0, field.0),
+            &Framed::new(self.frames.1, field.1)
+        ))
+    }
+    fn apply_signed<T: DataIndex<i64>>(&mut self, field: &(&T, &T)) -> F::Output {
+        self.field_fn.apply_signed(&(
+            &Framed::new(self.frames.0, field.0),
+            &Framed::new(self.frames.1, field.1)
+        ))
+    }
+    fn apply_text<T: DataIndex<String>>(&mut self, field: &(&T, &T)) -> F::Output {
+        self.field_fn.apply_text(&(
+            &Framed::new(self.frames.0, field.0),
+            &Framed::new(self.frames.1, field.1)
+        ))
+    }
+    fn apply_boolean<T: DataIndex<bool>>(&mut self, field: &(&T, &T)) -> F::Output {
+        self.field_fn.apply_boolean(&(
+            &Framed::new(self.frames.0, field.0),
+            &Framed::new(self.frames.1, field.1)
+        ))
+    }
+    fn apply_float<T: DataIndex<f64>>(&mut self, field: &(&T, &T)) -> F::Output {
+        self.field_fn.apply_float(&(
+            &Framed::new(self.frames.0, field.0),
+            &Framed::new(self.frames.1, field.1)
+        ))
+    }
+
+}
+
+
+// TODO: update this to use with the FramedFieldFn / Framed framework?
 pub(crate) struct FramedField<'a> {
     pub(crate) ident: FieldIdent,
     pub(crate) frame: &'a DataFrame
