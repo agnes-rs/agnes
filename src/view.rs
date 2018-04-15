@@ -102,15 +102,6 @@ impl DataView {
         self.fields.contains_key(s)
     }
 
-    // pub(crate) fn get_field_data(&self, field_name: &str) -> Option<FrameFieldData> {
-    //     self.fields.get(field_name).and_then(|view_field: &ViewField| {
-    //         self.get_viewfield_data(view_field)
-    //     })
-    // }
-    // pub(crate) fn get_viewfield_data(&self, view_field: &ViewField) -> Option<FrameFieldData> {
-    //     self.frames[view_field.frame_idx].get_field_data(&view_field.rident.ident)
-    // }
-
     /// Rename a field of this DataView.
     pub fn rename<T, U>(&mut self, orig: T, new: U) -> error::Result<()> where
         T: Into<FieldIdent>,
@@ -214,16 +205,6 @@ impl SortBy for DataView {
     }
 }
 
-// impl ApplyToAllFieldElems for DataView {
-//     fn apply_to_all_field_elems<T: ElemFn>(&self, mut f: T, ident: &FieldIdent)
-//         -> Option<T::Output>
-//     {
-//         self.fields.get(&ident.to_string()).and_then(|view_field: &ViewField| {
-//             self.frames[view_field.frame_idx].apply_to_all_field_elems(f, &ident)
-//         })
-//     }
-// }
-
 impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataView {
     fn apply_to_elem<T: ElemFn>(&self, f: T, select: FieldIndexSelector<'a>)
         -> Option<T::Output>
@@ -259,12 +240,6 @@ impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataView, &'c DataVie
         let (ident0, ident1) = (select.0.index(), select.1.index());
         let vf0 = self.0.fields.get(ident0);
         let vf1 = self.1.fields.get(ident1);
-        // let frame0 = self.0.fields.get(ident0).map(|view_field: &ViewField| {
-        //     &self.0.frames[view_field.frame_idx]
-        // });
-        // let frame1 = self.1.fields.get(ident1).map(|view_field: &ViewField| {
-        //     &self.1.frames[view_field.frame_idx]
-        // });
         match (vf0, vf1) {
             (Some(vf0), Some(vf1)) => {
                 (&self.0.frames[vf0.frame_idx], &self.1.frames[vf1.frame_idx])
@@ -309,31 +284,12 @@ impl Display for DataView {
 
         let mut table = pt::Table::new();
         table.set_titles(self.fields.keys().into());
-        // let all_data = self.fields.values()
-        //     .filter_map(|field| {
-        //         // this should be guaranteed by construction of the DataView
-        //         debug_assert_eq!(nrows, self.frames[field.frame_idx].nrows());
-        //         self.frames[field.frame_idx].get_field_data(&field.rident.ident)
-        //     })
-        //     .collect::<Vec<_>>();
         for i in 0..nrows.min(MAX_ROWS) {
             let mut row = pt::row::Row::empty();
             for field in self.fields.values() {
                 self.apply_to_elem(AddCellToRow { row: &mut row },
                     FieldIndexSelector(&field.rident.ident, i));
             }
-
-            // for field_data in &all_data {
-                // unwrap() in add_row_cell should be safe: store guarantees that all fields have
-                // the same length (given by nrows)
-                // match *field_data {
-                //     FieldData::Unsigned(col) => row.add_cell(cell!(col.get(i).unwrap())),
-                //     FieldData::Signed(col) => row.add_cell(cell!(col.get(i).unwrap())),
-                //     FieldData::Text(col) => row.add_cell(cell!(col.get(i).unwrap())),
-                //     FieldData::Boolean(col) => row.add_cell(cell!(col.get(i).unwrap())),
-                //     FieldData::Float(col) => row.add_cell(cell!(col.get(i).unwrap())),
-                // };
-            // }
             table.add_row(row);
         }
         table.set_format(*pt::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
@@ -360,36 +316,6 @@ impl<'a> ElemFn for AddCellToRow<'a> {
     impl_apply_cell_to_row!(apply_float;    f64);
 }
 
-// impl Serialize for DataView {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-//         let mut map = serializer.serialize_map(Some(self.fields.len()))?;
-//         for field in self.fields.values() {
-//             if let Some(data) = self.frames[field.frame_idx].get_field_data(&field.rident.ident) {
-//                 assert!(self.frames[field.frame_idx].nrows() == data.len());
-//                 map.serialize_entry(&field.rident.to_string(), &data)?;
-//             }
-//         }
-//         map.end()
-//     }
-// }
-
-
-// pub struct SerializeViewFn<'a, S: 'a + Serializer> {
-//     serializer: &'a S,
-//     map: &'a mut S::SerializeMap
-// }
-// impl<'a, S: Serializer> FieldFn for SerializeViewFn<'a, S> {
-//     type Output = Result<S::Ok, S::Error>;
-//     fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &T) -> Result<S::Ok, S::Error> {
-
-//         let mut seq = self.serializer.serialize_seq(Some(field.len()));
-//         (0..field.len()).all(|idx| match field.get_data(idx).unwrap() {
-//             MaybeNa::Exists(&ref val) =>  seq.serialize_element(val)?,
-//             MaybeNa::Na =>  seq.serialize_element("null")?
-//         });
-//         seq.end()
-//     }
-// }
 impl Serialize for DataView {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let mut map = serializer.serialize_map(Some(self.fields.len()))?;
@@ -807,8 +733,5 @@ mod tests {
             vec!["Louis", "Louise", "Cara", "Ann", "Sally", "Jamie", "Bob"]
         );
         unsigned::assert_vec_eq(&dv3, &"EmpId".into(), vec![8u64, 9, 6, 10, 0, 2, 5]);
-
-
-
     }
 }

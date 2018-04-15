@@ -108,58 +108,12 @@ pub(crate) mod $name {
         where T: MatchesAll<FieldSelector<'a>, $dtype>, F: Fn(&$dtype) -> bool
     {
         assert!(left.matches_all(FieldSelector(field), f).unwrap());
-        // for idx in 0..left.len() {
-        //     let val = left.get_data(idx).unwrap();
-        //     match val {
-        //         MaybeNa::Exists(&ref val) => {
-        //             assert!(f(val), "predicate failed");
-        //         },
-        //         MaybeNa::Na => {
-        //             panic!("$name::assert_pred called with NA value");
-        //         }
-        //     }
-        // };
     }
 }
 
     }
 }
 
-
-// macro_rules! impl_test_helpers {
-//     ($name:tt; $dtype:ty) => {
-//         pub(crate) mod $name {
-//             use super::MaybeNa;
-//             use masked::MaskedData;
-//             #[allow(dead_code)]
-//             pub(crate) fn assert_sorted_eq<T: PartialOrd>(left: MaskedData<T>, right: Vec<$dtype>) {
-//                 let mut left = left.as_vec();
-//                 left.sort();
-//                 let mut right = right.iter()
-//                     .map(|val| MaybeNa::Exists(val)).collect::<Vec<_>>();
-//                 right.sort();
-//                 for (lval, rval) in left.iter().zip(right.iter()) {
-//                     assert_eq!(lval, rval);
-//                 }
-//             }
-//             #[allow(dead_code)]
-//             pub(crate) fn assert_pred<T: PartialOrd, F: Fn(&$dtype) -> bool>(left: MaskedData<T>,
-//                 f: F)
-//             {
-//                 for val in left.as_vec().iter() {
-//                     match val {
-//                         &MaybeNa::Exists(&ref val) => {
-//                             assert!(f(val), "predicate failed");
-//                         },
-//                         &MaybeNa::Na => {
-//                             panic!("$name::assert_pred called with NA value");
-//                         }
-//                     }
-//                 };
-//             }
-//         }
-//     }
-// }
 impl_test_helpers!(unsigned; u64);
 impl_test_helpers!(text;     String);
 

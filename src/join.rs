@@ -208,18 +208,6 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
         return Ok(DataStore::empty());
     }
 
-    // // get the data for this field
-    // let left_key_data = left.get_field_data(&join.left_field)
-    //     .ok_or(AgnesError::FieldNotFound(join.left_field.clone().into()))?;
-    // let right_key_data = right.get_field_data(&join.right_field)
-    //     .ok_or(AgnesError::FieldNotFound(join.right_field.clone().into()))?;
-    // if left.get_field_type(&join.left_field) != right.get_field_type(&join.right_field) {
-    //     return Err(AgnesError::TypeMismatch("unable to join on fields of different types".into()));
-    // }
-    // if left.is_empty() || right.is_empty() {
-    //     return Ok(DataStore::empty());
-    // }
-
     // sort (or rather, get the sorted order for field being merged)
     // we already checks if fields exist in DataViews, so unwraps are safe
     let left_perm = left.sort_order_by(FieldSelector(&join.left_field)).unwrap();
@@ -255,9 +243,6 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
     }, (FieldSelector(&join.left_field), FieldSelector(&join.right_field)))
         .expect("FIXME");
 
-    // let merge_indices = merge_masked_data(left_perm, right_perm, left, join.left_field, right,
-    //     join.right_field, join.predicate);
-
     // compute merged frame list and field list for the new dataframe
     // compute the field list for the new dataframe
     let (new_frames, other_frame_indices) = compute_merged_frames(left, right);
@@ -288,7 +273,6 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
         ($name:tt; $ty:ty) => {
             fn $name(&mut self, value: MaybeNa<&$ty>) {
                 self.ds.add(self.ident.clone(), value.cloned())
-                // self.row.add_cell(cell!(value))
             }
         }
     }
@@ -304,16 +288,6 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
         let add_value = |ds: &mut DataStore, data: &DataView, field: &ViewField, idx, new_field| {
             data.apply_to_elem(AddToDs { ds, ident: new_field },
                 FieldIndexSelector(&field.rident.ident, idx));
-            // data.get_viewfield_data(field).unwrap().apply_to_elem(
-                // AddToDs { ds, ident: new_field }, idx);
-            // // col.get(idx).unwrap() should be safe: indices originally generated from view nrows
-            // match data.get_viewfield_data(field).unwrap() {
-            //     FieldData::Unsigned(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
-            //     FieldData::Signed(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
-            //     FieldData::Text(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
-            //     FieldData::Boolean(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
-            //     FieldData::Float(col) => ds.add(new_field, col.get(idx).unwrap().cloned()),
-            // }
         };
         let mut field_idx = 0;
         for left_field in left.fields.values() {
@@ -329,35 +303,9 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
     Ok(ds)
 }
 
-// fn merge<'a, T: PartialOrd>(
-//     left_perm_iter: Vec<usize>,
-//     right_perm_iter: Vec<usize>,
-//     left_key_data: MaskedData<T>,
-//     right_key_data: MaskedData<T>,
-//     predicate: Predicate
-// ) -> Vec<(usize, usize)>
-// {
-//     match (left_key_data, right_key_data) {
-//         (FieldData::Unsigned(left_data), FieldData::Unsigned(right_data)) =>
-//             merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
-//         (FieldData::Signed(left_data), FieldData::Signed(right_data)) =>
-//             merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
-//         (FieldData::Text(left_data), FieldData::Text(right_data)) =>
-//             merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
-//         (FieldData::Boolean(left_data), FieldData::Boolean(right_data)) =>
-//             merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
-//         (FieldData::Float(left_data), FieldData::Float(right_data)) =>
-//             merge_masked_data(left_perm_iter, right_perm_iter, left_data, right_data, predicate),
-//         _ => panic!("attempt to merge non-identical field types")
-//     }
-// }
 fn merge_masked_data<'a, T: PartialOrd, U: DataIndex<T>>(
     left_perm: &Vec<usize>,
     right_perm: &Vec<usize>,
-    // left_view: &DataView,
-    // left_field: &FieldIdent,
-    // right_view: &DataView,
-    // right_field: &FieldIdent,
     left_key_data: &'a U,
     right_key_data: &'a U,
     predicate: Predicate,
@@ -531,62 +479,6 @@ pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &Da
     }
 }
 
-// trait SortOrder {
-//     fn sort_order(&self) -> SortedOrder;
-// }
-// // f64 ordering is (arbitrarily) going to be:
-// // NA values, followed by NAN values, followed by everything else ascending
-// impl SortOrder for MaskedData<f64> {
-//     fn sort_order(&self) -> SortedOrder {
-//         let mut order = (0..self.len()).collect::<Vec<_>>();
-//         order.sort_unstable_by(|&a, &b| {
-//             // a, b are always in range, so unwraps are safe
-//             let (vala, valb) = (self.get(a).unwrap(), self.get(b).unwrap());
-//             vala.partial_cmp(&valb).unwrap_or_else(|| {
-//                 // partial_cmp doesn't fail for MaybeNa::NA, unwraps safe
-//                 let (vala, valb) = (vala.unwrap(), valb.unwrap());
-//                 if vala.is_nan() && !valb.is_nan() {
-//                     Ordering::Less
-//                 } else {
-//                     // since partial_cmp only fails for NAN, then !vala.is_nan() && valb.is_nan()
-//                     Ordering::Greater
-//                 }
-//             })
-//         });
-//         order
-//     }
-// }
-
-// macro_rules! impl_masked_sort {
-//     ($($t:ty)*) => {$(
-//         // ordering is (arbitrarily) going to be:
-//         // NA values, followed by everything else ascending
-//         impl SortOrder for MaskedData<$t> {
-//             fn sort_order(&self) -> SortedOrder {
-//                 let mut order = (0..self.len()).collect::<Vec<_>>();
-//                 order.sort_unstable_by(|&a, &b| {
-//                     // a, b are always in range, so unwraps are safe
-//                     self.get(a).unwrap().cmp(&self.get(b).unwrap())
-//                 });
-//                 order
-//             }
-//         }
-//     )*}
-// }
-// impl_masked_sort![u64 i64 String bool];
-
-// impl<'a> SortOrder for FrameFieldData<'a> {
-//     fn sort_order(&self) -> SortedOrder {
-//         match self.field_data {
-//             FieldData::Unsigned(v)  => v.sort_order(),
-//             FieldData::Signed(v)    => v.sort_order(),
-//             FieldData::Text(v)      => v.sort_order(),
-//             FieldData::Boolean(v)   => v.sort_order(),
-//             FieldData::Float(v)     => v.sort_order(),
-//         }
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -597,8 +489,6 @@ mod tests {
     fn sort_order_no_na() {
         let masked_data: MaskedData<u64> = MaskedData::from_vec(vec![2u64, 5, 3, 1, 8]);
         let sorted_order = masked_data.sort_order_by(NilSelector).unwrap();
-        // let sorted_order = masked_data.apply_to_field(SortOrder { len: masked_data.len() },
-        //     NilSelector).unwrap();
         assert_eq!(sorted_order, vec![3, 0, 2, 1, 4]);
 
         let masked_data: MaskedData<f64> = MaskedData::from_vec(vec![2.0, 5.4, 3.1, 1.1, 8.2]);

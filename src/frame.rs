@@ -27,15 +27,6 @@ impl DataFrame {
             None => self.store.nrows()
         }
     }
-    // pub(crate) fn get_field_data(&self, field: &FieldIdent) -> Option<FieldData> {
-    //     self.store.get_field_data(field)
-    // }
-    // pub(crate) fn get_field_data<'a>(&'a self, ident: &FieldIdent) -> Option<FrameFieldData<'a>> {
-    //     self.store.get_field_data(ident).map(|field_data| FrameFieldData {
-    //         frame: self,
-    //         field_data: field_data
-    //     })
-    // }
     #[cfg(test)]
     pub(crate) fn store_ref_count(&self) -> usize {
         Rc::strong_count(&self.store)
@@ -114,24 +105,12 @@ impl SortBy for DataFrame {
     }
 }
 
-// impl ApplyToAllFieldElems for DataFrame {
-//     fn apply_to_all_field_elems<T: ElemFn>(&self, mut f: T, ident: &FieldIdent)
-//         -> Option<T::Output>
-//     {
-//         self.get_field_data(&ident).map(|ff_data| {
-//             (0..ff_data.len()).map(|idx| ff_data.apply_to_elem(f, idx));
-//         })
-//     }
-// }
 impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataFrame {
     fn apply_to_elem<T: ElemFn>(&self, f: T, select: FieldIndexSelector)
         -> Option<T::Output>
     {
         let (ident, idx) = select.index();
         self.store.apply_to_elem(f, FieldIndexSelector(ident, self.map_index(idx)))
-        // self.store.apply_to_field_elem(f, ident, self.map_index(idx))
-        // self.store.get_field_data(ident).and_then(|ff_data| ff_data.apply_to_elem(f, idx))
-        // self.get_field_data(&ident).and_then(|ff_data| ff_data.apply_to_elem(f, idx))
     }
 }
 impl<'a> ApplyToField<FieldSelector<'a>> for DataFrame {
@@ -237,7 +216,6 @@ impl<'a, 'b, F: Field2Fn> Field2Fn for FrameField2Fn<'a, 'b, F> {
 
 }
 
-
 // TODO: update this to use with the FramedFieldFn / Framed framework?
 pub(crate) struct FramedField<'a> {
     pub(crate) ident: FieldIdent,
@@ -293,107 +271,3 @@ impl<'b> Serialize for FramedField<'b> {
         )
     }
 }
-
-// pub struct FrameFieldData<'a, 'b, T: 'static + PartialOrd> {
-//     frame: &'a DataFrame,
-//     masked_data: &'b MaskedData<T>
-// }
-// impl<'a, 'b, T: PartialOrd> FrameFieldData<'a, 'b, T> {
-//     pub fn len(&self) -> usize {
-//         self.frame.nrows()
-//     }
-// }
-// macro_rules! impl_ffd_apply_to_elem {
-//     ($($ty:ty)*) => {$(
-//         impl<'a, 'b> ApplyToElem for FrameFieldData<'a, 'b, $ty> {
-//             fn apply_to_elem<F: ElemFn>(&self, f: F, idx: usize) -> Option<F::Output> {
-//                 self.masked_data.apply_to_elem(f, self.frame.map_index(idx))
-//             }
-//         }
-//     )*}
-// }
-// impl_ffd_apply_to_elem!(u64 i64 String bool f64);
-// // impl<'a, 'b, T: PartialOrd> ApplyToElem for FrameFieldData<'a, 'b, T> {
-// //     fn apply_to_elem<F: ElemFn>(&self, f: F, idx: usize) -> Option<F::Output> {
-// //         self.masked_data.apply_to_elem(f, self.frame.map_index(idx))
-// //     }
-// // }
-// macro_rules! impl_ffd_apply_to_field {
-//     ($($ty:ty)*) => {$(
-//         impl<'a, 'b> ApplyToField for FrameFieldData<'a, 'b, $ty> {
-//             fn apply_to_field<F: FieldFn>(&self, f: F) -> Option<F::Output> {
-//                 self.masked_data.apply_to_field(f)
-//             }
-//         }
-//     )*}
-// }
-// impl_ffd_apply_to_field!(u64 i64 String bool f64);
-
-// impl<'a, 'b, T: PartialOrd + Serialize> Serialize for FrameFieldData<'a, 'b, T> {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-//         self.masked_data.serialize(serializer)
-//     }
-// }
-// impl<'a, 'b> DataIndex<u64> for FrameFieldData<'a, 'b, u64> {
-//     fn get_data(&self, idx: usize) -> Option<MaybeNa<&u64>> {
-//         self.masked_data.get(self.frame.map_index(idx))
-//         // self.frame.store.get_unsigned_field(&self.ident)
-//         //     .and_then(|masked: &MaskedData<u64>| masked.get(idx))
-//     }
-// }
-// impl<'a, 'b> DataIndex<i64> for FrameFieldData<'a, 'b, i64> {
-//     fn get_data(&self, idx: usize) -> Option<MaybeNa<&i64>> {
-//         self.masked_data.get(self.frame.map_index(idx))
-//         // self.frame.store.get_signed_field(&self.ident)
-//         //     .and_then(|masked: &MaskedData<i64>| masked.get(idx))
-//     }
-// }
-// impl<'a, 'b> DataIndex<String> for FrameFieldData<'a, 'b, String> {
-//     fn get_data(&self, idx: usize) -> Option<MaybeNa<&String>> {
-//         self.masked_data.get(self.frame.map_index(idx))
-//         // self.frame.store.get_text_field(&self.ident)
-//         //     .and_then(|masked: &MaskedData<String>| masked.get(idx))
-//     }
-// }
-// impl<'a, 'b> DataIndex<bool> for FrameFieldData<'a, 'b, bool> {
-//     fn get_data(&self, idx: usize) -> Option<MaybeNa<&bool>> {
-//         self.masked_data.get(self.frame.map_index(idx))
-//         // self.frame.store.get_boolean_field(&self.ident)
-//         //     .and_then(|masked: &MaskedData<bool>| masked.get(idx))
-//     }
-// }
-// impl<'a, 'b> DataIndex<f64> for FrameFieldData<'a, 'b, f64> {
-//     fn get_data(&self, idx: usize) -> Option<MaybeNa<&f64>> {
-//         self.masked_data.get(self.frame.map_index(idx))
-//         // self.frame.store.get_float_field(&self.ident)
-//         //     .and_then(|masked: &MaskedData<f64>| masked.get(idx))
-//     }
-// }
-// pub trait GetData<T: PartialOrd> {
-//     fn get_data<'a>(&'a self, ident: &FieldIdent, idx: usize) -> Option<MaybeNa<&T>>;
-// }
-// impl GetData<u64> for DataFrame {
-//     fn get_data<'a>(&'a self, ident: &FieldIdent, idx: usize) -> Option<MaybeNa<&u64>> {
-//         self.store.get_unsigned_field(ident).and_then(|masked: &MaskedData<u64>| masked.get(idx))
-//     }
-// }
-// impl GetData<i64> for DataFrame {
-//     fn get_data<'a>(&'a self, ident: &FieldIdent, idx: usize) -> Option<MaybeNa<&i64>> {
-//         self.store.get_signed_field(ident).and_then(|masked: &MaskedData<i64>| masked.get(idx))
-//     }
-// }
-// impl GetData<String> for DataFrame {
-//     fn get_data<'a>(&'a self, ident: &FieldIdent, idx: usize) -> Option<MaybeNa<&String>> {
-//         self.store.get_text_field(ident).and_then(|masked: &MaskedData<String>| masked.get(idx))
-//     }
-// }
-// impl GetData<bool> for DataFrame {
-//     fn get_data<'a>(&'a self, ident: &FieldIdent, idx: usize) -> Option<MaybeNa<&bool>> {
-//         self.store.get_boolean_field(ident).and_then(|masked: &MaskedData<bool>| masked.get(idx))
-//     }
-// }
-// impl GetData<f64> for DataFrame {
-//     fn get_data<'a>(&'a self, ident: &FieldIdent, idx: usize) -> Option<MaybeNa<&f64>> {
-//         self.store.get_float_field(ident).and_then(|masked: &MaskedData<f64>| masked.get(idx))
-//     }
-// }

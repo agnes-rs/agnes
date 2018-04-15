@@ -147,29 +147,7 @@ impl DataStore {
     pub(crate) fn get_float_field(&self, ident: &FieldIdent) -> Option<&MaskedData<f64>> {
         self.float.get(ident)
     }
-    // /// Get all the data for a field, returned within the `FieldData` common data enum. Returns
-    // /// `None` if the specified `FieldIdent` object does not exist.
-    // pub fn get_field_data(&self, ident: &FieldIdent) -> Option<FieldData> {
-    //     self.field_map.get(ident).and_then(|&idx| {
-    //         match self.fields[idx].ty_ident.ty {
-                // FieldType::Unsigned => self.get_unsigned_field(ident).map(
-                //     |f| FieldData::Unsigned(f)
-                // ),
-                // FieldType::Signed => self.get_signed_field(ident).map(
-                //     |f| FieldData::Signed(f)
-                // ),
-                // FieldType::Text => self.get_text_field(ident).map(
-                //     |f| FieldData::Text(f)
-                // ),
-                // FieldType::Boolean => self.get_boolean_field(ident).map(
-                //     |f| FieldData::Boolean(f)
-                // ),
-                // FieldType::Float => self.get_float_field(ident).map(
-                //     |f| FieldData::Float(f)
-                // ),
-    //         }
-    //     })
-    // }
+
     /// Returns `true` if this `DataStore` contains this field.
     pub fn has_field(&self, ident: &FieldIdent) -> bool {
         self.field_map.contains_key(ident)
@@ -234,7 +212,6 @@ impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataStore {
                 })
             }
         })
-        // self.get(select.index()).map(|value| f.apply_unsigned(value))
     }
 }
 
@@ -302,32 +279,6 @@ impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataStore, &'c DataSt
         }
     }
 }
-// impl ApplyToFieldElem for DataStore {
-//     fn apply_to_field_elem<T: ElemFn>(&self, f: T, ident: &FieldIdent, idx: usize)
-//         -> Option<T::Output>
-//     {
-//         self.field_map.get(ident).and_then(|&idx| {
-//             match self.fields[idx].ty_ident.ty {
-//                 FieldType::Unsigned => self.get_unsigned_field(ident).and_then(
-//                     |data| data.apply_to_elem(f, idx)
-//                 ),
-//                 FieldType::Signed => self.get_signed_field(ident).and_then(
-//                     |data| data.apply_to_elem(f, idx)
-//                 ),
-//                 FieldType::Text => self.get_text_field(ident).and_then(
-//                     |data| data.apply_to_elem(f, idx)
-//                 ),
-//                 FieldType::Boolean => self.get_boolean_field(ident).and_then(
-//                     |data| data.apply_to_elem(f, idx)
-//                 ),
-//                 FieldType::Float => self.get_float_field(ident).and_then(
-//                     |data| data.apply_to_elem(f, idx)
-//                 ),
-//             }
-//         })
-//     }
-// }
-
 
 /// Trait for adding data (of valid types) to a `DataStore`.
 pub trait AddData<T: PartialOrd> {
