@@ -734,4 +734,51 @@ mod tests {
         );
         unsigned::assert_vec_eq(&dv3, &"EmpId".into(), vec![8u64, 9, 6, 10, 0, 2, 5]);
     }
+
+    #[test]
+    fn filter_sort() {
+        let ds = sample_emp_table();
+        let orig_dv: DataView = ds.into();
+        let orig_dv: DataView = orig_dv.merge(&sample_emp_table_extra().into()).unwrap();
+        assert_eq!(orig_dv.nrows(), 7);
+
+        // start by filtering for employees with remaining vacation hours
+        let mut dv1 = orig_dv.clone();
+        dv1.filter(&"VacationHrs".into(), |&val: &f64| val >= 0.0).unwrap();
+        assert_eq!(dv1.nrows(), 6);
+        // only Louis has negative hours, so rest of employees still remain
+        text::assert_vec_eq(&dv1, &"EmpName".into(),
+            vec!["Sally", "Jamie", "Bob", "Cara", "Louise", "Ann"]
+        );
+
+        // next, sort by employee name
+        let mut dv2 = dv1.clone();
+        dv2.sort_by(&"EmpName".into()).unwrap();
+        text::assert_vec_eq(&dv2, &"EmpName".into(),
+            vec!["Ann", "Bob", "Cara", "Jamie", "Louise", "Sally"]
+        );
+
+        // filter by people in department 1
+        let mut dv3 = dv2.clone();
+        dv3.filter(&"DeptId".into(), |&val: &u64| val == 1).unwrap();
+        assert_eq!(dv3.nrows(), 3);
+        // should just be the people in department 1, in employee name order
+        text::assert_vec_eq(&dv3, &"EmpName".into(), vec!["Bob", "Cara", "Sally"]);
+
+        // check that dv1 still has the original ordering
+        text::assert_vec_eq(&dv1, &"EmpName".into(),
+            vec!["Sally", "Jamie", "Bob", "Cara", "Louise", "Ann"]
+        );
+
+        // ok, now filter dv1 by department 1
+        dv1.filter(&"DeptId".into(), |&val: &u64| val == 1).unwrap();
+        assert_eq!(dv1.nrows(), 3);
+        // should be the people in department 1, but in original name order
+        text::assert_vec_eq(&dv1, &"EmpName".into(), vec!["Sally", "Bob", "Cara"]);
+
+        // make sure dv2 hasn't been affected by any of the other changes
+        text::assert_vec_eq(&dv2, &"EmpName".into(),
+            vec!["Ann", "Bob", "Cara", "Jamie", "Louise", "Sally"]
+        );
+    }
 }
