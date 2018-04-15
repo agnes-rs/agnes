@@ -18,8 +18,8 @@ pub use self::elem_fn::*;
 mod field_fn;
 pub use self::field_fn::*;
 
-mod assert;
-pub use self::assert::*;
+mod matches;
+pub use self::matches::*;
 
 mod sort_order;
 pub use self::sort_order::*;
