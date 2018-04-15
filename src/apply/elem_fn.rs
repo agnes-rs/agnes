@@ -7,13 +7,6 @@ pub trait ApplyToElem<S: Selector> {
     /// Apply an `ElemFn` to an element selected with the provided `Selector`.
     fn apply_to_elem<T: ElemFn>(&self, f: T, select: S) -> Option<T::Output>;
 }
-// pub trait ApplyToAllFieldElems {
-//     fn apply_to_all_field_elems<T: ElemFn>(&self, f: T, ident: &FieldIdent) -> Option<T::Output>;
-// }
-// pub trait ApplyToFieldElem {
-//     fn apply_to_field_elem<T: ElemFn>(&self, f: T, ident: &FieldIdent, idx: usize)
-//         -> Option<T::Output>;
-// }
 
 /// Trait for a type-dependent function that applies to a specific element.
 pub trait ElemFn {
