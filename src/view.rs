@@ -19,7 +19,7 @@ use indexmap::IndexMap;
 use serde::ser::{self, Serialize, Serializer, SerializeMap};
 use prettytable as pt;
 
-use frame::{DataFrame, FramedField, Filter};
+use frame::{DataFrame, FramedField, Filter, SortBy};
 use masked::{MaybeNa};
 use field::{FieldIdent, RFieldIdent, FieldType};
 use error;
@@ -175,10 +175,40 @@ impl DataView {
 }
 
 impl<T> Filter<T> for DataView where DataFrame: Filter<T> {
-    fn filter<F: Fn(&T) -> bool>(&mut self, ident: &FieldIdent, pred: F) -> error::Result<()> {
+    fn filter<F: Fn(&T) -> bool>(&mut self, ident: &FieldIdent, pred: F)
+        -> error::Result<Vec<usize>>
+    {
         match self.fields.get(ident) {
-            Some(view_field) =>
-                self.frames[view_field.frame_idx].filter(&view_field.rident.ident, pred),
+            Some(view_field) => {
+                // filter on frame index this field belongs to
+                let filter = self.frames[view_field.frame_idx].filter(
+                    &view_field.rident.ident, pred)?;
+                // apply same filter to rest of frames
+                for frame_idx in 0..self.frames.len() {
+                    if frame_idx != view_field.frame_idx {
+                        self.frames[frame_idx].update_permutation(&filter);
+                    }
+                }
+                Ok(filter)
+            },
+            None => Err(error::AgnesError::FieldNotFound(ident.clone()))
+        }
+    }
+}
+impl SortBy for DataView {
+    fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>> {
+        match self.fields.get(ident) {
+            Some(view_field) => {
+                // filter on frame index this field belongs to
+                let sorted = self.frames[view_field.frame_idx].sort_by(&view_field.rident.ident)?;
+                // apply same filter to rest of frames
+                for frame_idx in 0..self.frames.len() {
+                    if frame_idx != view_field.frame_idx {
+                        self.frames[frame_idx].update_permutation(&sorted);
+                    }
+                }
+                Ok(sorted)
+            },
             None => Err(error::AgnesError::FieldNotFound(ident.clone()))
         }
     }
@@ -532,7 +562,7 @@ mod tests {
     use super::*;
     use test_utils::*;
     use error::*;
-    use frame::Filter;
+    use frame::{Filter, SortBy};
 
     #[test]
     fn merge() {
@@ -739,5 +769,46 @@ mod tests {
         dv2.filter(&"DeptId".into(), |val: &u64| *val == 4).unwrap();
         assert_eq!(dv2.nrows(), 2);
         text::assert_sorted_eq(&dv2, &"EmpName".into(), vec!["Louise", "Ann"]);
+    }
+
+    #[test]
+    fn sort() {
+        let ds = sample_emp_table();
+        let orig_dv: DataView = ds.into();
+        let orig_dv: DataView = orig_dv.merge(&sample_emp_table_extra().into()).unwrap();
+        assert_eq!(orig_dv.nrows(), 7);
+
+        // sort by name
+        let mut dv1 = orig_dv.clone();
+        dv1.sort_by(&"EmpName".into()).unwrap();
+        text::assert_vec_eq(&dv1, &"EmpName".into(),
+            vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
+        );
+        unsigned::assert_vec_eq(&dv1, &"EmpId".into(), vec![10u64, 5, 6, 2, 8, 9, 0]);
+
+        // re-sort by empid
+        let mut dv2 = dv1.clone();
+        dv2.sort_by(&"EmpId".into()).unwrap();
+        text::assert_vec_eq(&dv2, &"EmpName".into(),
+            vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"]
+        );
+        unsigned::assert_vec_eq(&dv2, &"EmpId".into(), vec![0u64, 2, 5, 6, 8, 9, 10]);
+
+        // make sure dv1 is still sorted by EmpName
+        text::assert_vec_eq(&dv1, &"EmpName".into(),
+            vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
+        );
+        unsigned::assert_vec_eq(&dv1, &"EmpId".into(), vec![10u64, 5, 6, 2, 8, 9, 0]);
+
+        // starting with sorted by name, sort by vacation hours
+        let mut dv3 = dv1.clone();
+        dv3.sort_by(&"VacationHrs".into()).unwrap();
+        text::assert_vec_eq(&dv3, &"EmpName".into(),
+            vec!["Louis", "Louise", "Cara", "Ann", "Sally", "Jamie", "Bob"]
+        );
+        unsigned::assert_vec_eq(&dv3, &"EmpId".into(), vec![8u64, 9, 6, 10, 0, 2, 5]);
+
+
+
     }
 }

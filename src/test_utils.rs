@@ -79,20 +79,27 @@ pub(crate) mod $name {
     use field::FieldIdent;
 
     #[allow(dead_code)]
+    pub(crate) fn assert_vec_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
+        where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
+              R: Into<$dtype>
+    {
+        let right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
+        for (i, rval) in (0..right.len()).zip(right) {
+            assert!(left.matches(FieldIndexSelector(ident, i), rval.clone()).unwrap());
+        }
+    }
+
+    #[allow(dead_code)]
     pub(crate) fn assert_sorted_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
         where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
               R: Into<$dtype>
     {
-        // let mut left = left.as_vec();
         let left_order = left.sort_order_by(FieldSelector(ident)).unwrap();
         let mut right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
-        // let mut right = right.iter()
-        //     .map(|val| MaybeNa::Exists(val)).collect::<Vec<_>>();
         right.sort();
 
         for (lidx, rval) in left_order.iter().zip(right.iter()) {
             assert!(left.matches(FieldIndexSelector(ident, *lidx), rval.clone()).unwrap());
-            // assert_eq!(left.get_data(*lidx).unwrap(), *rval);
         }
     }
 

@@ -57,32 +57,38 @@ impl DataFrame {
     pub fn has_field(&self, s: &FieldIdent) -> bool {
         self.store.has_field(s)
     }
+    pub(crate) fn update_permutation(&mut self, new_permutation: &Vec<usize>) {
+        // check if we already have a permutation
+        self.permutation = match self.permutation {
+            Some(ref prev_perm) => {
+                // we already have a permutation, map the filter indices through it
+                Some(new_permutation.iter().map(|&new_idx| prev_perm[new_idx]).collect())
+            },
+            None => Some(new_permutation.clone())
+        };
+    }
 }
 
 /// Trait that provides a function for filtering a data structure's contents.
 pub trait Filter<T> {
     /// Filter the contents of this data structure by applying the supplied predicate on the
     /// specified field.
-    fn filter<F: Fn(&T) -> bool>(&mut self, field: &FieldIdent, pred: F) -> error::Result<()>;
+    fn filter<F: Fn(&T) -> bool>(&mut self, ident: &FieldIdent, pred: F)
+        -> error::Result<Vec<usize>>;
 }
 macro_rules! impl_filter {
     ($($dtype:tt)*) => {$(
 
 impl Filter<$dtype> for DataFrame {
-    fn filter<F: Fn(&$dtype) -> bool>(&mut self, field: &FieldIdent, pred: F) -> error::Result<()> {
-        match self.get_filter(FieldSelector(field), pred) {
+    fn filter<F: Fn(&$dtype) -> bool>(&mut self, ident: &FieldIdent, pred: F)
+        -> error::Result<Vec<usize>>
+    {
+        match self.get_filter(FieldSelector(ident), pred) {
             Some(filter) => {
-                // check if we already have a permutation
-                self.permutation = match self.permutation {
-                    Some(ref prev_perm) => {
-                        // we already have a permutation, map the filter indices through it
-                        Some(filter.iter().map(|&new_idx| prev_perm[new_idx]).collect())
-                    },
-                    None => Some(filter)
-                };
-                Ok(())
+                self.update_permutation(&filter);
+                Ok(filter)
             },
-            None => { Err(error::AgnesError::FieldNotFound(field.clone())) }
+            None => { Err(error::AgnesError::FieldNotFound(ident.clone())) }
         }
     }
 }
@@ -90,6 +96,23 @@ impl Filter<$dtype> for DataFrame {
     )*}
 }
 impl_filter!(u64 i64 String bool f64);
+
+/// Trait that provides a function for sorting a data structure's contents.
+pub trait SortBy {
+    /// Sort the contents of this data structure (ascending) by the specified field.
+    fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>;
+}
+impl SortBy for DataFrame {
+    fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>> {
+        match self.sort_order_by(FieldSelector(ident)) {
+            Some(sort_order) => {
+                self.update_permutation(&sort_order);
+                Ok(sort_order)
+            },
+            None => { Err(error::AgnesError::FieldNotFound(ident.clone())) }
+        }
+    }
+}
 
 // impl ApplyToAllFieldElems for DataFrame {
 //     fn apply_to_all_field_elems<T: ElemFn>(&self, mut f: T, ident: &FieldIdent)
