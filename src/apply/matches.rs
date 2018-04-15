@@ -114,6 +114,156 @@ impl<S: Selector, T> Matches<S, f64> for T where T: ApplyToElem<S> {
     }
 }
 
+/// `FieldFn` function for finding an index set of unsigned integer values of a field that match
+/// a predicate.
+pub struct FilterFnUnsigned<F: Fn(&u64) -> bool> {
+    f: F,
+}
+impl<F: Fn(&u64) -> bool> FieldFn for FilterFnUnsigned<F> {
+    type Output = Vec<usize>;
+    fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &T) -> Vec<usize> {
+        (0..field.len()).filter(|&idx| {
+            match field.get_data(idx).unwrap() {
+                MaybeNa::Exists(&ref val) => (self.f)(val),
+                MaybeNa::Na => false,
+            }
+        }).collect()
+    }
+    fn apply_signed<T: DataIndex<i64>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_text<T: DataIndex<String>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_boolean<T: DataIndex<bool>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_float<T: DataIndex<f64>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+}
+/// `FieldFn` function for finding an index set of signed integer values of a field that match
+/// a predicate.
+pub struct FilterFnSigned<F: Fn(&i64) -> bool> {
+    f: F,
+}
+impl<F: Fn(&i64) -> bool> FieldFn for FilterFnSigned<F> {
+    type Output = Vec<usize>;
+    fn apply_unsigned<T: DataIndex<u64>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_signed<T: DataIndex<i64>>(&mut self, field: &T) -> Vec<usize> {
+        (0..field.len()).filter(|&idx| {
+            match field.get_data(idx).unwrap() {
+                MaybeNa::Exists(&ref val) => (self.f)(val),
+                MaybeNa::Na => false,
+            }
+        }).collect()
+    }
+    fn apply_text<T: DataIndex<String>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_boolean<T: DataIndex<bool>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_float<T: DataIndex<f64>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+}
+/// `FieldFn` function for finding an index set of text values of a field that match
+/// a predicate.
+pub struct FilterFnText<F: Fn(&String) -> bool> {
+    f: F,
+}
+impl<F: Fn(&String) -> bool> FieldFn for FilterFnText<F> {
+    type Output = Vec<usize>;
+    fn apply_unsigned<T: DataIndex<u64>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_signed<T: DataIndex<i64>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_text<T: DataIndex<String>>(&mut self, field: &T) -> Vec<usize> {
+        (0..field.len()).filter(|&idx| {
+            match field.get_data(idx).unwrap() {
+                MaybeNa::Exists(&ref val) => (self.f)(val),
+                MaybeNa::Na => false,
+            }
+        }).collect()
+    }
+    fn apply_boolean<T: DataIndex<bool>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_float<T: DataIndex<f64>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+}
+/// `FieldFn` function for finding an index set of boolean values of a field that match
+/// a predicate.
+pub struct FilterFnBoolean<F: Fn(&bool) -> bool> {
+    f: F,
+}
+impl<F: Fn(&bool) -> bool> FieldFn for FilterFnBoolean<F> {
+    type Output = Vec<usize>;
+    fn apply_unsigned<T: DataIndex<u64>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_signed<T: DataIndex<i64>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_text<T: DataIndex<String>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_boolean<T: DataIndex<bool>>(&mut self, field: &T) -> Vec<usize> {
+        (0..field.len()).filter(|&idx| {
+            match field.get_data(idx).unwrap() {
+                MaybeNa::Exists(&ref val) => (self.f)(val),
+                MaybeNa::Na => false,
+            }
+        }).collect()
+    }
+    fn apply_float<T: DataIndex<f64>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+}
+/// `FieldFn` function for finding an index set of floating-point values of a field that match
+/// a predicate.
+pub struct FilterFnFloat<F: Fn(&f64) -> bool> {
+    f: F,
+}
+impl<F: Fn(&f64) -> bool> FieldFn for FilterFnFloat<F> {
+    type Output = Vec<usize>;
+    fn apply_unsigned<T: DataIndex<u64>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_signed<T: DataIndex<i64>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_text<T: DataIndex<String>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_boolean<T: DataIndex<bool>>(&mut self, _: &T) -> Vec<usize> { vec![] }
+    fn apply_float<T: DataIndex<f64>>(&mut self, field: &T) -> Vec<usize> {
+        (0..field.len()).filter(|&idx| {
+            match field.get_data(idx).unwrap() {
+                MaybeNa::Exists(&ref val) => (self.f)(val),
+                MaybeNa::Na => false,
+            }
+        }).collect()
+    }
+}
+
+/// Helper trait / implementations for finding an index set of values in a field that match a
+/// predicate. Returns a vector of indices of all elements in the field that pass the predicate.
+pub trait GetFilter<S: Selector, T> {
+    /// Returns vector of indices of all elements in the field specified with the `Selector` that
+    /// pass the predicate.
+    fn get_filter<F: Fn(&T) -> bool>(&self, select: S, pred: F) -> Option<Vec<usize>>;
+}
+impl<S: Selector, T> GetFilter<S, u64> for T where T: ApplyToField<S> {
+    fn get_filter<F: Fn(&u64) -> bool>(&self, select: S, pred: F) -> Option<Vec<usize>> {
+        self.apply_to_field(
+            FilterFnUnsigned { f: pred },
+            select
+        )
+    }
+}
+impl<S: Selector, T> GetFilter<S, i64> for T where T: ApplyToField<S> {
+    fn get_filter<F: Fn(&i64) -> bool>(&self, select: S, pred: F) -> Option<Vec<usize>> {
+        self.apply_to_field(
+            FilterFnSigned { f: pred },
+            select
+        )
+    }
+}
+impl<S: Selector, T> GetFilter<S, String> for T where T: ApplyToField<S> {
+    fn get_filter<F: Fn(&String) -> bool>(&self, select: S, pred: F) -> Option<Vec<usize>> {
+        self.apply_to_field(
+            FilterFnText { f: pred },
+            select
+        )
+    }
+}
+impl<S: Selector, T> GetFilter<S, bool> for T where T: ApplyToField<S> {
+    fn get_filter<F: Fn(&bool) -> bool>(&self, select: S, pred: F) -> Option<Vec<usize>> {
+        self.apply_to_field(
+            FilterFnBoolean { f: pred },
+            select
+        )
+    }
+}
+impl<S: Selector, T> GetFilter<S, f64> for T where T: ApplyToField<S> {
+    fn get_filter<F: Fn(&f64) -> bool>(&self, select: S, pred: F) -> Option<Vec<usize>> {
+        self.apply_to_field(
+            FilterFnFloat { f: pred },
+            select
+        )
+    }
+}
+
+
 /// `FieldFn` function for matching all unsigned integer values of a field against a predicate.
 pub struct MatchesAllFnUnsigned<F: Fn(&u64) -> bool> {
     f: F,
