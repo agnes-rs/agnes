@@ -676,17 +676,17 @@ mod tests {
         assert_eq!(joined_dv.nrows(), 7);
         assert_eq!(joined_dv.nfields(), 5);
         unsigned::assert_sorted_eq(&joined_dv, &"EmpId".into(),
-            vec![0, 2, 5, 6, 8, 9, 10]);
+            vec![0u64, 2, 5, 6, 8, 9, 10]);
         unsigned::assert_sorted_eq(&joined_dv, &"DeptId.0".into(),
-            vec![1, 2, 1, 1, 3, 4, 4]);
+            vec![1u64, 2, 1, 1, 3, 4, 4]);
         unsigned::assert_sorted_eq(&joined_dv, &"DeptId.1".into(),
-            vec![1, 2, 1, 1, 3, 4, 4]);
+            vec![1u64, 2, 1, 1, 3, 4, 4]);
         text::assert_sorted_eq(&joined_dv, &"EmpName".into(),
             vec!["Sally", "Jamie", "Bob", "Louis", "Louise", "Cara", "Ann"]
-                .iter().map(|name| name.to_string()).collect());
+        );
         text::assert_sorted_eq(&joined_dv, &"DeptName".into(),
             vec!["Marketing", "Sales", "Marketing", "Marketing", "Manufacturing", "R&D", "R&D"]
-                .iter().map(|name| name.to_string()).collect());
+        );
     }
 
     #[test]
@@ -720,17 +720,15 @@ mod tests {
         assert_eq!(joined_dv.nrows(), 4);
         assert_eq!(joined_dv.nfields(), 5);
         unsigned::assert_sorted_eq(&joined_dv, &"EmpId".into(),
-            vec![2, 8, 9, 10]);
+            vec![2u64, 8, 9, 10]);
         unsigned::assert_sorted_eq(&joined_dv, &"DeptId.0".into(),
-            vec![2, 3, 4, 4]);
+            vec![2u64, 3, 4, 4]);
         unsigned::assert_sorted_eq(&joined_dv, &"DeptId.1".into(),
-            vec![2, 3, 4, 4]);
+            vec![2u64, 3, 4, 4]);
         text::assert_sorted_eq(&joined_dv, &"EmpName".into(),
-            vec!["Jamie", "Louis", "Louise", "Ann"]
-                .iter().map(|name| name.to_string()).collect());
+            vec!["Jamie", "Louis", "Louise", "Ann"]);
         text::assert_sorted_eq(&joined_dv, &"DeptName".into(),
-            vec!["Sales", "Manufacturing", "R&D", "R&D"]
-                .iter().map(|name| name.to_string()).collect());
+            vec!["Sales", "Manufacturing", "R&D", "R&D"]);
 
         // dept id missing from emp table, should remove single employee from join
         let ds1 = emp_table_from_masked(
@@ -775,17 +773,17 @@ mod tests {
         assert_eq!(joined_dv.nrows(), 6);
         assert_eq!(joined_dv.nfields(), 5);
         unsigned::assert_sorted_eq(&joined_dv, &"EmpId".into(),
-            vec![0, 2, 6, 8, 9, 10]);
+            vec![0u64, 2, 6, 8, 9, 10]);
         unsigned::assert_sorted_eq(&joined_dv, &"DeptId.0".into(),
-            vec![1, 2, 1, 3, 4, 4]);
+            vec![1u64, 2, 1, 3, 4, 4]);
         unsigned::assert_sorted_eq(&joined_dv, &"DeptId.1".into(),
-            vec![1, 2, 1, 3, 4, 4]);
+            vec![1u64, 2, 1, 3, 4, 4]);
         text::assert_sorted_eq(&joined_dv, &"EmpName".into(),
             vec!["Sally", "Jamie", "Louis", "Louise", "Cara", "Ann"]
-                .iter().map(|name| name.to_string()).collect());
+        );
         text::assert_sorted_eq(&joined_dv, &"DeptName".into(),
             vec!["Marketing", "Sales", "Marketing", "Manufacturing", "R&D", "R&D"]
-                .iter().map(|name| name.to_string()).collect());
+        );
     }
 
     #[test]

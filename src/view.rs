@@ -19,7 +19,7 @@ use indexmap::IndexMap;
 use serde::ser::{self, Serialize, Serializer, SerializeMap};
 use prettytable as pt;
 
-use frame::{DataFrame, FramedField};
+use frame::{DataFrame, FramedField, Filter};
 use masked::{MaybeNa};
 use field::{FieldIdent, RFieldIdent, FieldType};
 use error;
@@ -170,6 +170,16 @@ impl DataView {
             _ => {
                 sort_merge_join(self, other, join)
             }
+        }
+    }
+}
+
+impl<T> Filter<T> for DataView where DataFrame: Filter<T> {
+    fn filter<F: Fn(&T) -> bool>(&mut self, ident: &FieldIdent, pred: F) -> error::Result<()> {
+        match self.fields.get(ident) {
+            Some(view_field) =>
+                self.frames[view_field.frame_idx].filter(&view_field.rident.ident, pred),
+            None => Err(error::AgnesError::FieldNotFound(ident.clone()))
         }
     }
 }
@@ -522,6 +532,7 @@ mod tests {
     use super::*;
     use test_utils::*;
     use error::*;
+    use frame::Filter;
 
     #[test]
     fn merge() {
@@ -699,5 +710,34 @@ mod tests {
             },
             Err(e) => { panic!("Incorrect error: {:?}", e); }
         }
+    }
+
+    #[test]
+    fn filter() {
+        let ds = sample_emp_table();
+        let orig_dv: DataView = ds.into();
+        assert_eq!(orig_dv.nrows(), 7);
+
+        // set filtering by department ID
+        let mut dv1 = orig_dv.clone();
+        dv1.filter(&"DeptId".into(), |val: &u64| *val == 1).unwrap();
+        assert_eq!(dv1.nrows(), 3);
+        text::assert_sorted_eq(&dv1, &"EmpName".into(), vec!["Sally", "Bob", "Cara"]);
+
+        // filter a second time
+        dv1.filter(&"EmpId".into(), |val: &u64| *val >= 6).unwrap();
+        assert_eq!(dv1.nrows(), 1);
+        text::assert_sorted_eq(&dv1, &"EmpName".into(), vec!["Cara"]);
+
+        // that same filter on the original DV has different results
+        let mut dv2 = orig_dv.clone();
+        dv2.filter(&"EmpId".into(), |val: &u64| *val >= 6).unwrap();
+        assert_eq!(dv2.nrows(), 4);
+        text::assert_sorted_eq(&dv2, &"EmpName".into(), vec!["Cara", "Louis", "Louise", "Ann"]);
+
+        // let's try filtering by a different department on dv2
+        dv2.filter(&"DeptId".into(), |val: &u64| *val == 4).unwrap();
+        assert_eq!(dv2.nrows(), 2);
+        text::assert_sorted_eq(&dv2, &"EmpName".into(), vec!["Louise", "Ann"]);
     }
 }

@@ -5,27 +5,13 @@ underlying data store, along with record-based filtering and sorting details.
 use std::rc::Rc;
 use std::marker::PhantomData;
 
-use bit_vec::BitVec;
-
 use store::DataStore;
 use masked::MaybeNa;
 use serde::{Serialize, Serializer};
 use serde::ser::{self, SerializeSeq};
 use field::{FieldIdent, FieldType};
 use apply::*;
-
-/// A data record filter.
-#[derive(Debug, Clone)]
-pub struct Filter {
-    mask: BitVec,
-    len: usize,
-}
-impl Filter {
-    /// Returns the length of this filter (the number of elements that pass the filter)
-    pub fn len(&self) -> usize {
-        self.len
-    }
-}
+use error;
 
 /// A data frame. A `DataStore` reference along with record-based filtering and sorting details.
 #[derive(Debug, Clone)]
@@ -72,6 +58,39 @@ impl DataFrame {
         self.store.has_field(s)
     }
 }
+
+/// Trait that provides a function for filtering a data structure's contents.
+pub trait Filter<T> {
+    /// Filter the contents of this data structure by applying the supplied predicate on the
+    /// specified field.
+    fn filter<F: Fn(&T) -> bool>(&mut self, field: &FieldIdent, pred: F) -> error::Result<()>;
+}
+macro_rules! impl_filter {
+    ($($dtype:tt)*) => {$(
+
+impl Filter<$dtype> for DataFrame {
+    fn filter<F: Fn(&$dtype) -> bool>(&mut self, field: &FieldIdent, pred: F) -> error::Result<()> {
+        match self.get_filter(FieldSelector(field), pred) {
+            Some(filter) => {
+                // check if we already have a permutation
+                self.permutation = match self.permutation {
+                    Some(ref prev_perm) => {
+                        // we already have a permutation, map the filter indices through it
+                        Some(filter.iter().map(|&new_idx| prev_perm[new_idx]).collect())
+                    },
+                    None => Some(filter)
+                };
+                Ok(())
+            },
+            None => { Err(error::AgnesError::FieldNotFound(field.clone())) }
+        }
+    }
+}
+
+    )*}
+}
+impl_filter!(u64 i64 String bool f64);
+
 // impl ApplyToAllFieldElems for DataFrame {
 //     fn apply_to_all_field_elems<T: ElemFn>(&self, mut f: T, ident: &FieldIdent)
 //         -> Option<T::Output>

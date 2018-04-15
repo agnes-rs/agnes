@@ -79,11 +79,13 @@ pub(crate) mod $name {
     use field::FieldIdent;
 
     #[allow(dead_code)]
-    pub(crate) fn assert_sorted_eq<'a, T>(left: &T, ident: &'a FieldIdent, mut right: Vec<$dtype>)
-        where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>
+    pub(crate) fn assert_sorted_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
+        where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
+              R: Into<$dtype>
     {
         // let mut left = left.as_vec();
         let left_order = left.sort_order_by(FieldSelector(ident)).unwrap();
+        let mut right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
         // let mut right = right.iter()
         //     .map(|val| MaybeNa::Exists(val)).collect::<Vec<_>>();
         right.sort();
