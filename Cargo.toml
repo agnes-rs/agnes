@@ -1,6 +1,6 @@
 [package]
 name = "agnes"
-version = "0.1.2"
+version = "0.1.3"
 description = "A data wrangling library for Rust"
 authors = ["Jamie Blondin <jblondin@gmail.com>"]
 license-file = "LICENSE"
