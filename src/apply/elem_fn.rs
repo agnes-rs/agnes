@@ -1,11 +1,12 @@
 use apply::Selector;
 use masked::MaybeNa;
+use error::Result;
 
 /// Trait implemented by data structures which wish to be able to support `ElemFn`s (type-dependent
 /// functions that apply to a specific element).
 pub trait ApplyToElem<S: Selector> {
     /// Apply an `ElemFn` to an element selected with the provided `Selector`.
-    fn apply_to_elem<T: ElemFn>(&self, f: T, select: S) -> Option<T::Output>;
+    fn apply_to_elem<T: ElemFn>(&self, f: T, select: S) -> Result<T::Output>;
 }
 
 /// Trait for a type-dependent function that applies to a specific element.

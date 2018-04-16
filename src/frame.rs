@@ -74,13 +74,9 @@ impl Filter<$dtype> for DataFrame {
     fn filter<F: Fn(&$dtype) -> bool>(&mut self, ident: &FieldIdent, pred: F)
         -> error::Result<Vec<usize>>
     {
-        match self.get_filter(FieldSelector(ident), pred) {
-            Some(filter) => {
-                self.update_permutation(&filter);
-                Ok(filter)
-            },
-            None => { Err(error::AgnesError::FieldNotFound(ident.clone())) }
-        }
+        let filter = self.get_filter(FieldSelector(ident), pred)?;
+        self.update_permutation(&filter);
+        Ok(filter)
     }
 }
 
@@ -95,32 +91,28 @@ pub trait SortBy {
 }
 impl SortBy for DataFrame {
     fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>> {
-        match self.sort_order_by(FieldSelector(ident)) {
-            Some(sort_order) => {
-                self.update_permutation(&sort_order);
-                Ok(sort_order)
-            },
-            None => { Err(error::AgnesError::FieldNotFound(ident.clone())) }
-        }
+        let sort_order = self.sort_order_by(FieldSelector(ident))?;
+        self.update_permutation(&sort_order);
+        Ok(sort_order)
     }
 }
 
 impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataFrame {
     fn apply_to_elem<T: ElemFn>(&self, f: T, select: FieldIndexSelector)
-        -> Option<T::Output>
+        -> error::Result<T::Output>
     {
         let (ident, idx) = select.index();
         self.store.apply_to_elem(f, FieldIndexSelector(ident, self.map_index(idx)))
     }
 }
 impl<'a> ApplyToField<FieldSelector<'a>> for DataFrame {
-    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector) -> Option<F::Output> {
+    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector) -> error::Result<F::Output> {
         self.store.apply_to_field(FrameFieldFn { frame: &self, field_fn: f }, select)
     }
 }
 impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataFrame, &'c DataFrame) {
     fn apply_to_field2<F: Field2Fn>(&self, f: F, select: (FieldSelector, FieldSelector))
-        -> Option<F::Output>
+        -> error::Result<F::Output>
     {
         (self.0.store.as_ref(), self.1.store.as_ref()).apply_to_field2(
             FrameField2Fn { frames: (&self.0, &self.1), field_fn: f }, select)
@@ -147,7 +139,7 @@ impl<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> Framed<'a, 'b, T, D> {
     }
 }
 impl<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> DataIndex<T> for Framed<'a, 'b, T, D> {
-    fn get_data(&self, idx: usize) -> Option<MaybeNa<&T>> {
+    fn get_data(&self, idx: usize) -> error::Result<MaybeNa<&T>> {
         self.data.get_data(self.frame.map_index(idx))
     }
     fn len(&self) -> usize {

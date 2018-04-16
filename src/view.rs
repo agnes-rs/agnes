@@ -207,27 +207,34 @@ impl SortBy for DataView {
 
 impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataView {
     fn apply_to_elem<T: ElemFn>(&self, f: T, select: FieldIndexSelector<'a>)
-        -> Option<T::Output>
+        -> error::Result<T::Output>
     {
         let (ident, idx) = select.index();
-        self.fields.get(ident).and_then(|view_field: &ViewField| {
-            self.frames[view_field.frame_idx].apply_to_elem(f, FieldIndexSelector(&ident, idx))
-        })
+        self.fields.get(ident)
+            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
+            .and_then(|view_field: &ViewField| {
+                self.frames[view_field.frame_idx].apply_to_elem(f,
+                    FieldIndexSelector(&view_field.rident.ident, idx))
+            }
+        )
     }
 }
 impl<'a> ApplyToField<FieldSelector<'a>> for DataView {
-    fn apply_to_field<T: FieldFn>(&self, f: T, select: FieldSelector) -> Option<T::Output> {
+    fn apply_to_field<T: FieldFn>(&self, f: T, select: FieldSelector) -> error::Result<T::Output> {
         let ident = select.index();
-        self.fields.get(ident).and_then(|view_field: &ViewField| {
-            self.frames[view_field.frame_idx].apply_to_field(f,
-                FieldSelector(&view_field.rident.ident))
-        })
+        self.fields.get(ident)
+            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
+            .and_then(|view_field: &ViewField| {
+                self.frames[view_field.frame_idx].apply_to_field(f,
+                    FieldSelector(&view_field.rident.ident))
+            }
+        )
     }
 }
 // two fields on same dataview
 impl<'a> ApplyToField2<FieldSelector<'a>> for DataView {
     fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (FieldSelector, FieldSelector))
-        -> Option<T::Output>
+        -> error::Result<T::Output>
     {
         (self, self).apply_to_field2(f, select)
     }
@@ -235,7 +242,7 @@ impl<'a> ApplyToField2<FieldSelector<'a>> for DataView {
 // fields on two different dataviews
 impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataView, &'c DataView) {
     fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (FieldSelector, FieldSelector))
-        -> Option<T::Output>
+        -> error::Result<T::Output>
     {
         let (ident0, ident1) = (select.0.index(), select.1.index());
         let vf0 = self.0.fields.get(ident0);
@@ -248,7 +255,8 @@ impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataView, &'c DataVie
                         FieldSelector(&vf1.rident.ident)
                     ))
             },
-            _ => None
+            (None, _) => Err(error::AgnesError::FieldNotFound(ident0.clone())),
+            _ => Err(error::AgnesError::FieldNotFound(ident1.clone())),
         }
     }
 }
@@ -287,8 +295,12 @@ impl Display for DataView {
         for i in 0..nrows.min(MAX_ROWS) {
             let mut row = pt::row::Row::empty();
             for field in self.fields.values() {
-                self.apply_to_elem(AddCellToRow { row: &mut row },
-                    FieldIndexSelector(&field.rident.ident, i));
+                match self.apply_to_elem(AddCellToRow { row: &mut row },
+                    FieldIndexSelector(&field.rident.ident, i))
+                {
+                    Ok(_) => {},
+                    Err(e) => { return write!(f, "view display error: {}", e); },
+                };
             }
             table.add_row(row);
         }

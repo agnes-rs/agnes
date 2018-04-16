@@ -191,58 +191,79 @@ impl Default for DataStore {
 }
 
 impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataStore {
-    fn apply_to_elem<F: ElemFn>(&self, f: F, select: FieldIndexSelector) -> Option<F::Output> {
+    fn apply_to_elem<F: ElemFn>(&self, f: F, select: FieldIndexSelector) -> Result<F::Output> {
         let (ident, idx) = select.index();
-        self.field_map.get(ident).and_then(|&field_idx| {
-            match self.fields[field_idx].ty_ident.ty {
-                FieldType::Unsigned => self.get_unsigned_field(ident).and_then(|data| {
-                    data.apply_to_elem(f, IndexSelector(idx))
-                }),
-                FieldType::Signed => self.get_signed_field(ident).and_then(|data| {
-                    data.apply_to_elem(f, IndexSelector(idx))
-                }),
-                FieldType::Text => self.get_text_field(ident).and_then(|data| {
-                    data.apply_to_elem(f, IndexSelector(idx))
-                }),
-                FieldType::Boolean => self.get_boolean_field(ident).and_then(|data| {
-                    data.apply_to_elem(f, IndexSelector(idx))
-                }),
-                FieldType::Float => self.get_float_field(ident).and_then(|data| {
-                    data.apply_to_elem(f, IndexSelector(idx))
-                })
+        self.field_map.get(ident)
+            .ok_or(AgnesError::FieldNotFound(ident.clone()))
+            .and_then(|&field_idx| {
+                match self.fields[field_idx].ty_ident.ty {
+                    FieldType::Unsigned => self.get_unsigned_field(ident)
+                        .ok_or(AgnesError::FieldNotFound(ident.clone()))
+                        .and_then(|data| {
+                            data.apply_to_elem(f, IndexSelector(idx))
+                        }
+                    ),
+                    FieldType::Signed => self.get_signed_field(ident)
+                        .ok_or(AgnesError::FieldNotFound(ident.clone()))
+                        .and_then(|data| {
+                            data.apply_to_elem(f, IndexSelector(idx))
+                        }
+                    ),
+                    FieldType::Text => self.get_text_field(ident)
+                        .ok_or(AgnesError::FieldNotFound(ident.clone()))
+                        .and_then(|data| {
+                            data.apply_to_elem(f, IndexSelector(idx))
+                        }
+                    ),
+                    FieldType::Boolean => self.get_boolean_field(ident)
+                        .ok_or(AgnesError::FieldNotFound(ident.clone()))
+                        .and_then(|data| {
+                            data.apply_to_elem(f, IndexSelector(idx))
+                        }
+                    ),
+                    FieldType::Float => self.get_float_field(ident)
+                        .ok_or(AgnesError::FieldNotFound(ident.clone()))
+                        .and_then(|data| {
+                            data.apply_to_elem(f, IndexSelector(idx))
+                        }
+                    )
+                }
             }
-        })
+        )
     }
 }
 
 impl<'a> ApplyToField<FieldSelector<'a>> for DataStore {
-    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector) -> Option<F::Output> {
+    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector) -> Result<F::Output> {
         let ident = select.index();
-        self.field_map.get(ident).and_then(|&field_idx| {
-            match self.fields[field_idx].ty_ident.ty {
-                FieldType::Unsigned => self.get_unsigned_field(ident).and_then(|data| {
-                    data.apply_to_field(f, NilSelector)
-                }),
-                FieldType::Signed => self.get_signed_field(ident).and_then(|data| {
-                    data.apply_to_field(f, NilSelector)
-                }),
-                FieldType::Text => self.get_text_field(ident).and_then(|data| {
-                    data.apply_to_field(f, NilSelector)
-                }),
-                FieldType::Boolean => self.get_boolean_field(ident).and_then(|data| {
-                    data.apply_to_field(f, NilSelector)
-                }),
-                FieldType::Float => self.get_float_field(ident).and_then(|data| {
-                    data.apply_to_field(f, NilSelector)
-                }),
+        self.field_map.get(ident)
+            .ok_or(AgnesError::FieldNotFound(ident.clone()))
+            .and_then(|&field_idx| {
+                match self.fields[field_idx].ty_ident.ty {
+                    FieldType::Unsigned => self.get_unsigned_field(ident)
+                        .ok_or(AgnesError::FieldNotFound(ident.clone()))
+                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                    FieldType::Signed => self.get_signed_field(ident)
+                        .ok_or(AgnesError::FieldNotFound(ident.clone()))
+                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                    FieldType::Text => self.get_text_field(ident)
+                        .ok_or(AgnesError::FieldNotFound(ident.clone()))
+                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                    FieldType::Boolean => self.get_boolean_field(ident)
+                        .ok_or(AgnesError::FieldNotFound(ident.clone()))
+                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                    FieldType::Float => self.get_float_field(ident)
+                        .ok_or(AgnesError::FieldNotFound(ident.clone()))
+                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                }
             }
-        })
+        )
     }
 }
 
 impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataStore, &'c DataStore) {
     fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (FieldSelector, FieldSelector))
-        -> Option<T::Output>
+        -> Result<T::Output>
     {
         let (ident0, ident1) = (select.0.index(), select.1.index());
         let (field0, field1) = (
@@ -252,7 +273,8 @@ impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataStore, &'c DataSt
         println!("{}:{} {}:{}", ident0, field0.is_some(), ident1, field1.is_some());
         let (field0, field1) = match (field0, field1) {
             (&Some(ref field0), &Some(ref field1)) => (field0, field1),
-            _ => { return None; }
+            (&None, _) => { return Err(AgnesError::FieldNotFound(ident0.clone())); },
+            (_, &None) => { return Err(AgnesError::FieldNotFound(ident1.clone())); }
         };
         match (field0.ty_ident.ty, field1.ty_ident.ty) {
             (FieldType::Unsigned, FieldType::Unsigned) => (
@@ -275,7 +297,7 @@ impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataStore, &'c DataSt
                 self.0.get_float_field(ident0).unwrap(),
                 self.1.get_float_field(ident1).unwrap()
             ).apply_to_field2(f, (NilSelector, NilSelector)),
-            (_,_) => None
+            (ty1, ty2) => Err(AgnesError::IncompatibleTypes(ty1, ty2))
         }
     }
 }

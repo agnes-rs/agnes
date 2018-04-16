@@ -240,8 +240,7 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
         left_perm,
         right_perm,
         predicate: join.predicate
-    }, (FieldSelector(&join.left_field), FieldSelector(&join.right_field)))
-        .expect("FIXME");
+    }, (FieldSelector(&join.left_field), FieldSelector(&join.right_field)))?;
 
     // compute merged frame list and field list for the new dataframe
     // compute the field list for the new dataframe
@@ -285,17 +284,15 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
         impl_add_to_ds!(apply_float;    f64);
     }
     for (left_idx, right_idx) in merge_indices {
-        let add_value = |ds: &mut DataStore, data: &DataView, field: &ViewField, idx, new_field| {
-            data.apply_to_elem(AddToDs { ds, ident: new_field },
-                FieldIndexSelector(&field.rident.ident, idx));
-        };
         let mut field_idx = 0;
-        for left_field in left.fields.values() {
-            add_value(&mut ds, left, left_field, left_idx, new_field_idents[field_idx].clone());
+        for left_ident in left.fields.keys() {
+            left.apply_to_elem(AddToDs { ds: &mut ds, ident: new_field_idents[field_idx].clone() },
+                FieldIndexSelector(&left_ident, left_idx))?;
             field_idx += 1;
         }
-        for right_field in right.fields.values() {
-            add_value(&mut ds, right, right_field, right_idx, new_field_idents[field_idx].clone());
+        for right_ident in right.fields.keys() {
+            right.apply_to_elem(AddToDs { ds: &mut ds, ident: new_field_idents[field_idx].clone() },
+                FieldIndexSelector(&right_ident, right_idx))?;
             field_idx += 1;
         }
     }

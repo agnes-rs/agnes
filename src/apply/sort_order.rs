@@ -1,13 +1,14 @@
 use std::cmp::Ordering;
 use apply::{Selector, ApplyToField, FieldFn, DataIndex};
+use error::Result;
 
 /// Helper trait / implementations retrieving the sort permutation for a field.
 pub trait SortOrderBy<S: Selector> {
     /// Returns the sort permutation for the field specified with the `Selector.
-    fn sort_order_by(&self, select: S) -> Option<Vec<usize>>;
+    fn sort_order_by(&self, select: S) -> Result<Vec<usize>>;
 }
 impl<S: Selector, T> SortOrderBy<S> for T where T: ApplyToField<S> {
-    fn sort_order_by(&self, select: S) -> Option<Vec<usize>> {
+    fn sort_order_by(&self, select: S) -> Result<Vec<usize>> {
         self.apply_to_field(SortOrderFn {}, select)
     }
 }

@@ -1,5 +1,6 @@
 use masked::MaybeNa;
 use apply::{ElemFn, Selector, FieldFn, ApplyToElem, DataIndex, ApplyToField};
+use error::Result;
 
 /// `ElemFn` function for matching unsigned integer values.
 pub struct MatchesFnUnsigned<'a> {
@@ -71,10 +72,10 @@ impl<'a> ElemFn for MatchesFnFloat<'a> {
 pub trait Matches<Selector, T> {
     /// Returns `true` if the element specified with the `Selector` matches the provided target
     /// value.
-    fn matches(&self, select: Selector, target: T) -> Option<bool>;
+    fn matches(&self, select: Selector, target: T) -> Result<bool>;
 }
 impl<S: Selector, T> Matches<S, u64> for T where T: ApplyToElem<S> {
-    fn matches(&self, select: S, target: u64) -> Option<bool> {
+    fn matches(&self, select: S, target: u64) -> Result<bool> {
         self.apply_to_elem(
             MatchesFnUnsigned { value: MaybeNa::Exists(&target) },
             select
@@ -82,7 +83,7 @@ impl<S: Selector, T> Matches<S, u64> for T where T: ApplyToElem<S> {
     }
 }
 impl<S: Selector, T> Matches<S, i64> for T where T: ApplyToElem<S> {
-    fn matches(&self, select: S, target: i64) -> Option<bool> {
+    fn matches(&self, select: S, target: i64) -> Result<bool> {
         self.apply_to_elem(
             MatchesFnSigned { value: MaybeNa::Exists(&target) },
             select
@@ -90,7 +91,7 @@ impl<S: Selector, T> Matches<S, i64> for T where T: ApplyToElem<S> {
     }
 }
 impl<S: Selector, T> Matches<S, String> for T where T: ApplyToElem<S> {
-    fn matches(&self, select: S, target: String) -> Option<bool> {
+    fn matches(&self, select: S, target: String) -> Result<bool> {
         self.apply_to_elem(
             MatchesFnText { value: MaybeNa::Exists(&target) },
             select
@@ -98,7 +99,7 @@ impl<S: Selector, T> Matches<S, String> for T where T: ApplyToElem<S> {
     }
 }
 impl<S: Selector, T> Matches<S, bool> for T where T: ApplyToElem<S> {
-    fn matches(&self, select: S, target: bool) -> Option<bool> {
+    fn matches(&self, select: S, target: bool) -> Result<bool> {
         self.apply_to_elem(
             MatchesFnBoolean { value: MaybeNa::Exists(&target) },
             select
@@ -106,7 +107,7 @@ impl<S: Selector, T> Matches<S, bool> for T where T: ApplyToElem<S> {
     }
 }
 impl<S: Selector, T> Matches<S, f64> for T where T: ApplyToElem<S> {
-    fn matches(&self, select: S, target: f64) -> Option<bool> {
+    fn matches(&self, select: S, target: f64) -> Result<bool> {
         self.apply_to_elem(
             MatchesFnFloat { value: MaybeNa::Exists(&target) },
             select
@@ -220,10 +221,10 @@ impl<F: Fn(&f64) -> bool> FieldFn for FilterFnFloat<F> {
 pub trait GetFilter<S: Selector, T> {
     /// Returns vector of indices of all elements in the field specified with the `Selector` that
     /// pass the predicate.
-    fn get_filter<F: Fn(&T) -> bool>(&self, select: S, pred: F) -> Option<Vec<usize>>;
+    fn get_filter<F: Fn(&T) -> bool>(&self, select: S, pred: F) -> Result<Vec<usize>>;
 }
 impl<S: Selector, T> GetFilter<S, u64> for T where T: ApplyToField<S> {
-    fn get_filter<F: Fn(&u64) -> bool>(&self, select: S, pred: F) -> Option<Vec<usize>> {
+    fn get_filter<F: Fn(&u64) -> bool>(&self, select: S, pred: F) -> Result<Vec<usize>> {
         self.apply_to_field(
             FilterFnUnsigned { f: pred },
             select
@@ -231,7 +232,7 @@ impl<S: Selector, T> GetFilter<S, u64> for T where T: ApplyToField<S> {
     }
 }
 impl<S: Selector, T> GetFilter<S, i64> for T where T: ApplyToField<S> {
-    fn get_filter<F: Fn(&i64) -> bool>(&self, select: S, pred: F) -> Option<Vec<usize>> {
+    fn get_filter<F: Fn(&i64) -> bool>(&self, select: S, pred: F) -> Result<Vec<usize>> {
         self.apply_to_field(
             FilterFnSigned { f: pred },
             select
@@ -239,7 +240,7 @@ impl<S: Selector, T> GetFilter<S, i64> for T where T: ApplyToField<S> {
     }
 }
 impl<S: Selector, T> GetFilter<S, String> for T where T: ApplyToField<S> {
-    fn get_filter<F: Fn(&String) -> bool>(&self, select: S, pred: F) -> Option<Vec<usize>> {
+    fn get_filter<F: Fn(&String) -> bool>(&self, select: S, pred: F) -> Result<Vec<usize>> {
         self.apply_to_field(
             FilterFnText { f: pred },
             select
@@ -247,7 +248,7 @@ impl<S: Selector, T> GetFilter<S, String> for T where T: ApplyToField<S> {
     }
 }
 impl<S: Selector, T> GetFilter<S, bool> for T where T: ApplyToField<S> {
-    fn get_filter<F: Fn(&bool) -> bool>(&self, select: S, pred: F) -> Option<Vec<usize>> {
+    fn get_filter<F: Fn(&bool) -> bool>(&self, select: S, pred: F) -> Result<Vec<usize>> {
         self.apply_to_field(
             FilterFnBoolean { f: pred },
             select
@@ -255,7 +256,7 @@ impl<S: Selector, T> GetFilter<S, bool> for T where T: ApplyToField<S> {
     }
 }
 impl<S: Selector, T> GetFilter<S, f64> for T where T: ApplyToField<S> {
-    fn get_filter<F: Fn(&f64) -> bool>(&self, select: S, pred: F) -> Option<Vec<usize>> {
+    fn get_filter<F: Fn(&f64) -> bool>(&self, select: S, pred: F) -> Result<Vec<usize>> {
         self.apply_to_field(
             FilterFnFloat { f: pred },
             select
@@ -359,10 +360,10 @@ impl<F: Fn(&f64) -> bool> FieldFn for MatchesAllFnFloat<F> {
 pub trait MatchesAll<S: Selector, T> {
     /// Returns `true` if the all elements in the field specified with the `Selector` pass the
     /// predicate.
-    fn matches_all<F: Fn(&T) -> bool>(&self, select: S, pred: F) -> Option<bool>;
+    fn matches_all<F: Fn(&T) -> bool>(&self, select: S, pred: F) -> Result<bool>;
 }
 impl<S: Selector, T> MatchesAll<S, u64> for T where T: ApplyToField<S> {
-    fn matches_all<F: Fn(&u64) -> bool>(&self, select: S, pred: F) -> Option<bool> {
+    fn matches_all<F: Fn(&u64) -> bool>(&self, select: S, pred: F) -> Result<bool> {
         self.apply_to_field(
             MatchesAllFnUnsigned { f: pred },
             select
@@ -370,7 +371,7 @@ impl<S: Selector, T> MatchesAll<S, u64> for T where T: ApplyToField<S> {
     }
 }
 impl<S: Selector, T> MatchesAll<S, i64> for T where T: ApplyToField<S> {
-    fn matches_all<F: Fn(&i64) -> bool>(&self, select: S, pred: F) -> Option<bool> {
+    fn matches_all<F: Fn(&i64) -> bool>(&self, select: S, pred: F) -> Result<bool> {
         self.apply_to_field(
             MatchesAllFnSigned { f: pred },
             select
@@ -378,7 +379,7 @@ impl<S: Selector, T> MatchesAll<S, i64> for T where T: ApplyToField<S> {
     }
 }
 impl<S: Selector, T> MatchesAll<S, String> for T where T: ApplyToField<S> {
-    fn matches_all<F: Fn(&String) -> bool>(&self, select: S, pred: F) -> Option<bool> {
+    fn matches_all<F: Fn(&String) -> bool>(&self, select: S, pred: F) -> Result<bool> {
         self.apply_to_field(
             MatchesAllFnText { f: pred },
             select
@@ -386,7 +387,7 @@ impl<S: Selector, T> MatchesAll<S, String> for T where T: ApplyToField<S> {
     }
 }
 impl<S: Selector, T> MatchesAll<S, bool> for T where T: ApplyToField<S> {
-    fn matches_all<F: Fn(&bool) -> bool>(&self, select: S, pred: F) -> Option<bool> {
+    fn matches_all<F: Fn(&bool) -> bool>(&self, select: S, pred: F) -> Result<bool> {
         self.apply_to_field(
             MatchesAllFnBoolean { f: pred },
             select
@@ -394,7 +395,7 @@ impl<S: Selector, T> MatchesAll<S, bool> for T where T: ApplyToField<S> {
     }
 }
 impl<S: Selector, T> MatchesAll<S, f64> for T where T: ApplyToField<S> {
-    fn matches_all<F: Fn(&f64) -> bool>(&self, select: S, pred: F) -> Option<bool> {
+    fn matches_all<F: Fn(&f64) -> bool>(&self, select: S, pred: F) -> Result<bool> {
         self.apply_to_field(
             MatchesAllFnFloat { f: pred },
             select
