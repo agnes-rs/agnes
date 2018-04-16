@@ -3,7 +3,8 @@
 use serde::ser::{Serialize, Serializer, SerializeSeq};
 
 use bit_vec::BitVec;
-use field::FieldType;
+use apply::*;
+use error;
 
 /// Missing value container.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -53,7 +54,6 @@ impl<'a, T: PartialOrd + Clone> MaybeNa<&'a T> {
         }
     }
 }
-
 
 /// Data vector along with bit-vector-based mask indicating whether or not values exist.
 #[derive(Debug, Clone)]
@@ -145,6 +145,124 @@ impl<T: PartialOrd + Default, U: Into<T>> From<Vec<U>> for MaskedData<T> {
         MaskedData::from_vec(other)
     }
 }
+
+macro_rules! impl_masked_data_index {
+    ($($ty:ty)*) => {$(
+        impl DataIndex<$ty> for MaskedData<$ty> {
+            fn get_data(&self, idx: usize) -> error::Result<MaybeNa<&$ty>> {
+                self.get(idx).ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
+            }
+            fn len(&self) -> usize {
+                self.len()
+            }
+        }
+    )*}
+}
+impl_masked_data_index!(u64 i64 String bool f64);
+
+impl ApplyToElem<IndexSelector> for MaskedData<u64> {
+    fn apply_to_elem<F: ElemFn>(&self, mut f: F, select: IndexSelector) -> error::Result<F::Output>
+    {
+        let idx = select.index();
+        self.get(idx).map(|value| f.apply_unsigned(value))
+            .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
+    }
+}
+impl ApplyToElem<IndexSelector> for MaskedData<i64> {
+    fn apply_to_elem<F: ElemFn>(&self, mut f: F, select: IndexSelector) -> error::Result<F::Output>
+    {
+        let idx = select.index();
+        self.get(idx).map(|value| f.apply_signed(value))
+            .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
+    }
+}
+impl ApplyToElem<IndexSelector> for MaskedData<String> {
+    fn apply_to_elem<F: ElemFn>(&self, mut f: F, select: IndexSelector) -> error::Result<F::Output>
+    {
+        let idx = select.index();
+        self.get(idx).map(|value| f.apply_text(value))
+            .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
+    }
+}
+impl ApplyToElem<IndexSelector> for MaskedData<bool> {
+    fn apply_to_elem<F: ElemFn>(&self, mut f: F, select: IndexSelector) -> error::Result<F::Output>
+    {
+        let idx = select.index();
+        self.get(idx).map(|value| f.apply_boolean(value))
+            .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
+    }
+}
+impl ApplyToElem<IndexSelector> for MaskedData<f64> {
+    fn apply_to_elem<F: ElemFn>(&self, mut f: F, select: IndexSelector) -> error::Result<F::Output>
+    {
+        let idx = select.index();
+        self.get(idx).map(|value| f.apply_float(value))
+            .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
+    }
+}
+
+impl ApplyToField<NilSelector> for MaskedData<u64> {
+    fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
+        Ok(f.apply_unsigned(self))
+    }
+}
+impl ApplyToField<NilSelector> for MaskedData<i64> {
+    fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
+        Ok(f.apply_signed(self))
+    }
+}
+impl ApplyToField<NilSelector> for MaskedData<String> {
+    fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
+        Ok(f.apply_text(self))
+    }
+}
+impl ApplyToField<NilSelector> for MaskedData<bool> {
+    fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
+        Ok(f.apply_boolean(self))
+    }
+}
+impl ApplyToField<NilSelector> for MaskedData<f64> {
+    fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
+        Ok(f.apply_float(self))
+    }
+}
+
+impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<u64>, &'b MaskedData<u64>) {
+    fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
+        -> error::Result<F::Output>
+    {
+        Ok(f.apply_unsigned(self))
+    }
+}
+impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<i64>, &'b MaskedData<i64>) {
+    fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
+        -> error::Result<F::Output>
+    {
+        Ok(f.apply_signed(self))
+    }
+}
+impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<String>, &'b MaskedData<String>) {
+    fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
+        -> error::Result<F::Output>
+    {
+        Ok(f.apply_text(self))
+    }
+}
+impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<bool>, &'b MaskedData<bool>) {
+    fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
+        -> error::Result<F::Output>
+    {
+        Ok(f.apply_boolean(self))
+    }
+}
+impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<f64>, &'b MaskedData<f64>) {
+    fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
+        -> error::Result<F::Output>
+    {
+        Ok(f.apply_float(self))
+    }
+}
+
 impl<T: Serialize> Serialize for MaskedData<T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let mut seq = serializer.serialize_seq(Some(self.data.len()))?;
@@ -158,71 +276,3 @@ impl<T: Serialize> Serialize for MaskedData<T> {
         seq.end()
     }
 }
-
-/// Common enum for different kinds of data vectors that can be held in a field.
-pub enum FieldData<'a> {
-    /// Field data vector containing unsigned data.
-    Unsigned(&'a MaskedData<u64>),
-    /// Field data vector containing signed data.
-    Signed(&'a MaskedData<i64>),
-    /// Field data vector containing text data.
-    Text(&'a MaskedData<String>),
-    /// Field data vector containing boolean data.
-    Boolean(&'a MaskedData<bool>),
-    /// Field data vector containing floating-point data.
-    Float(&'a MaskedData<f64>),
-}
-impl<'a> FieldData<'a> {
-    /// Length of the data vector.
-    pub fn len(&self) -> usize {
-        match *self {
-            FieldData::Unsigned(v) => v.data.len(),
-            FieldData::Signed(v)   => v.data.len(),
-            FieldData::Text(v)     => v.data.len(),
-            FieldData::Boolean(v)  => v.data.len(),
-            FieldData::Float(v)    => v.data.len(),
-        }
-    }
-    /// Whether this data's field is empty
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-    /// Returns the `FieldType` for this field.
-    pub fn get_field_type(&self) -> FieldType {
-        match *self {
-            FieldData::Unsigned(_)  => FieldType::Unsigned,
-            FieldData::Signed(_)    => FieldType::Signed,
-            FieldData::Text(_)      => FieldType::Text,
-            FieldData::Boolean(_)   => FieldType::Boolean,
-            FieldData::Float(_)     => FieldType::Float,
-        }
-    }
-}
-
-impl<'a> Serialize for FieldData<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        match *self {
-            FieldData::Unsigned(v) => v.serialize(serializer),
-            FieldData::Signed(v)   => v.serialize(serializer),
-            FieldData::Text(v)     => v.serialize(serializer),
-            FieldData::Boolean(v)  => v.serialize(serializer),
-            FieldData::Float(v)    => v.serialize(serializer),
-        }
-    }
-}
-macro_rules! impl_from_masked_data {
-    ($($variant:path: $data_type:ty)*) => {$(
-        impl<'a> From<&'a MaskedData<$data_type>> for FieldData<'a> {
-            fn from(other: &'a MaskedData<$data_type>) -> FieldData<'a> {
-                $variant(other)
-            }
-        }
-    )*}
-}
-impl_from_masked_data!(
-    FieldData::Unsigned: u64
-    FieldData::Signed:   i64
-    FieldData::Text:     String
-    FieldData::Boolean:  bool
-    FieldData::Float:    f64
-);

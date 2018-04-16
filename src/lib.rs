@@ -26,7 +26,9 @@ pub mod view;
 pub use view::{SerializeAsVec, DataView};
 pub mod join;
 pub use join::{Join, JoinKind};
+pub mod frame;
 pub mod masked;
 pub use masked::MaybeNa;
+pub mod apply;
 
 #[cfg(test)] pub(crate) mod test_utils;

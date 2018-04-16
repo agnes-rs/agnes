@@ -10,7 +10,7 @@ use native_tls;
 use hyper;
 use csv_sniffer;
 
-use field::FieldIdent;
+use field::{FieldIdent, FieldType};
 
 /// General DataFrame error enum.
 #[derive(Debug)]
@@ -34,9 +34,18 @@ pub enum AgnesError {
     /// Dimension mismatch
     DimensionMismatch(String),
     /// Field collision(s) when merging
-    FieldCollision(Vec<String>),
+    FieldCollision(Vec<FieldIdent>),
     /// Type mismatch
     TypeMismatch(String),
+    /// Indexing error
+    IndexError {
+        /// out-of-bounds index
+        index: usize,
+        /// length of underlying data structure
+        len: usize
+    },
+    /// Incompatible types error
+    IncompatibleTypes(FieldType, FieldType)
 }
 
 /// Wrapper for DataFrame-based results.
@@ -55,9 +64,15 @@ impl fmt::Display for AgnesError {
             AgnesError::FieldNotFound(ref ident) =>
                 write!(f, "Missing source field: {}", ident.to_string()),
             AgnesError::DimensionMismatch(ref s) => write!(f, "Dimension mismatch: {}", s),
-            AgnesError::FieldCollision(ref s) => write!(f, "Field collision: {}",
-                &s[..].join(", ")),
+            AgnesError::FieldCollision(ref s) => {
+                let fields = s.iter().map(|fi| fi.to_string()).collect::<Vec<_>>();
+                write!(f, "Field collision: {}", &fields[..].join(", "))
+            },
             AgnesError::TypeMismatch(ref s) => write!(f, "Type collision: {}", s),
+            AgnesError::IndexError { index, len } => write!(f,
+                "Index error: index {} exceeds data length {}", index, len),
+            AgnesError::IncompatibleTypes(ty1, ty2) => write!(f, "incompatible types: {}, {}",
+                ty1, ty2)
         }
     }
 }
@@ -76,6 +91,8 @@ impl Error for AgnesError {
             AgnesError::DimensionMismatch(ref s) => s,
             AgnesError::FieldCollision(_) => "field collision",
             AgnesError::TypeMismatch(ref s) => s,
+            AgnesError::IndexError { .. } => "indexing error",
+            AgnesError::IncompatibleTypes(_, _) => "incompatible types",
         }
     }
 
@@ -92,6 +109,8 @@ impl Error for AgnesError {
             AgnesError::DimensionMismatch(_) => None,
             AgnesError::FieldCollision(_) => None,
             AgnesError::TypeMismatch(_) => None,
+            AgnesError::IndexError { .. }  => None,
+            AgnesError::IncompatibleTypes(_, _) => None,
         }
     }
 }

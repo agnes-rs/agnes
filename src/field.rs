@@ -82,6 +82,18 @@ impl From<csv_sniffer::Type> for FieldType {
         }
     }
 }
+impl fmt::Display for FieldType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            FieldType::Unsigned => write!(f, "unsigned"),
+            FieldType::Signed   => write!(f, "signed"),
+            FieldType::Text     => write!(f, "text"),
+            FieldType::Boolean  => write!(f, "boolean"),
+            FieldType::Float    => write!(f, "float"),
+        }
+    }
+}
+
 
 /// Possibly-renamed field identifier
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -1,5 +1,6 @@
+use view::IntoFieldList;
 use store::DataStore;
-use masked::{FieldData, MaskedData, MaybeNa};
+use masked::MaskedData;
 
 pub(crate) fn sample_emp_table() -> DataStore {
     emp_table(vec![0u64, 2, 5, 6, 8, 9, 10], vec![1u64, 2, 1, 1, 3, 4, 4],
@@ -70,44 +71,52 @@ pub(crate) fn dept_table_from_masked(deptids: MaskedData<u64>, names: MaskedData
     )
 }
 
-macro_rules! impl_test_helpers {
-    ($name:tt; $variant:path, $dtype:ty) => {
-        pub(crate) mod $name {
-            use super::{FieldData, MaybeNa};
-            #[allow(dead_code)]
-            pub(crate) fn assert_sorted_eq(left: FieldData, right: Vec<$dtype>) {
-                if let $variant(masked) = left {
-                    let mut masked = masked.as_vec();
-                    masked.sort();
-                    let mut right = right.iter()
-                        .map(|val| MaybeNa::Exists(val)).collect::<Vec<_>>();
-                    right.sort();
-                    for (lval, rval) in masked.iter().zip(right.iter()) {
-                        assert_eq!(lval, rval);
-                    }
-                } else {
-                    panic!("$name::assert_sorted_eq called with incorrect type FieldData")
-                }
-            }
-            #[allow(dead_code)]
-            pub(crate) fn assert_pred<F: Fn(&$dtype) -> bool>(left: FieldData, f: F) {
-                if let $variant(masked) = left {
-                    for val in masked.as_vec().iter() {
-                        match val {
-                            &MaybeNa::Exists(&ref val) => {
-                                assert!(f(val), "predicate failed");
-                            },
-                            &MaybeNa::Na => {
-                                panic!("$name::assert_pred called with NA value");
-                            }
-                        }
-                    };
-                } else {
-                    panic!("$name::assert_pred called with incorrect type FieldData")
-                }
-            }
+ macro_rules! impl_test_helpers {
+    ($name:tt; $dtype:ty) => {
+
+pub(crate) mod $name {
+    use apply::*;
+    use field::FieldIdent;
+
+    #[allow(dead_code)]
+    pub(crate) fn assert_vec_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
+        where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
+              R: Into<$dtype>
+    {
+        let right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
+        for (i, rval) in (0..right.len()).zip(right) {
+            assert!(left.matches(FieldIndexSelector(ident, i), rval.clone()).unwrap());
         }
     }
+
+    #[allow(dead_code)]
+    pub(crate) fn assert_sorted_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
+        where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
+              R: Into<$dtype>
+    {
+        let left_order = left.sort_order_by(FieldSelector(ident)).unwrap();
+        let mut right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
+        right.sort();
+
+        for (lidx, rval) in left_order.iter().zip(right.iter()) {
+            assert!(left.matches(FieldIndexSelector(ident, *lidx), rval.clone()).unwrap());
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn assert_pred<'a, T, F>(left: &T, field: &'a FieldIdent, f: F)
+        where T: MatchesAll<FieldSelector<'a>, $dtype>, F: Fn(&$dtype) -> bool
+    {
+        assert!(left.matches_all(FieldSelector(field), f).unwrap());
+    }
 }
-impl_test_helpers!(unsigned; FieldData::Unsigned, u64);
-impl_test_helpers!(text;     FieldData::Text,     String);
+
+    }
+}
+
+impl_test_helpers!(unsigned; u64);
+impl_test_helpers!(text;     String);
+
+pub(crate) fn assert_field_lists_match<L: IntoFieldList, R: IntoFieldList>(left: L, right: R) {
+    assert_eq!(left.into_field_list(), right.into_field_list());
+}
