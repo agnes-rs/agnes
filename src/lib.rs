@@ -1,4 +1,7 @@
-//! Dataframe library for Rust. Provides a `DataFrame` object for data views and manipulation.
+/*!
+Dataframe library for Rust. Provides data structs and utilities for data aggregation, manipulation,
+and viewing.
+*/
 
 #![warn(missing_docs)]
 
