@@ -711,9 +711,7 @@ mod tests {
 
     #[test]
     fn sort() {
-        let ds = sample_emp_table();
-        let orig_dv: DataView = ds.into();
-        let orig_dv: DataView = orig_dv.merge(&sample_emp_table_extra().into()).unwrap();
+        let orig_dv = sample_merged_emp_table();
         assert_eq!(orig_dv.nrows(), 7);
 
         // sort by name
@@ -749,9 +747,7 @@ mod tests {
 
     #[test]
     fn filter_sort() {
-        let ds = sample_emp_table();
-        let orig_dv: DataView = ds.into();
-        let orig_dv: DataView = orig_dv.merge(&sample_emp_table_extra().into()).unwrap();
+        let orig_dv = sample_merged_emp_table();
         assert_eq!(orig_dv.nrows(), 7);
 
         // start by filtering for employees with remaining vacation hours

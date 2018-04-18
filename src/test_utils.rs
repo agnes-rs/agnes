@@ -1,5 +1,6 @@
 use view::IntoFieldList;
 use store::DataStore;
+use view::DataView;
 use masked::MaskedData;
 
 pub(crate) fn sample_emp_table() -> DataStore {
@@ -42,6 +43,11 @@ pub(crate) fn sample_emp_table_extra() -> DataStore {
             ("VacationHrs", vec![47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5].into()),
         ]
     )
+}
+pub(crate) fn sample_merged_emp_table() -> DataView {
+        let ds = sample_emp_table();
+        let orig_dv: DataView = ds.into();
+        orig_dv.merge(&sample_emp_table_extra().into()).unwrap()
 }
 
 pub(crate) fn sample_dept_table() -> DataStore {

@@ -69,10 +69,10 @@ impl<'a> ElemFn for MatchesFnFloat<'a> {
 
 /// Helper trait / implementations for matching a value. Returns `true` if the selected element
 /// matches the provided target value.
-pub trait Matches<Selector, T> {
+pub trait Matches<S: Selector, T> {
     /// Returns `true` if the element specified with the `Selector` matches the provided target
     /// value.
-    fn matches(&self, select: Selector, target: T) -> Result<bool>;
+    fn matches(&self, select: S, target: T) -> Result<bool>;
 }
 impl<S: Selector, T> Matches<S, u64> for T where T: ApplyToElem<S> {
     fn matches(&self, select: S, target: u64) -> Result<bool> {
