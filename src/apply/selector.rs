@@ -1,7 +1,7 @@
 use field::FieldIdent;
 
 /// Data selector for the `ApplyToElem` and `ApplyToField` methods.
-pub trait Selector {
+pub trait Selector: Clone {
     /// The type of the selector (the information used to specify what the `FieldFn` or `ElemFn`
     /// operates upon).
     type IndexType;
@@ -10,6 +10,7 @@ pub trait Selector {
 }
 /// A data selector unsing only a data index. Used to select a specific element among a
 /// single column / field / vector for use with an `ElemFn`.
+#[derive(Debug, Clone)]
 pub struct IndexSelector(pub usize);
 impl Selector for IndexSelector {
     type IndexType = usize;
@@ -18,6 +19,7 @@ impl Selector for IndexSelector {
 /// A data selector using both a data field identifier and the data index. Used to select a
 /// specific element in a two-dimensional data structs (with both fields and elements) along with
 /// a `FieldFn`.
+#[derive(Debug, Clone)]
 pub struct FieldIndexSelector<'a>(pub &'a FieldIdent, pub usize);
 impl<'a> Selector for FieldIndexSelector<'a> {
     type IndexType = (&'a FieldIdent, usize);
@@ -25,6 +27,7 @@ impl<'a> Selector for FieldIndexSelector<'a> {
 }
 /// A data selector using only a field identifier. Used to select a specific field to be passed to
 /// `FieldFn`.
+#[derive(Debug, Clone)]
 pub struct FieldSelector<'a>(pub &'a FieldIdent);
 impl<'a> Selector for FieldSelector<'a> {
     type IndexType = (&'a FieldIdent);
@@ -32,6 +35,7 @@ impl<'a> Selector for FieldSelector<'a> {
 }
 /// A data selector with no data. Used to select an entire field with `FieldFn` when a data
 /// structure only has a single field's data.
+#[derive(Debug, Clone)]
 pub struct NilSelector;
 impl Selector for NilSelector {
     type IndexType = ();
