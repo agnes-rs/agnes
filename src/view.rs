@@ -336,10 +336,6 @@ impl Serialize for DataView {
                 ident: field.rident.ident.clone(),
                 frame: &self.frames[field.frame_idx]
             })?;
-            // self.frames[field.frame_idx].apply_to_field(
-            //     SerializeViewFn { serializer: &serializer, map: &mut map },
-            //     NilSelector
-            // );
         }
         map.end()
     }
@@ -365,9 +361,6 @@ impl Serialize for FieldView {
                 ident: self.field.to_renamed_field_ident(),
                 frame: &self.frame
             }.serialize(serializer)
-        // }
-        // if let Some(data) = self.frame.get_field_data(&self.field.ident) {
-        //     data.serialize(serializer)
         } else {
             Err(ser::Error::custom(format!("missing field: {}", self.field.to_string())))
         }

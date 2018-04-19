@@ -234,7 +234,7 @@ fn do_serialize<'a, 'b, T: PartialOrd + Serialize, S: 'a + Serializer>(
     seq.end()
 }
 impl<'b, Ser: Serializer> FieldFn for SerializeFn<'b, Ser> {
-    type Output = Result<Ser::Ok, Ser::Error>;
+    type Output = sresult![Ser];
     fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &T) -> sresult![Ser] {
         do_serialize(self, field)
     }
@@ -254,7 +254,7 @@ impl<'b, Ser: Serializer> FieldFn for SerializeFn<'b, Ser> {
 
 
 impl<'b> Serialize for FramedField<'b> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    fn serialize<S>(&self, serializer: S) -> sresult![S] where S: Serializer {
         self.frame.apply_to_field(
             SerializeFn { serializer: Some(serializer), frame: &self.frame },
             FieldSelector(&self.ident)
