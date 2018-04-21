@@ -44,6 +44,13 @@ impl<T: PartialOrd> MaybeNa<T> {
             MaybeNa::Na => true,
         }
     }
+    /// Applies function `f` if this `MaybeNa` exists.
+    pub fn map<U: PartialOrd, F: FnMut(T) -> U>(self, mut f: F) -> MaybeNa<U> {
+        match self {
+            MaybeNa::Exists(val) => MaybeNa::Exists(f(val)),
+            MaybeNa::Na => MaybeNa::Na
+        }
+    }
 }
 impl<'a, T: PartialOrd + Clone> MaybeNa<&'a T> {
     /// Create a owner `MaybeNa` out of a reference-holding `MaybeNa` using `clone()`.

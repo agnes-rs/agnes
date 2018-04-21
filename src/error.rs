@@ -11,6 +11,7 @@ use hyper;
 use csv_sniffer;
 
 use field::{FieldIdent, FieldType};
+use ops::TypeError;
 
 /// General DataFrame error enum.
 #[derive(Debug)]
@@ -45,7 +46,9 @@ pub enum AgnesError {
         len: usize
     },
     /// Incompatible types error
-    IncompatibleTypes(FieldType, FieldType)
+    IncompatibleTypes(FieldType, FieldType),
+    /// DataView operation type inference error
+    Inference(TypeError)
 }
 
 /// Wrapper for DataFrame-based results.
@@ -71,8 +74,9 @@ impl fmt::Display for AgnesError {
             AgnesError::TypeMismatch(ref s) => write!(f, "Type collision: {}", s),
             AgnesError::IndexError { index, len } => write!(f,
                 "Index error: index {} exceeds data length {}", index, len),
-            AgnesError::IncompatibleTypes(ty1, ty2) => write!(f, "incompatible types: {}, {}",
-                ty1, ty2)
+            AgnesError::IncompatibleTypes(ty1, ty2) => write!(f, "Incompatible types: {}, {}",
+                ty1, ty2),
+            AgnesError::Inference(ref err) => write!(f, "Type inference error: {}", err)
         }
     }
 }
@@ -93,6 +97,7 @@ impl Error for AgnesError {
             AgnesError::TypeMismatch(ref s) => s,
             AgnesError::IndexError { .. } => "indexing error",
             AgnesError::IncompatibleTypes(_, _) => "incompatible types",
+            AgnesError::Inference(ref err) => err.description()
         }
     }
 
@@ -111,6 +116,7 @@ impl Error for AgnesError {
             AgnesError::TypeMismatch(_) => None,
             AgnesError::IndexError { .. }  => None,
             AgnesError::IncompatibleTypes(_, _) => None,
+            AgnesError::Inference(ref err) => Some(err)
         }
     }
 }

@@ -49,6 +49,49 @@ pub(crate) fn sample_merged_emp_table() -> DataView {
         let orig_dv: DataView = ds.into();
         orig_dv.merge(&sample_emp_table_extra().into()).unwrap()
 }
+pub(crate) trait MergedWithSample {
+    fn merged_with_sample_emp_table(self, name: &str) -> DataView;
+}
+impl MergedWithSample for Vec<u64> {
+    fn merged_with_sample_emp_table(self, name: &str) -> DataView {
+        let orig_dv: DataView = sample_emp_table().into();
+        orig_dv
+            .merge(&DataStore::with_data(vec![(name, self.into())], None, None, None, None).into())
+            .unwrap()
+    }
+}
+impl MergedWithSample for Vec<i64> {
+    fn merged_with_sample_emp_table(self, name: &str) -> DataView {
+        let orig_dv: DataView = sample_emp_table().into();
+        orig_dv
+            .merge(&DataStore::with_data(None, vec![(name, self.into())], None, None, None).into())
+            .unwrap()
+    }
+}
+impl MergedWithSample for Vec<String> {
+    fn merged_with_sample_emp_table(self, name: &str) -> DataView {
+        let orig_dv: DataView = sample_emp_table().into();
+        orig_dv
+            .merge(&DataStore::with_data(None, None, vec![(name, self.into())], None, None).into())
+            .unwrap()
+    }
+}
+impl MergedWithSample for Vec<bool> {
+    fn merged_with_sample_emp_table(self, name: &str) -> DataView {
+        let orig_dv: DataView = sample_emp_table().into();
+        orig_dv
+            .merge(&DataStore::with_data(None, None, None, vec![(name, self.into())], None).into())
+            .unwrap()
+    }
+}
+impl MergedWithSample for Vec<f64> {
+    fn merged_with_sample_emp_table(self, name: &str) -> DataView {
+        let orig_dv: DataView = sample_emp_table().into();
+        orig_dv
+            .merge(&DataStore::with_data(None, None, None, None, vec![(name, self.into())]).into())
+            .unwrap()
+    }
+}
 
 pub(crate) fn sample_dept_table() -> DataStore {
     dept_table(vec![1u64, 2, 3, 4], vec!["Marketing", "Sales", "Manufacturing", "R&D"])
@@ -77,51 +120,91 @@ pub(crate) fn dept_table_from_masked(deptids: MaskedData<u64>, names: MaskedData
     )
 }
 
- macro_rules! impl_test_helpers {
+macro_rules! impl_assert_vec_eq_and_pred {
+    ($dtype:ty) => {
+
+#[allow(dead_code)]
+pub(crate) fn assert_vec_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
+    where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
+          R: Into<$dtype>
+{
+    let right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
+    for (i, rval) in (0..right.len()).zip(right) {
+        assert!(left.matches(FieldIndexSelector(ident, i), rval.clone()).unwrap());
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) fn assert_pred<'a, T, F>(left: &T, field: &'a FieldIdent, f: F)
+    where T: MatchesAll<FieldSelector<'a>, $dtype>, F: Fn(&$dtype) -> bool
+{
+    assert!(left.matches_all(FieldSelector(field), f).unwrap());
+}
+
+    }
+}
+
+macro_rules! impl_assert_sorted_eq {
+    ($dtype:ty) => {
+
+#[allow(dead_code)]
+pub(crate) fn assert_sorted_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
+    where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
+          R: Into<$dtype>
+{
+    let left_order = left.sort_order_by(FieldSelector(ident)).unwrap();
+    let mut right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
+    right.sort();
+
+    for (lidx, rval) in left_order.iter().zip(right.iter()) {
+        assert!(left.matches(FieldIndexSelector(ident, *lidx), rval.clone()).unwrap());
+    }
+}
+
+    }
+}
+
+macro_rules! impl_test_helpers {
     ($name:tt; $dtype:ty) => {
 
 pub(crate) mod $name {
     use apply::*;
     use field::FieldIdent;
 
-    #[allow(dead_code)]
-    pub(crate) fn assert_vec_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
-        where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
-              R: Into<$dtype>
-    {
-        let right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
-        for (i, rval) in (0..right.len()).zip(right) {
-            assert!(left.matches(FieldIndexSelector(ident, i), rval.clone()).unwrap());
-        }
-    }
+    impl_assert_vec_eq_and_pred!($dtype);
+    impl_assert_sorted_eq!($dtype);
 
-    #[allow(dead_code)]
-    pub(crate) fn assert_sorted_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
-        where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
-              R: Into<$dtype>
-    {
-        let left_order = left.sort_order_by(FieldSelector(ident)).unwrap();
-        let mut right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
-        right.sort();
-
-        for (lidx, rval) in left_order.iter().zip(right.iter()) {
-            assert!(left.matches(FieldIndexSelector(ident, *lidx), rval.clone()).unwrap());
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn assert_pred<'a, T, F>(left: &T, field: &'a FieldIdent, f: F)
-        where T: MatchesAll<FieldSelector<'a>, $dtype>, F: Fn(&$dtype) -> bool
-    {
-        assert!(left.matches_all(FieldSelector(field), f).unwrap());
-    }
 }
 
     }
 }
 
 impl_test_helpers!(unsigned; u64);
+impl_test_helpers!(signed;   i64);
 impl_test_helpers!(text;     String);
+impl_test_helpers!(boolean;  bool);
+
+pub(crate) mod float {
+    use apply::*;
+    use field::FieldIdent;
+
+    impl_assert_vec_eq_and_pred!(f64);
+
+    #[allow(dead_code)]
+    pub(crate) fn assert_sorted_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
+        where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, f64>,
+              R: Into<f64>
+    {
+        let left_order = left.sort_order_by(FieldSelector(ident)).unwrap();
+        let mut right: Vec<f64> = right.drain(..).map(|r| r.into()).collect();
+        right.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        for (lidx, rval) in left_order.iter().zip(right.iter()) {
+            assert!(left.matches(FieldIndexSelector(ident, *lidx), rval.clone()).unwrap());
+        }
+    }
+
+}
 
 pub(crate) fn assert_field_lists_match<L: IntoFieldList, R: IntoFieldList>(left: L, right: R) {
     assert_eq!(left.into_field_list(), right.into_field_list());

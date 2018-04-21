@@ -128,6 +128,8 @@ impl From<DataStore> for DataFrame {
     }
 }
 
+// Structure to hold references to a data structure (e.g. DataStore) and a frame used to view
+// that structure. Provides DataIndex for the underlying data structure, as view through the frame.
 struct Framed<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> {
     frame: &'a DataFrame,
     data: &'b D,
@@ -208,7 +210,7 @@ impl<'a, 'b, F: Field2Fn> Field2Fn for FrameField2Fn<'a, 'b, F> {
 
 }
 
-// TODO: update this to use with the FramedFieldFn / Framed framework?
+// TODO: update this to use with the FrameFieldFn / Framed framework?
 pub(crate) struct FramedField<'a> {
     pub(crate) ident: FieldIdent,
     pub(crate) frame: &'a DataFrame

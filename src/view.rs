@@ -21,7 +21,7 @@ use prettytable as pt;
 
 use frame::{DataFrame, FramedField, Filter, SortBy};
 use masked::{MaybeNa};
-use field::{FieldIdent, RFieldIdent, FieldType};
+use field::{FieldIdent, RFieldIdent, FieldType, TypedFieldIdent};
 use error;
 use store::DataStore;
 use join::{Join, sort_merge_join, compute_merged_frames,
@@ -96,6 +96,16 @@ impl DataView {
         self.fields.get(ident).and_then(|view_field: &ViewField| {
             self.frames[view_field.frame_idx].get_field_type(&view_field.rident.ident)
         })
+    }
+    /// Return the field types (as `TypedFieldIdent` structs) of this DataView
+    pub fn field_types(&self) -> Vec<TypedFieldIdent> {
+        self.fields.iter().map(|(ident, vf)| {
+            TypedFieldIdent {
+                ident: ident.clone(),
+                // since we're iterating over fields we know exist, unwrap is safe
+                ty: self.frames[vf.frame_idx].get_field_type(&vf.rident.ident).unwrap()
+            }
+        }).collect()
     }
     /// Returns `true` if this `DataView` contains this field.
     pub fn has_field(&self, s: &FieldIdent) -> bool {
