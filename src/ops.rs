@@ -81,6 +81,7 @@ macro_rules! impl_op {
     (
         $op:tt;
         $op_fn:tt;
+        $op_str:expr;
         $infer_fn:tt;
         $op_elemfn_ty:tt;
         $dtype:ty;
@@ -117,7 +118,7 @@ impl<'a> $op<$dtype> for &'a DataView {
         let mut fields = vec![];
         for &TypedFieldIdent { ref ident, ty } in self.field_types().iter() {
             fields.push(TypedFieldIdent {
-                ident: ident.clone(),
+                ident: FieldIdent::Name(format!("{} {} {}", ident.clone(), $op_str, rhs)),
                 ty: <$dtype>::$infer_fn(ty)?
             });
         }
@@ -126,12 +127,12 @@ impl<'a> $op<$dtype> for &'a DataView {
                 "unable to apply arithmetic operation to an empty dataview".into()));
         }
         let mut store = DataStore::with_fields(fields);
-        for (ident, vf) in self.fields.iter() {
+        for ((ident, vf), target_ident) in self.fields.iter().zip(store.fieldnames().iter()) {
             let frame = &self.frames[vf.frame_idx];
             for i in 0..frame.nrows() {
                 self.apply_to_elem($op_elemfn_ty {
                     target_ds: &mut store,
-                    target_ident: &ident,
+                    target_ident: &target_ident.clone().into(),
                     term: rhs
                 }, FieldIndexSelector(&ident, i))?;
             }
@@ -152,22 +153,22 @@ impl $op<$dtype> for DataView {
 
 macro_rules! impl_add {
     ($($t:tt)*) => (
-        impl_op!(Add; add; infer_add_result; AddFn;$($t)*);
+        impl_op!(Add; add; "+"; infer_add_result; AddFn;$($t)*);
     )
 }
 macro_rules! impl_sub {
     ($($t:tt)*) => (
-        impl_op!(Sub; sub; infer_sub_result; SubFn;$($t)*);
+        impl_op!(Sub; sub; "-"; infer_sub_result; SubFn;$($t)*);
     )
 }
 macro_rules! impl_mul {
     ($($t:tt)*) => (
-        impl_op!(Mul; mul; infer_mul_result; MulFn;$($t)*);
+        impl_op!(Mul; mul; "*"; infer_mul_result; MulFn;$($t)*);
     )
 }
 macro_rules! impl_div {
     ($($t:tt)*) => (
-        impl_op!(Div; div; infer_div_result; DivFn;$($t)*);
+        impl_op!(Div; div; "/"; infer_div_result; DivFn;$($t)*);
     )
 }
 
@@ -424,118 +425,6 @@ mod tests {
     use test_utils::*;
 
     #[test]
-    fn multiply_scalar() {
-        /* unsigned data */
-        let data_vec = vec![2u64, 3, 8, 2, 20, 3, 0];
-
-        // multiplied by unsigned scalar; should remain an unsigned field
-        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
-        let computed_dv: DataView = (dv.v("Foo") * 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Unsigned);
-        unsigned::assert_vec_eq(&computed_dv, &"Foo".into(),
-            vec![4u64, 6, 16, 4, 40, 6, 0]
-        );
-
-        // multiplied by signed scalar; should become a signed field
-        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
-        let computed_dv: DataView = (dv.v("Foo") * -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
-            vec![-4i64, -6, -16, -4, -40, -6, -0]
-        );
-
-        // multiplied by floating point scalar; should become a floating point field
-        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
-        let computed_dv: DataView = (dv.v("Foo") * 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
-            vec![4.0, 6.0, 16.0, 4.0, 40.0, 6.0, 0.0]
-        );
-
-        /* signed data */
-        let data_vec = vec![2i64, -3, -8, 2, -20, 3, 0];
-
-        // multiplied by unsigned scalar; should remain a signed field
-        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
-        let computed_dv: DataView = (dv.v("Foo") * 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
-            vec![4i64, -6, -16, 4, -40, 6, 0]
-        );
-
-        // multiplied by signed scalar; should remain a signed field
-        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
-        let computed_dv: DataView = (dv.v("Foo") * -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
-            vec![-4i64, 6, 16, -4, 40, -6, -0]
-        );
-
-        // multiplied by floating point scalar; should become a floating point field
-        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
-        let computed_dv: DataView = (dv.v("Foo") * 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
-            vec![4.0, -6.0, -16.0, 4.0, -40.0, 6.0, 0.0]
-        );
-
-        /* boolean data */
-        let data_vec = vec![true, false, false, true, false, true, true];
-
-        // multiplied by unsigned scalar; should become an unsigned field
-        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
-        let computed_dv: DataView = (dv.v("Foo") * 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Unsigned);
-        unsigned::assert_vec_eq(&computed_dv, &"Foo".into(),
-            vec![2u64, 0, 0, 2, 0, 2, 2]
-        );
-
-        // multiplied by signed scalar; should become signed field
-        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
-        let computed_dv: DataView = (dv.v("Foo") * -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
-            vec![-2i64, 0, 0, -2, 0, -2, -2]
-        );
-
-        // multiplied by floating point scalar; should become a floating point field
-        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
-        let computed_dv: DataView = (dv.v("Foo") * 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
-            vec![2.0, 0.0, 0.0, 2.0, 0.0, 2.0, 2.0]
-        );
-
-        /* floating point data */
-        let data_vec = vec![2.0, -3.0, -8.0, 2.0, -20.0, 3.0, 0.0];
-
-        // multiplied by unsigned scalar; should remain a floating point field
-        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
-        let computed_dv: DataView = (dv.v("Foo") * 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
-            vec![4.0, -6.0, -16.0, 4.0, -40.0, 6.0, 0.0]
-        );
-
-        // multiplied by signed scalar; should remain a floating point field
-        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
-        let computed_dv: DataView = (dv.v("Foo") * -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
-            vec![-4.0, 6.0, 16.0, -4.0, 40.0, -6.0, 0.0]
-        );
-
-        // multiplied by floating point scalar; should remain a floating point field
-        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
-        let computed_dv: DataView = (dv.v("Foo") * 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
-            vec![4.0, -6.0, -16.0, 4.0, -40.0, 6.0, 0.0]
-        );
-    }
-
-
-    #[test]
     fn add_scalar() {
         /* unsigned data */
         let data_vec = vec![2u64, 3, 8, 2, 20, 3, 0];
@@ -543,24 +432,24 @@ mod tests {
         // added to unsigned scalar; should remain an unsigned field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") + 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Unsigned);
-        unsigned::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo + 2".into()).unwrap(), FieldType::Unsigned);
+        unsigned::assert_vec_eq(&computed_dv, &"Foo + 2".into(),
             vec![4u64, 5, 10, 4, 22, 5, 2]
         );
 
         // added to signed scalar; should become a signed field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") + -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo + -2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo + -2".into(),
             vec![0i64, 1, 6, 0, 18, 1, -2]
         );
 
         // added to floating point scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") + 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo + 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo + 2".into(),
             vec![4.0, 5.0, 10.0, 4.0, 22.0, 5.0, 2.0]
         );
 
@@ -570,24 +459,24 @@ mod tests {
         // added to unsigned scalar; should remain a signed field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") + 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo + 2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo + 2".into(),
             vec![4i64, -1, -6, 4, -18, 5, 2]
         );
 
         // added to signed scalar; should remain a signed field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") + -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo + -2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo + -2".into(),
             vec![0i64, -5, -10, 0, -22, 1, -2]
         );
 
         // added to floating point scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") + 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo + 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo + 2".into(),
             vec![4.0, -1.0, -6.0, 4.0, -18.0, 5.0, 2.0]
         );
 
@@ -597,24 +486,24 @@ mod tests {
         // added to unsigned scalar; should become an unsigned field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") + 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Unsigned);
-        unsigned::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo + 2".into()).unwrap(), FieldType::Unsigned);
+        unsigned::assert_vec_eq(&computed_dv, &"Foo + 2".into(),
             vec![3u64, 2, 2, 3, 2, 3, 3]
         );
 
         // added to signed scalar; should become signed field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") + -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo + -2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo + -2".into(),
             vec![-1i64, -2, -2, -1, -2, -1, -1]
         );
 
         // added to floating point scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") + 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo + 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo + 2".into(),
             vec![3.0, 2.0, 2.0, 3.0, 2.0, 3.0, 3.0]
         );
 
@@ -624,28 +513,27 @@ mod tests {
         // added to unsigned scalar; should remain a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") + 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo + 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo + 2".into(),
             vec![4.0, -1.0, -6.0, 4.0, -18.0, 5.0, 2.0]
         );
 
         // added to signed scalar; should remain a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") + -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo + -2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo + -2".into(),
             vec![0.0, -5.0, -10.0, 0.0, -22.0, 1.0, -2.0]
         );
 
         // added to floating point scalar; should remain a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") + 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo + 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo + 2".into(),
             vec![4.0, -1.0, -6.0, 4.0, -18.0, 5.0, 2.0]
         );
     }
-
 
     #[test]
     fn sub_scalar() {
@@ -655,24 +543,24 @@ mod tests {
         // subtract unsigned scalar; should become a signed field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") - 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo - 2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo - 2".into(),
             vec![0i64, 1, 6, 0, 18, 1, -2]
         );
 
         // subtract signed scalar; should become a signed field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") - -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo - -2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo - -2".into(),
             vec![4i64, 5, 10, 4, 22, 5, 2]
         );
 
         // subtract floating point scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") - 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo - 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo - 2".into(),
             vec![0.0, 1.0, 6.0, 0.0, 18.0, 1.0, -2.0]
         );
 
@@ -682,24 +570,24 @@ mod tests {
         // subtract unsigned scalar; should remain a signed field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") - 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo - 2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo - 2".into(),
             vec![0i64, -5, -10, 0, -22, 1, -2]
         );
 
         // subtract signed scalar; should remain a signed field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") - -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo - -2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo - -2".into(),
             vec![4i64, -1, -6, 4, -18, 5, 2]
         );
 
         // subtract floating point scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") - 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo - 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo - 2".into(),
             vec![0.0, -5.0, -10.0, 0.0, -22.0, 1.0, -2.0]
         );
 
@@ -709,24 +597,24 @@ mod tests {
         // subtract unsigned scalar; should become a signed field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") - 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo - 2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo - 2".into(),
             vec![-1i64, -2, -2, -1, -2, -1, -1]
         );
 
         // subtract signed scalar; should become signed field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") - -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Signed);
-        signed::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo - -2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo - -2".into(),
             vec![3i64, 2, 2, 3, 2, 3, 3]
         );
 
         // subtract floating point scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") - 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo - 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo - 2".into(),
             vec![-1.0, -2.0, -2.0, -1.0, -2.0, -1.0, -1.0]
         );
 
@@ -736,25 +624,137 @@ mod tests {
         // subtract unsigned scalar; should remain a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") - 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo - 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo - 2".into(),
             vec![0.0, -5.0, -10.0, 0.0, -22.0, 1.0, -2.0]
         );
 
         // subtract signed scalar; should remain a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") - -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo - -2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo - -2".into(),
             vec![4.0, -1.0, -6.0, 4.0, -18.0, 5.0, 2.0]
         );
 
         // subtract floating point scalar; should remain a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") - 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo - 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo - 2".into(),
             vec![0.0, -5.0, -10.0, 0.0, -22.0, 1.0, -2.0]
+        );
+    }
+
+
+    #[test]
+    fn multiply_scalar() {
+        /* unsigned data */
+        let data_vec = vec![2u64, 3, 8, 2, 20, 3, 0];
+
+        // multiplied by unsigned scalar; should remain an unsigned field
+        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
+        let computed_dv: DataView = (dv.v("Foo") * 2u64).unwrap();
+        assert_eq!(computed_dv.get_field_type(&"Foo * 2".into()).unwrap(), FieldType::Unsigned);
+        unsigned::assert_vec_eq(&computed_dv, &"Foo * 2".into(),
+            vec![4u64, 6, 16, 4, 40, 6, 0]
+        );
+
+        // multiplied by signed scalar; should become a signed field
+        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
+        let computed_dv: DataView = (dv.v("Foo") * -2i64).unwrap();
+        assert_eq!(computed_dv.get_field_type(&"Foo * -2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo * -2".into(),
+            vec![-4i64, -6, -16, -4, -40, -6, -0]
+        );
+
+        // multiplied by floating point scalar; should become a floating point field
+        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
+        let computed_dv: DataView = (dv.v("Foo") * 2.0).unwrap();
+        assert_eq!(computed_dv.get_field_type(&"Foo * 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo * 2".into(),
+            vec![4.0, 6.0, 16.0, 4.0, 40.0, 6.0, 0.0]
+        );
+
+        /* signed data */
+        let data_vec = vec![2i64, -3, -8, 2, -20, 3, 0];
+
+        // multiplied by unsigned scalar; should remain a signed field
+        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
+        let computed_dv: DataView = (dv.v("Foo") * 2u64).unwrap();
+        assert_eq!(computed_dv.get_field_type(&"Foo * 2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo * 2".into(),
+            vec![4i64, -6, -16, 4, -40, 6, 0]
+        );
+
+        // multiplied by signed scalar; should remain a signed field
+        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
+        let computed_dv: DataView = (dv.v("Foo") * -2i64).unwrap();
+        assert_eq!(computed_dv.get_field_type(&"Foo * -2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo * -2".into(),
+            vec![-4i64, 6, 16, -4, 40, -6, -0]
+        );
+
+        // multiplied by floating point scalar; should become a floating point field
+        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
+        let computed_dv: DataView = (dv.v("Foo") * 2.0).unwrap();
+        assert_eq!(computed_dv.get_field_type(&"Foo * 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo * 2".into(),
+            vec![4.0, -6.0, -16.0, 4.0, -40.0, 6.0, 0.0]
+        );
+
+        /* boolean data */
+        let data_vec = vec![true, false, false, true, false, true, true];
+
+        // multiplied by unsigned scalar; should become an unsigned field
+        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
+        let computed_dv: DataView = (dv.v("Foo") * 2u64).unwrap();
+        assert_eq!(computed_dv.get_field_type(&"Foo * 2".into()).unwrap(), FieldType::Unsigned);
+        unsigned::assert_vec_eq(&computed_dv, &"Foo * 2".into(),
+            vec![2u64, 0, 0, 2, 0, 2, 2]
+        );
+
+        // multiplied by signed scalar; should become signed field
+        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
+        let computed_dv: DataView = (dv.v("Foo") * -2i64).unwrap();
+        assert_eq!(computed_dv.get_field_type(&"Foo * -2".into()).unwrap(), FieldType::Signed);
+        signed::assert_vec_eq(&computed_dv, &"Foo * -2".into(),
+            vec![-2i64, 0, 0, -2, 0, -2, -2]
+        );
+
+        // multiplied by floating point scalar; should become a floating point field
+        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
+        let computed_dv: DataView = (dv.v("Foo") * 2.0).unwrap();
+        assert_eq!(computed_dv.get_field_type(&"Foo * 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo * 2".into(),
+            vec![2.0, 0.0, 0.0, 2.0, 0.0, 2.0, 2.0]
+        );
+
+        /* floating point data */
+        let data_vec = vec![2.0, -3.0, -8.0, 2.0, -20.0, 3.0, 0.0];
+
+        // multiplied by unsigned scalar; should remain a floating point field
+        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
+        let computed_dv: DataView = (dv.v("Foo") * 2u64).unwrap();
+        assert_eq!(computed_dv.get_field_type(&"Foo * 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo * 2".into(),
+            vec![4.0, -6.0, -16.0, 4.0, -40.0, 6.0, 0.0]
+        );
+
+        // multiplied by signed scalar; should remain a floating point field
+        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
+        let computed_dv: DataView = (dv.v("Foo") * -2i64).unwrap();
+        assert_eq!(computed_dv.get_field_type(&"Foo * -2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo * -2".into(),
+            vec![-4.0, 6.0, 16.0, -4.0, 40.0, -6.0, 0.0]
+        );
+
+        // multiplied by floating point scalar; should remain a floating point field
+        let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
+        let computed_dv: DataView = (dv.v("Foo") * 2.0).unwrap();
+        assert_eq!(computed_dv.get_field_type(&"Foo * 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo * 2".into(),
+            vec![4.0, -6.0, -16.0, 4.0, -40.0, 6.0, 0.0]
         );
     }
 
@@ -768,24 +768,24 @@ mod tests {
         // divide by unsigned scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / 2".into(),
             vec![1.0, 1.5, 4.0, 1.0, 10.0, 1.5, 0.0]
         );
 
         // divide by signed scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / -2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / -2".into(),
             vec![-1.0, -1.5, -4.0, -1.0, -10.0, -1.5, 0.0]
         );
 
         // divide by floating point scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / 2".into(),
             vec![1.0, 1.5, 4.0, 1.0, 10.0, 1.5, 0.0]
         );
 
@@ -795,24 +795,24 @@ mod tests {
         // divide by unsigned scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / 2".into(),
             vec![1.0, -1.5, -4.0, 1.0, -10.0, 1.5, 0.0]
         );
 
         // divide by signed scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / -2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / -2".into(),
             vec![-1.0, 1.5, 4.0, -1.0, 10.0, -1.5, 0.0]
         );
 
         // divide by floating point scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / 2".into(),
             vec![1.0, -1.5, -4.0, 1.0, -10.0, 1.5, 0.0]
         );
 
@@ -822,24 +822,24 @@ mod tests {
         // divide by unsigned scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / 2".into(),
             vec![0.5, 0.0, 0.0, 0.5, 0.0, 0.5, 0.5]
         );
 
         // divide by signed scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / -2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / -2".into(),
             vec![-0.5, 0.0, 0.0, -0.5, 0.0, -0.5, -0.5]
         );
 
         // divide by floating point scalar; should become a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / 2".into(),
             vec![0.5, 0.0, 0.0, 0.5, 0.0, 0.5, 0.5]
         );
 
@@ -849,24 +849,24 @@ mod tests {
         // divide by unsigned scalar; should remain a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / 2u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / 2".into(),
             vec![1.0, -1.5, -4.0, 1.0, -10.0, 1.5, 0.0]
         );
 
         // divide by signed scalar; should remain a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / -2i64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / -2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / -2".into(),
             vec![-1.0, 1.5, 4.0, -1.0, 10.0, -1.5, -0.0]
         );
 
         // divide by floating point scalar; should remain a floating point field
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / 2.0).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / 2".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / 2".into(),
             vec![1.0, -1.5, -4.0, 1.0, -10.0, 1.5, 0.0]
         );
 
@@ -878,8 +878,8 @@ mod tests {
         let data_vec = vec![2i64, -3, -8, 2, -20, 3, 1];
         let dv = data_vec.clone().merged_with_sample_emp_table("Foo");
         let computed_dv: DataView = (dv.v("Foo") / 0u64).unwrap();
-        assert_eq!(computed_dv.get_field_type(&"Foo".into()).unwrap(), FieldType::Float);
-        float::assert_vec_eq(&computed_dv, &"Foo".into(),
+        assert_eq!(computed_dv.get_field_type(&"Foo / 0".into()).unwrap(), FieldType::Float);
+        float::assert_vec_eq(&computed_dv, &"Foo / 0".into(),
             vec![INF, NEGINF, NEGINF, INF, NEGINF, INF, INF]
         );
 
