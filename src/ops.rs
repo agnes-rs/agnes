@@ -5,12 +5,12 @@ use std::ops::{Add, Sub, Mul, Div};
 use std::error::Error;
 use std::fmt;
 
-use field::{TypedFieldIdent, FieldType, FieldIdent};
+use field::{TypedFieldIdent, DataType, FieldType, FieldIdent};
 use view::{DataView};
 use store::{DataStore, AddData};
 use error::*;
 use masked::MaybeNa;
-use apply::{ElemFn, ApplyToElem, FieldIndexSelector};
+use apply::{ApplyToField, ApplyToField2, FieldFn, Field2Fn, DataIndex, FieldSelector};
 
 /// Error during data operations type inference.
 #[derive(Debug)]
@@ -54,9 +54,57 @@ impl Error for TypeError {
 }
 impl From<TypeError> for AgnesError {
     fn from(err: TypeError) -> AgnesError {
-        AgnesError::Inference(err)
+        AgnesError::TypeInference(err)
     }
 }
+
+/// Error during data operations type inference between fields.
+#[derive(Debug)]
+pub enum FieldTypeError {
+    /// Error during addition between two `FieldType`s
+    Add(FieldType, FieldType),
+    /// Error during subtraction between two `FieldType`s
+    Sub(FieldType, FieldType),
+    /// Error during multiplication between two `FieldType`s
+    Mul(FieldType, FieldType),
+    /// Error during division between two `FieldType`s
+    Div(FieldType, FieldType),
+}
+impl fmt::Display for FieldTypeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            FieldTypeError::Add(left, right) => write!(f,
+                "unable to add field of type {} to field of type {}", left, right),
+            FieldTypeError::Sub(left, right) => write!(f,
+                "unable to subtract field of type {} from field of type {}", right, left),
+            FieldTypeError::Mul(left, right) => write!(f,
+                "unable to multiply field of type {} by field of type {}", left, right),
+            FieldTypeError::Div(left, right) => write!(f,
+                "unable to divide field of type {} by field of type {}", left, right),
+        }
+    }
+}
+impl Error for FieldTypeError {
+    fn description(&self) -> &str {
+        match *self {
+            FieldTypeError::Add(..) => "field addition error",
+            FieldTypeError::Sub(..) => "field subtraction error",
+            FieldTypeError::Mul(..) => "field multiplication error",
+            FieldTypeError::Div(..) => "field division error"
+        }
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        None
+    }
+}
+impl From<FieldTypeError> for AgnesError {
+    fn from(err: FieldTypeError) -> AgnesError {
+        AgnesError::FieldTypeInference(err)
+    }
+}
+
+
 
 macro_rules! impl_op_fn {
     ($($fn_name:tt)*) => {$(
@@ -66,8 +114,8 @@ struct $fn_name<'a, 'b, T> {
     target_ident: &'b FieldIdent,
     term: T
 }
-impl<'a, 'b, T: PartialOrd> $fn_name<'a, 'b, T> {
-    fn add_to_ds<O: PartialOrd>(&mut self, value: MaybeNa<O>) where DataStore: AddData<O> {
+impl<'a, 'b, T: DataType> $fn_name<'a, 'b, T> {
+    fn add_to_ds<O: DataType>(&mut self, value: MaybeNa<O>) where DataStore: AddData<O> {
         self.target_ds.add(self.target_ident.clone(), value);
     }
 }
@@ -83,7 +131,7 @@ macro_rules! impl_op {
         $op_fn:tt;
         $op_str:expr;
         $infer_fn:tt;
-        $op_elemfn_ty:tt;
+        $op_fieldfn_ty:tt;
         $dtype:ty;
         unsigned: $unsigned_calc:expr;
         signed: $signed_calc:expr;
@@ -92,24 +140,33 @@ macro_rules! impl_op {
     ) => {
 // START IMPL_OP
 
-impl<'a, 'b> ElemFn for $op_elemfn_ty<'a, 'b, $dtype> {
+impl<'a, 'b> FieldFn for $op_fieldfn_ty<'a, 'b, $dtype> {
+
     type Output = ();
-    fn apply_unsigned(&mut self, value: MaybeNa<&u64>) {
-        let new_value = value.map(|&val| $unsigned_calc(val, self.term));
-        self.add_to_ds(new_value);
+    fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &T) {
+        for i in 0..field.len() {
+            let new_value = field.get_data(i).unwrap().map(|&val| $unsigned_calc(val, self.term));
+            self.add_to_ds(new_value);
+        }
     }
-    fn apply_signed(&mut self, value: MaybeNa<&i64>) {
-        let new_value = value.map(|&val| $signed_calc(val, self.term));
-        self.add_to_ds(new_value);
+    fn apply_signed<T: DataIndex<i64>>(&mut self, field: &T) {
+        for i in 0..field.len() {
+            let new_value = field.get_data(i).unwrap().map(|&val| $signed_calc(val, self.term));
+            self.add_to_ds(new_value);
+        }
     }
-    fn apply_text(&mut self, _: MaybeNa<&String>) { unreachable!() }
-    fn apply_boolean(&mut self, value: MaybeNa<&bool>) {
-        let new_value = value.map(|&val| $bool_calc(val, self.term));
-        self.add_to_ds(new_value);
+    fn apply_text<T: DataIndex<String>>(&mut self, _: &T) { unreachable!() }
+    fn apply_boolean<T: DataIndex<bool>>(&mut self, field: &T) {
+        for i in 0..field.len() {
+            let new_value = field.get_data(i).unwrap().map(|&val| $bool_calc(val, self.term));
+            self.add_to_ds(new_value);
+        }
     }
-    fn apply_float(&mut self, value: MaybeNa<&f64>) {
-        let new_value = value.map(|&val| $float_calc(val, self.term));
-        self.add_to_ds(new_value);
+    fn apply_float<T: DataIndex<f64>>(&mut self, field: &T) {
+        for i in 0..field.len() {
+            let new_value = field.get_data(i).unwrap().map(|&val| $float_calc(val, self.term));
+            self.add_to_ds(new_value);
+        }
     }
 }
 impl<'a> $op<$dtype> for &'a DataView {
@@ -127,15 +184,16 @@ impl<'a> $op<$dtype> for &'a DataView {
                 "unable to apply arithmetic operation to an empty dataview".into()));
         }
         let mut store = DataStore::with_fields(fields);
-        for ((ident, vf), target_ident) in self.fields.iter().zip(store.fieldnames().iter()) {
-            let frame = &self.frames[vf.frame_idx];
-            for i in 0..frame.nrows() {
-                self.apply_to_elem($op_elemfn_ty {
+        for ((ident, _), target_ident) in self.fields.iter().zip(store.fieldnames().iter()) {
+            // let frame = &self.frames[vf.frame_idx];
+            self.apply_to_field(
+                $op_fieldfn_ty {
                     target_ds: &mut store,
                     target_ident: &target_ident.clone().into(),
                     term: rhs
-                }, FieldIndexSelector(&ident, i))?;
-            }
+                },
+                FieldSelector(&ident)
+            )?;
         }
         Ok(store.into())
     }
@@ -263,7 +321,205 @@ impl_div!(
     float: |x: f64, divisor: f64| -> f64 { x / divisor }; // float * f64 -> f64
 );
 
-// infers the result type when adding a `self` to type `ty`.
+
+struct Add2Fn<'a, 'b> {
+    target_ds: &'a mut DataStore,
+    target_ident: &'b FieldIdent,
+}
+impl<'a, 'b> Add2Fn<'a, 'b> {
+    fn add_to_ds<O: DataType>(&mut self, value: MaybeNa<O>) where DataStore: AddData<O> {
+        self.target_ds.add(self.target_ident.clone(), value);
+    }
+}
+impl<'a, 'b> Field2Fn for Add2Fn<'a, 'b> {
+    type Output = ();
+    fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &(&T, &T)) {
+        debug_assert_eq!(field.0.len(), field.1.len());
+        for i in 0..field.0.len() {
+            let new_value = match (field.0.get_data(i).unwrap(), field.1.get_data(i).unwrap()) {
+                (MaybeNa::Exists(l), MaybeNa::Exists(r)) => MaybeNa::Exists(l + r),
+                _ => MaybeNa::Na
+            };
+            self.add_to_ds(new_value);
+        }
+    }
+    fn apply_signed<T: DataIndex<i64>>(&mut self, field: &(&T, &T)) {
+        debug_assert_eq!(field.0.len(), field.1.len());
+        for i in 0..field.0.len() {
+            let new_value = match (field.0.get_data(i).unwrap(), field.1.get_data(i).unwrap()) {
+                (MaybeNa::Exists(l), MaybeNa::Exists(r)) => MaybeNa::Exists(l + r),
+                _ => MaybeNa::Na
+            };
+            self.add_to_ds(new_value);
+        }
+    }
+    fn apply_text<T: DataIndex<String>>(&mut self, _: &(&T, &T)) { unreachable!() }
+    fn apply_boolean<T: DataIndex<bool>>(&mut self, field: &(&T, &T)) {
+        debug_assert_eq!(field.0.len(), field.1.len());
+        for i in 0..field.0.len() {
+            let new_value = match (field.0.get_data(i).unwrap(), field.1.get_data(i).unwrap()) {
+                (MaybeNa::Exists(l), MaybeNa::Exists(r)) => MaybeNa::Exists(l | r),
+                _ => MaybeNa::Na
+            };
+            self.add_to_ds(new_value);
+        }
+    }
+    fn apply_float<T: DataIndex<f64>>(&mut self, field: &(&T, &T)) {
+        debug_assert_eq!(field.0.len(), field.1.len());
+        for i in 0..field.0.len() {
+            let new_value = match (field.0.get_data(i).unwrap(), field.1.get_data(i).unwrap()) {
+                (MaybeNa::Exists(l), MaybeNa::Exists(r)) => MaybeNa::Exists(l + r),
+                _ => MaybeNa::Na
+            };
+            self.add_to_ds(new_value);
+        }
+    }
+}
+impl<'a, 'b> Add<&'b DataView> for &'a DataView {
+    type Output = Result<DataView>;
+    fn add(self, rhs: &'b DataView) -> Result<DataView> {
+        // check dimensions
+        if self.nrows() != rhs.nrows() {
+            return Err(AgnesError::DimensionMismatch(
+                "unable to apply arithmetic operation between dataviews of different number \
+                of records".into()
+            ));
+        }
+        if self.nfields() == 0 || rhs.nfields() == 0 {
+            return Err(AgnesError::DimensionMismatch(
+                "unable to apply arithmetic operation to an empty dataview".into()
+            ));
+        }
+        if self.nfields() > 1 && rhs.nfields() > 1 && self.nfields() != rhs.nfields() {
+            return Err(AgnesError::DimensionMismatch(
+                "unable to apply arithmetic operation between non-single-field dataviews unless \
+                each has the same number of fields".into()
+            ));
+        }
+
+        struct FieldInfo {
+            target_field: TypedFieldIdent,
+            left_ident: FieldIdent,
+            rght_ident: FieldIdent,
+        }
+        let mut fields: Vec<FieldInfo> = vec![];
+        if self.nfields() > 1 && self.nfields() == rhs.nfields() {
+            // n x n
+            for ((left_ident, left_vf), (rght_ident, rght_vf))
+                in self.fields.iter().zip(rhs.fields.iter())
+            {
+                // idents exist by construction, unwrap is safe
+                let left_ty = self.frames[left_vf.frame_idx].get_field_type(&left_vf.rident.ident)
+                    .unwrap();
+                let rght_ty = self.frames[rght_vf.frame_idx].get_field_type(&rght_vf.rident.ident)
+                    .unwrap();
+                fields.push(FieldInfo {
+                    target_field: TypedFieldIdent {
+                        ident: FieldIdent::Name(format!("{} {} {}", left_ident.clone(), "+",
+                            rght_ident.clone())),
+                        ty: left_ty.infer_ft_add_result(rght_ty)?
+                    },
+                    left_ident: left_ident.clone(),
+                    rght_ident: rght_ident.clone(),
+                })
+            }
+        } else {
+            // due to above dimension checking, this is either n x 1, 1 x n, or 1 x 1
+            for TypedFieldIdent { ident: left_ident, ty: left_ty } in self.field_types() {
+                for TypedFieldIdent { ident: rght_ident, ty: rght_ty } in rhs.field_types() {
+                    fields.push(FieldInfo {
+                        target_field: TypedFieldIdent {
+                            ident: FieldIdent::Name(format!("{} {} {}", left_ident.clone(), "+",
+                                rght_ident.clone())),
+                            ty: left_ty.infer_ft_add_result(rght_ty)?
+                        },
+                        left_ident: left_ident.clone(),
+                        rght_ident,
+                    })
+                }
+            }
+        }
+        let mut store = DataStore::with_field_iter(fields.iter().map(|f| f.target_field.clone()));
+
+        for FieldInfo { target_field, left_ident, rght_ident } in fields {
+            (self, rhs).apply_to_field2(
+                Add2Fn {
+                    target_ds: &mut store,
+                    target_ident: &target_field.ident,
+                },
+                (
+                    FieldSelector(&left_ident),
+                    FieldSelector(&rght_ident),
+                )
+            )?;
+        }
+
+
+        // for (ident, vf) in self.fields.iter() {
+        //     let frame = &self.frames[vf.frame_idx];
+        //     for i in 0..frame.nrows() {
+        //         self.apply_to_elem($op_elemfn_ty {
+        //             target_ds: &mut store,
+        //             target_ident: &ident,
+        //             term: rhs
+        //         }, FieldIndexSelector(&ident, i))?;
+        //     }
+        // }
+        Ok(store.into())
+    }
+}
+impl Add<DataView> for DataView {
+    type Output = Result<DataView>;
+    fn add(self, rhs: DataView) -> Result<DataView> {
+        (&self).add(&rhs)
+    }
+}
+impl<'a> Add<&'a DataView> for DataView {
+    type Output = Result<DataView>;
+    fn add(self, rhs: &'a DataView) -> Result<DataView> {
+        (&self).add(rhs)
+    }
+}
+impl<'a> Add<DataView> for &'a DataView {
+    type Output = Result<DataView>;
+    fn add(self, rhs: DataView) -> Result<DataView> {
+        self.add(&rhs)
+    }
+}
+// impl $op<$dtype> for DataView {
+//     type Output = Result<DataView>;
+//     fn $op_fn(self, rhs: $dtype) -> Result<DataView> {
+//         (&self).$op_fn(rhs)
+//     }
+// }
+
+macro_rules! impl_infer_ft_result {
+    ($fn_name:tt, $infer_ty_fn_name:tt, $err_var:tt) => {
+
+impl FieldType {
+    fn $fn_name(self, other: FieldType) -> Result<FieldType> {
+        match self {
+            FieldType::Unsigned => u64::$infer_ty_fn_name(other)
+                .or(Err(FieldTypeError::$err_var(self, other).into())),
+            FieldType::Signed   => i64::$infer_ty_fn_name(other)
+                .or(Err(FieldTypeError::$err_var(self, other).into())),
+            FieldType::Text     => Err(FieldTypeError::$err_var(self, other).into()),
+            FieldType::Boolean  => Ok(other),
+            FieldType::Float    => f64::$infer_ty_fn_name(other)
+                .or(Err(FieldTypeError::$err_var(self, other).into())),
+        }
+    }
+}
+
+    }
+}
+impl_infer_ft_result!(infer_ft_add_result, infer_add_result, Add);
+impl_infer_ft_result!(infer_ft_sub_result, infer_sub_result, Sub);
+impl_infer_ft_result!(infer_ft_mul_result, infer_mul_result, Mul);
+impl_infer_ft_result!(infer_ft_div_result, infer_div_result, Div);
+
+
+// infers the result type when adding a `self` to type `ty`. Used for Rust types.
 trait InferAddResult {
     fn infer_add_result(ty: FieldType) -> Result<FieldType>;
 }
@@ -882,6 +1138,41 @@ mod tests {
         float::assert_vec_eq(&computed_dv, &"Foo / 0".into(),
             vec![INF, NEGINF, NEGINF, INF, NEGINF, INF, INF]
         );
+    }
+
+    macro_rules! test_view_op {
+        ($left:expr, $right:expr, $result:expr, $op:expr, $strop:expr, $result_ty:expr,
+                $test_mod:ident) =>
+        {{
+            let data_vec1 = $left;
+            let data_vec2 = $right;
+            let dv1 = data_vec1.clone().merged_with_sample_emp_table("Foo");
+            let dv2 = data_vec2.clone().merged_with_sample_emp_table("Bar");
+            let computed_dv: DataView = ($op(dv1.v("Foo"), dv2.v("Bar"))).unwrap();
+            let target_ident = FieldIdent::Name(format!("Foo {} Bar", $strop));
+            assert_eq!(computed_dv.get_field_type(&target_ident).unwrap(), $result_ty);
+            $test_mod::assert_vec_eq(&computed_dv, &target_ident, $result);
+        }}
+    }
+
+    #[test]
+    fn add_field() {
+        // unsigned data + unsigned data -> unsigned
+        test_view_op!(
+            vec![2u64,  3, 8,  2,  20,  3, 0],
+            vec![55u64, 3, 1,  9, 106,  9, 0],
+            vec![57u64, 6, 9, 11, 126, 12, 0],
+            |dv1, dv2| dv1 + dv2, "+", FieldType::Unsigned, unsigned
+        );
+
+        // unsigned data + signed data -> signed
+        // test_view_op!(
+        //     vec![2u64,   3,  8,  2,   20,  3, 0],
+        //     vec![55i64, -3, -1,  9, -106,  9, 0],
+        //     vec![57i64,  0,  7, 11,  -86, 12, 0],
+        //     |dv1, dv2| dv1 + dv2, "+", FieldType::Signed, signed
+        // );
+
 
     }
 }

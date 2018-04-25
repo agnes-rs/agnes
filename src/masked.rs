@@ -2,19 +2,20 @@
 
 use serde::ser::{Serialize, Serializer, SerializeSeq};
 
+use field::DataType;
 use bit_vec::BitVec;
 use apply::*;
 use error;
 
 /// Missing value container.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum MaybeNa<T: PartialOrd> {
+pub enum MaybeNa<T: DataType> {
     /// Indicates a missing (NA) value.
     Na,
     /// Indicates an existing value.
     Exists(T)
 }
-impl<T: ToString + PartialOrd> ToString for MaybeNa<T> {
+impl<T: ToString + DataType> ToString for MaybeNa<T> {
     fn to_string(&self) -> String {
         match *self {
             MaybeNa::Na => "NA".into(),
@@ -22,7 +23,7 @@ impl<T: ToString + PartialOrd> ToString for MaybeNa<T> {
         }
     }
 }
-impl<T: PartialOrd> MaybeNa<T> {
+impl<T: DataType> MaybeNa<T> {
     /// Unwrap a `MaybeNa`, revealing the data contained within. Panics if called on an `Na` value.
     pub fn unwrap(self) -> T {
         match self {
@@ -45,14 +46,14 @@ impl<T: PartialOrd> MaybeNa<T> {
         }
     }
     /// Applies function `f` if this `MaybeNa` exists.
-    pub fn map<U: PartialOrd, F: FnMut(T) -> U>(self, mut f: F) -> MaybeNa<U> {
+    pub fn map<U: DataType, F: FnMut(T) -> U>(self, mut f: F) -> MaybeNa<U> {
         match self {
             MaybeNa::Exists(val) => MaybeNa::Exists(f(val)),
             MaybeNa::Na => MaybeNa::Na
         }
     }
 }
-impl<'a, T: PartialOrd + Clone> MaybeNa<&'a T> {
+impl<'a, T: DataType + Clone> MaybeNa<&'a T> {
     /// Create a owner `MaybeNa` out of a reference-holding `MaybeNa` using `clone()`.
     pub fn cloned(self) -> MaybeNa<T> {
         match self {
@@ -68,7 +69,7 @@ pub struct MaskedData<T> {
     mask: BitVec,
     data: Vec<T>
 }
-impl<T: PartialOrd> MaskedData<T> {
+impl<T: DataType> MaskedData<T> {
     /// Length of this data vector
     pub fn len(&self) -> usize {
         assert_eq!(self.mask.len(), self.data.len());
@@ -98,7 +99,7 @@ impl<T: PartialOrd> MaskedData<T> {
         }).collect()
     }
 }
-impl<T: Default + PartialOrd> MaskedData<T> {
+impl<T: Default + DataType> MaskedData<T> {
     /// Create new empty `MaskedData` struct.
     pub fn new() -> MaskedData<T> {
         MaskedData {
@@ -147,7 +148,7 @@ impl<T: Default + PartialOrd> MaskedData<T> {
         ret
     }
 }
-impl<T: PartialOrd + Default, U: Into<T>> From<Vec<U>> for MaskedData<T> {
+impl<T: DataType + Default, U: Into<T>> From<Vec<U>> for MaskedData<T> {
     fn from(other: Vec<U>) -> MaskedData<T> {
         MaskedData::from_vec(other)
     }

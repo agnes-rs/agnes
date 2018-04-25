@@ -4,7 +4,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use field::{FieldIdent, TypedFieldIdent, DsField, FieldType};
+use field::{FieldIdent, DataType, TypedFieldIdent, DsField, FieldType};
 use masked::{MaskedData};
 use error::*;
 use MaybeNa;
@@ -71,6 +71,23 @@ impl DataStore {
             float: HashMap::new(),
         };
         for field in fields.drain(..) {
+            ds.add_field(field);
+        }
+        ds
+    }
+    /// Create a new `DataStore` from an interator of fields.
+    pub fn with_field_iter<I: Iterator<Item=TypedFieldIdent>>(field_iter: I) -> DataStore {
+        let mut ds = DataStore {
+            fields: vec![],
+            field_map: HashMap::new(),
+
+            unsigned: HashMap::new(),
+            signed: HashMap::new(),
+            text: HashMap::new(),
+            boolean: HashMap::new(),
+            float: HashMap::new(),
+        };
+        for field in field_iter {
             ds.add_field(field);
         }
         ds
@@ -234,7 +251,9 @@ impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataStore {
 }
 
 impl<'a> ApplyToField<FieldSelector<'a>> for DataStore {
-    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector) -> Result<F::Output> {
+    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector)
+        -> Result<F::Output>
+    {
         let ident = select.index();
         self.field_map.get(ident)
             .ok_or(AgnesError::FieldNotFound(ident.clone()))
@@ -276,34 +295,79 @@ impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataStore, &'c DataSt
             (&None, _) => { return Err(AgnesError::FieldNotFound(ident0.clone())); },
             (_, &None) => { return Err(AgnesError::FieldNotFound(ident1.clone())); }
         };
+
+        macro_rules! apply {
+            ($l:tt $r:tt) => {
+                (
+                    (self.0).$l(ident0).unwrap(),
+                    (self.1).$r(ident1).unwrap()
+                ).apply_to_field2(f, (NilSelector, NilSelector))
+            }
+        }
         match (field0.ty_ident.ty, field1.ty_ident.ty) {
-            (FieldType::Unsigned, FieldType::Unsigned) => (
-                self.0.get_unsigned_field(ident0).unwrap(),
-                self.1.get_unsigned_field(ident1).unwrap()
-            ).apply_to_field2(f, (NilSelector, NilSelector)),
-            (FieldType::Signed, FieldType::Signed) => (
-                self.0.get_signed_field(ident0).unwrap(),
-                self.1.get_signed_field(ident1).unwrap()
-            ).apply_to_field2(f, (NilSelector, NilSelector)),
-            (FieldType::Text, FieldType::Text) => (
-                self.0.get_text_field(ident0).unwrap(),
-                self.1.get_text_field(ident1).unwrap()
-            ).apply_to_field2(f, (NilSelector, NilSelector)),
-            (FieldType::Boolean, FieldType::Boolean) => (
-                self.0.get_boolean_field(ident0).unwrap(),
-                self.1.get_boolean_field(ident1).unwrap()
-            ).apply_to_field2(f, (NilSelector, NilSelector)),
-            (FieldType::Float, FieldType::Float) => (
-                self.0.get_float_field(ident0).unwrap(),
-                self.1.get_float_field(ident1).unwrap()
-            ).apply_to_field2(f, (NilSelector, NilSelector)),
-            (ty1, ty2) => Err(AgnesError::IncompatibleTypes(ty1, ty2))
+
+            (FieldType::Unsigned, FieldType::Unsigned) =>
+                apply!(get_unsigned_field get_unsigned_field),
+            // (FieldType::Unsigned, FieldType::Signed) =>
+            //     apply!(get_unsigned_field get_signed_field),
+            // (FieldType::Unsigned, FieldType::Text) =>
+            //     apply!(get_unsigned_field get_text_field),
+            // (FieldType::Unsigned, FieldType::Boolean) =>
+            //     apply!(get_unsigned_field get_boolean_field),
+            // (FieldType::Unsigned, FieldType::Float) =>
+            //     apply!(get_unsigned_field get_float_field),
+
+            // (FieldType::Signed, FieldType::Unsigned) =>
+            //     apply!(get_signed_field get_unsigned_field),
+            (FieldType::Signed, FieldType::Signed) =>
+                apply!(get_signed_field get_signed_field),
+            // (FieldType::Signed, FieldType::Text) =>
+            //     apply!(get_signed_field get_text_field),
+            // (FieldType::Signed, FieldType::Boolean) =>
+            //     apply!(get_signed_field get_boolean_field),
+            // (FieldType::Signed, FieldType::Float) =>
+            //     apply!(get_signed_field get_float_field),
+
+            // (FieldType::Text, FieldType::Unsigned) =>
+            //     apply!(get_text_field get_unsigned_field),
+            // (FieldType::Text, FieldType::Signed) =>
+            //     apply!(get_text_field get_signed_field),
+            (FieldType::Text, FieldType::Text) =>
+                apply!(get_text_field get_text_field),
+            // (FieldType::Text, FieldType::Boolean) =>
+            //     apply!(get_text_field get_boolean_field),
+            // (FieldType::Text, FieldType::Float) =>
+            //     apply!(get_text_field get_float_field),
+
+            // (FieldType::Boolean, FieldType::Unsigned) =>
+            //     apply!(get_boolean_field get_unsigned_field),
+            // (FieldType::Boolean, FieldType::Signed) =>
+            //     apply!(get_boolean_field get_signed_field),
+            // (FieldType::Boolean, FieldType::Text) =>
+            //     apply!(get_boolean_field get_text_field),
+            (FieldType::Boolean, FieldType::Boolean) =>
+                apply!(get_boolean_field get_boolean_field),
+            // (FieldType::Boolean, FieldType::Float) =>
+            //     apply!(get_boolean_field get_float_field),
+
+            // (FieldType::Float, FieldType::Unsigned) =>
+            //     apply!(get_float_field get_unsigned_field),
+            // (FieldType::Float, FieldType::Signed) =>
+            //     apply!(get_float_field get_signed_field),
+            // (FieldType::Float, FieldType::Text) =>
+            //     apply!(get_float_field get_text_field),
+            // (FieldType::Float, FieldType::Boolean) =>
+            //     apply!(get_float_field get_boolean_field),
+            (FieldType::Float, FieldType::Float) =>
+                apply!(get_float_field get_float_field),
+
+            (l, r) => Err(AgnesError::IncompatibleTypes(l, r))
         }
     }
 }
 
 /// Trait for adding data (of valid types) to a `DataStore`.
-pub trait AddData<T: PartialOrd> {
+pub trait AddData<T: DataType> {
     /// Add a single value to the specified field.
     fn add(&mut self, ident: FieldIdent, value: MaybeNa<T>);
 }
@@ -333,10 +397,10 @@ impl AddData<f64> for DataStore {
     }
 }
 
-fn max_len<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>) -> usize where K: Eq + Hash {
+fn max_len<K, T: DataType>(h: &HashMap<K, MaskedData<T>>) -> usize where K: Eq + Hash {
     h.values().fold(0, |acc, v| max(acc, v.len()))
 }
-fn is_hm_homogeneous<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>) -> Option<usize>
+fn is_hm_homogeneous<K, T: DataType>(h: &HashMap<K, MaskedData<T>>) -> Option<usize>
     where K: Eq + Hash
 {
     let mut all_same_len = true;
@@ -351,7 +415,7 @@ fn is_hm_homogeneous<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>) -> Option<
     }
     if all_same_len { Some(target_len) } else { None }
 }
-fn is_hm_homogeneous_with<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>, value: usize)
+fn is_hm_homogeneous_with<K, T: DataType>(h: &HashMap<K, MaskedData<T>>, value: usize)
     -> Option<usize> where K: Eq + Hash
 {
     is_hm_homogeneous(h).and_then(|x| {
@@ -362,14 +426,14 @@ fn is_hm_homogeneous_with<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>, value
         } else { None }
     })
 }
-fn insert_value<T: Default + PartialOrd>(
+fn insert_value<T: Default + DataType>(
     h: &mut HashMap<FieldIdent, MaskedData<T>>,
     k: FieldIdent,
     v: MaybeNa<T>)
 {
     h.entry(k).or_insert(MaskedData::new()).push(v);
 }
-fn parse<T: PartialOrd, F>(value_str: String, f: F) -> Result<MaybeNa<T>> where F: Fn(String)
+fn parse<T: DataType, F>(value_str: String, f: F) -> Result<MaybeNa<T>> where F: Fn(String)
     -> Result<T>
 {
     if value_str.trim().len() == 0 {

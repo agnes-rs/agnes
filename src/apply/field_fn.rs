@@ -1,12 +1,13 @@
 use apply::Selector;
 use masked::MaybeNa;
 use error::Result;
+use field::DataType;
 
 /// Trait implemented by data structures which wish to be able to support `FieldFn`s (type-dependent
 /// functions that apply to an entire field).
 pub trait ApplyToField<S: Selector> {
     /// Apply a `FieldFn` to a field selected with the provided `Selector`.
-    fn apply_to_field<T: FieldFn>(&self, f: T, select: S) -> Result<T::Output>;
+    fn apply_to_field<F: FieldFn>(&self, f: F, select: S) -> Result<F::Output>;
 }
 /// Trait implemented by pairs of data structures which wish to be abel to support `Field2Fn`s
 /// (type-dependent functions that apply to fields from two data structures simultaneously).
@@ -17,7 +18,7 @@ pub trait ApplyToField2<S: Selector> {
 }
 
 /// Trait implemented by data structures that represent a single column / vector / field of data.
-pub trait DataIndex<T: PartialOrd> {
+pub trait DataIndex<T: DataType> {
     /// Returns the data (possibly NA) at the specified index, if it exists.
     fn get_data(&self, idx: usize) -> Result<MaybeNa<&T>>;
     /// Returns the length of this data field.

@@ -230,7 +230,9 @@ impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataView {
     }
 }
 impl<'a> ApplyToField<FieldSelector<'a>> for DataView {
-    fn apply_to_field<T: FieldFn>(&self, f: T, select: FieldSelector) -> error::Result<T::Output> {
+    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector)
+        -> error::Result<F::Output>
+    {
         let ident = select.index();
         self.fields.get(ident)
             .ok_or(error::AgnesError::FieldNotFound(ident.clone()))

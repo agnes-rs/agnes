@@ -6,7 +6,7 @@
 use indexmap::IndexMap;
 
 use frame::{DataFrame};
-use field::{RFieldIdent, FieldIdent, TypedFieldIdent};
+use field::{RFieldIdent, DataType, FieldIdent, TypedFieldIdent};
 use masked::MaybeNa;
 use view::{DataView, ViewField};
 use store::{DataStore, AddData};
@@ -132,7 +132,7 @@ impl Predicate {
     fn is_less_than_pred(&self) -> bool {
         *self == Predicate::LessThan || *self == Predicate::LessThanEqual
     }
-    fn apply<T: PartialOrd>(&self, left: &MaybeNa<T>, right: &MaybeNa<T>) -> PredResults {
+    fn apply<T: DataType>(&self, left: &MaybeNa<T>, right: &MaybeNa<T>) -> PredResults {
         match *self {
             Predicate::Equal => {
                 if left == right {
@@ -300,7 +300,7 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
     Ok(ds)
 }
 
-fn merge_masked_data<'a, T: PartialOrd, U: DataIndex<T>>(
+fn merge_masked_data<'a, T: DataType, U: DataIndex<T>>(
     left_perm: &Vec<usize>,
     right_perm: &Vec<usize>,
     left_key_data: &'a U,

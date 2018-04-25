@@ -9,7 +9,7 @@ use store::DataStore;
 use masked::MaybeNa;
 use serde::{Serialize, Serializer};
 use serde::ser::{self, SerializeSeq};
-use field::{FieldIdent, FieldType};
+use field::{DataType, FieldIdent, FieldType};
 use apply::*;
 use error;
 
@@ -106,7 +106,9 @@ impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataFrame {
     }
 }
 impl<'a> ApplyToField<FieldSelector<'a>> for DataFrame {
-    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector) -> error::Result<F::Output> {
+    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector)
+        -> error::Result<F::Output>
+    {
         self.store.apply_to_field(FrameFieldFn { frame: &self, field_fn: f }, select)
     }
 }
@@ -130,17 +132,17 @@ impl From<DataStore> for DataFrame {
 
 // Structure to hold references to a data structure (e.g. DataStore) and a frame used to view
 // that structure. Provides DataIndex for the underlying data structure, as view through the frame.
-struct Framed<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> {
+struct Framed<'a, 'b, T: DataType, D: 'b + DataIndex<T>> {
     frame: &'a DataFrame,
     data: &'b D,
     dtype: PhantomData<T>,
 }
-impl<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> Framed<'a, 'b, T, D> {
+impl<'a, 'b, T: DataType, D: 'b + DataIndex<T>> Framed<'a, 'b, T, D> {
     fn new(frame: &'a DataFrame, data: &'b D) -> Framed<'a, 'b, T, D> {
         Framed { frame, data, dtype: PhantomData }
     }
 }
-impl<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> DataIndex<T> for Framed<'a, 'b, T, D> {
+impl<'a, 'b, T: DataType, D: 'b + DataIndex<T>> DataIndex<T> for Framed<'a, 'b, T, D> {
     fn get_data(&self, idx: usize) -> error::Result<MaybeNa<&T>> {
         self.data.get_data(self.frame.map_index(idx))
     }
@@ -221,7 +223,7 @@ struct SerializeFn<'b, S: Serializer> {
     frame: &'b DataFrame
 }
 macro_rules! sresult { ($s:tt) => (Result<$s::Ok, $s::Error>) }
-fn do_serialize<'a, 'b, T: PartialOrd + Serialize, S: 'a + Serializer>(
+fn do_serialize<'a, 'b, T: DataType + Serialize, S: 'a + Serializer>(
         sfn: &mut SerializeFn<'b, S>, field: &DataIndex<T>
     ) -> sresult![S]
 {

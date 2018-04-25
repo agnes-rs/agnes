@@ -7,7 +7,7 @@ pub trait SortOrderBy<S: Selector> {
     /// Returns the sort permutation for the field specified with the `Selector.
     fn sort_order_by(&self, select: S) -> Result<Vec<usize>>;
 }
-impl<S: Selector, T> SortOrderBy<S> for T where T: ApplyToField<S> {
+impl<S: Selector, U> SortOrderBy<S> for U where U: ApplyToField<S> {
     fn sort_order_by(&self, select: S) -> Result<Vec<usize>> {
         self.apply_to_field(SortOrderFn {}, select)
     }
