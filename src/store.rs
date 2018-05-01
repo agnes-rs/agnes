@@ -207,9 +207,8 @@ impl Default for DataStore {
     }
 }
 
-impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataStore {
-    fn apply_to_elem<F: ElemFn>(&self, f: F, select: FieldIndexSelector) -> Result<F::Output> {
-        let (ident, idx) = select.index();
+impl DataStore {
+    pub fn apply<F: MapFn>(&self, f: &mut F, ident: &FieldIdent, idx: usize) -> Result<F::Output> {
         self.field_map.get(ident)
             .ok_or(AgnesError::FieldNotFound(ident.clone()))
             .and_then(|&field_idx| {
@@ -217,185 +216,308 @@ impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataStore {
                     FieldType::Unsigned => self.get_unsigned_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
                         .and_then(|data| {
-                            data.apply_to_elem(f, IndexSelector(idx))
+                            data.apply(f, idx)
                         }
                     ),
                     FieldType::Signed => self.get_signed_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
                         .and_then(|data| {
-                            data.apply_to_elem(f, IndexSelector(idx))
+                            data.apply(f, idx)
                         }
                     ),
                     FieldType::Text => self.get_text_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
                         .and_then(|data| {
-                            data.apply_to_elem(f, IndexSelector(idx))
+                            data.apply(f, idx)
                         }
                     ),
                     FieldType::Boolean => self.get_boolean_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
                         .and_then(|data| {
-                            data.apply_to_elem(f, IndexSelector(idx))
+                            data.apply(f, idx)
                         }
                     ),
                     FieldType::Float => self.get_float_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
                         .and_then(|data| {
-                            data.apply_to_elem(f, IndexSelector(idx))
+                            data.apply(f, idx)
                         }
                     )
                 }
             }
         )
     }
-}
-
-impl<'a> ApplyToField<FieldSelector<'a>> for DataStore {
-    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector)
+    pub fn apply_field<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent)
         -> Result<F::Output>
     {
-        let ident = select.index();
         self.field_map.get(ident)
             .ok_or(AgnesError::FieldNotFound(ident.clone()))
             .and_then(|&field_idx| {
                 match self.fields[field_idx].ty_ident.ty {
                     FieldType::Unsigned => self.get_unsigned_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
-                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                        .map(|data| f.apply_unsigned(data)),
                     FieldType::Signed => self.get_signed_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
-                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                        .map(|data| f.apply_signed(data)),
                     FieldType::Text => self.get_text_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
-                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                        .map(|data| f.apply_text(data)),
                     FieldType::Boolean => self.get_boolean_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
-                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                        .map(|data| f.apply_boolean(data)),
                     FieldType::Float => self.get_float_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
-                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                        .map(|data| f.apply_float(data)),
                 }
-            }
-        )
+            })
     }
 }
 
-impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataStore, &'c DataStore) {
-    fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (FieldSelector, FieldSelector))
-        -> Result<T::Output>
-    {
-        let (ident0, ident1) = (select.0.index(), select.1.index());
-        let (field0, field1) = (
-            &self.0.field_map.get(ident0).map(|&field_idx| &self.0.fields[field_idx]),
-            &self.1.field_map.get(ident1).map(|&field_idx| &self.1.fields[field_idx]),
-        );
-        println!("{}:{} {}:{}", ident0, field0.is_some(), ident1, field1.is_some());
-        let (field0, field1) = match (field0, field1) {
-            (&Some(ref field0), &Some(ref field1)) => (field0, field1),
-            (&None, _) => { return Err(AgnesError::FieldNotFound(ident0.clone())); },
-            (_, &None) => { return Err(AgnesError::FieldNotFound(ident1.clone())); }
-        };
+// impl<'a> Apply<FieldIndexSelector<'a>> for DataStore {
+//     fn apply<F: MapFn>(&self, f: &mut F, select: &FieldIndexSelector) -> Result<F::Output> {
+//         let (ident, idx) = select.index();
+//         self.field_map.get(ident)
+//             .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//             .and_then(|&field_idx| {
+//                 match self.fields[field_idx].ty_ident.ty {
+//                     FieldType::Unsigned => self.get_unsigned_field(ident)
+//                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//                         .and_then(|data| {
+//                             data.apply(f, &IndexSelector(idx))
+//                         }
+//                     ),
+//                     FieldType::Signed => self.get_signed_field(ident)
+//                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//                         .and_then(|data| {
+//                             data.apply(f, &IndexSelector(idx))
+//                         }
+//                     ),
+//                     FieldType::Text => self.get_text_field(ident)
+//                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//                         .and_then(|data| {
+//                             data.apply(f, &IndexSelector(idx))
+//                         }
+//                     ),
+//                     FieldType::Boolean => self.get_boolean_field(ident)
+//                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//                         .and_then(|data| {
+//                             data.apply(f, &IndexSelector(idx))
+//                         }
+//                     ),
+//                     FieldType::Float => self.get_float_field(ident)
+//                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//                         .and_then(|data| {
+//                             data.apply(f, &IndexSelector(idx))
+//                         }
+//                     )
+//                 }
+//             }
+//         )
+//     }
+// }
 
-        macro_rules! apply {
-            ($l:tt $r:tt) => {
-                (
-                    (self.0).$l(ident0).unwrap(),
-                    (self.1).$r(ident1).unwrap()
-                ).apply_to_field2(f, (NilSelector, NilSelector))
-            }
-        }
-        match (field0.ty_ident.ty, field1.ty_ident.ty) {
+// impl<T: DataType> FieldDataIndex<T> for DataStore {
+//     fn get_field_data(&self, ident: &FieldIdent, idx: usize) -> Result<MaybeNa<&T>> {
+//         macro_rules! get_data {
+//             ($hm:ident) => {{
+//                 self.$hm(ident)
+//                     .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//                     .and_then(|data| {
+//                         data.get_data(idx)
+//                     })
+//             }}
+//         }
+//         self.field_map.get(ident)
+//             .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//             .and_then(|&field_idx| {
+//                 match self.fields[field_idx].ty_ident.ty {
+//                     FieldType::Unsigned => get_data!(get_unsigned_field),
+//                     FieldType::Signed   => get_data!(get_signed_field),
+//                     FieldType::Text     => get_data!(get_text_field),
+//                     FieldType::Boolean  => get_data!(get_boolean_field),
+//                     FieldType::Float    => get_data!(get_float_field),
+//                 }
+//             })
+//     }
+//     fn field_len(&self, _: &FieldIdent) -> usize {
+//         self.nrows()
+//     }
+// }
 
-            (FieldType::Unsigned, FieldType::Unsigned) =>
-                apply!(get_unsigned_field get_unsigned_field),
-            // (FieldType::Unsigned, FieldType::Signed) =>
-            //     apply!(get_unsigned_field get_signed_field),
-            // (FieldType::Unsigned, FieldType::Text) =>
-            //     apply!(get_unsigned_field get_text_field),
-            // (FieldType::Unsigned, FieldType::Boolean) =>
-            //     apply!(get_unsigned_field get_boolean_field),
-            // (FieldType::Unsigned, FieldType::Float) =>
-            //     apply!(get_unsigned_field get_float_field),
 
-            // (FieldType::Signed, FieldType::Unsigned) =>
-            //     apply!(get_signed_field get_unsigned_field),
-            (FieldType::Signed, FieldType::Signed) =>
-                apply!(get_signed_field get_signed_field),
-            // (FieldType::Signed, FieldType::Text) =>
-            //     apply!(get_signed_field get_text_field),
-            // (FieldType::Signed, FieldType::Boolean) =>
-            //     apply!(get_signed_field get_boolean_field),
-            // (FieldType::Signed, FieldType::Float) =>
-            //     apply!(get_signed_field get_float_field),
+// impl<'a> ApplyToField<FieldSelector<'a>> for DataStore {
+//     fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector)
+//         -> Result<F::Output>
+//     {
+//         let ident = select.index();
+//         self.field_map.get(ident)
+//             .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//             .and_then(|&field_idx| {
+//                 match self.fields[field_idx].ty_ident.ty {
+//                     FieldType::Unsigned => self.get_unsigned_field(ident)
+//                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//                         .and_then(|data| data.apply_to_field(f, NilSelector)),
+//                     FieldType::Signed => self.get_signed_field(ident)
+//                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//                         .and_then(|data| data.apply_to_field(f, NilSelector)),
+//                     FieldType::Text => self.get_text_field(ident)
+//                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//                         .and_then(|data| data.apply_to_field(f, NilSelector)),
+//                     FieldType::Boolean => self.get_boolean_field(ident)
+//                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//                         .and_then(|data| data.apply_to_field(f, NilSelector)),
+//                     FieldType::Float => self.get_float_field(ident)
+//                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
+//                         .and_then(|data| data.apply_to_field(f, NilSelector)),
+//                 }
+//             }
+//         )
+//     }
+// }
 
-            // (FieldType::Text, FieldType::Unsigned) =>
-            //     apply!(get_text_field get_unsigned_field),
-            // (FieldType::Text, FieldType::Signed) =>
-            //     apply!(get_text_field get_signed_field),
-            (FieldType::Text, FieldType::Text) =>
-                apply!(get_text_field get_text_field),
-            // (FieldType::Text, FieldType::Boolean) =>
-            //     apply!(get_text_field get_boolean_field),
-            // (FieldType::Text, FieldType::Float) =>
-            //     apply!(get_text_field get_float_field),
+// impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataStore, &'c DataStore) {
+//     fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (FieldSelector, FieldSelector))
+//         -> Result<T::Output>
+//     {
+//         let (ident0, ident1) = (select.0.index(), select.1.index());
+//         let (field0, field1) = (
+//             &self.0.field_map.get(ident0).map(|&field_idx| &self.0.fields[field_idx]),
+//             &self.1.field_map.get(ident1).map(|&field_idx| &self.1.fields[field_idx]),
+//         );
+//         println!("{}:{} {}:{}", ident0, field0.is_some(), ident1, field1.is_some());
+//         let (field0, field1) = match (field0, field1) {
+//             (&Some(ref field0), &Some(ref field1)) => (field0, field1),
+//             (&None, _) => { return Err(AgnesError::FieldNotFound(ident0.clone())); },
+//             (_, &None) => { return Err(AgnesError::FieldNotFound(ident1.clone())); }
+//         };
 
-            // (FieldType::Boolean, FieldType::Unsigned) =>
-            //     apply!(get_boolean_field get_unsigned_field),
-            // (FieldType::Boolean, FieldType::Signed) =>
-            //     apply!(get_boolean_field get_signed_field),
-            // (FieldType::Boolean, FieldType::Text) =>
-            //     apply!(get_boolean_field get_text_field),
-            (FieldType::Boolean, FieldType::Boolean) =>
-                apply!(get_boolean_field get_boolean_field),
-            // (FieldType::Boolean, FieldType::Float) =>
-            //     apply!(get_boolean_field get_float_field),
+//         macro_rules! apply {
+//             ($l:tt $r:tt) => {
+//                 (
+//                     (self.0).$l(ident0).unwrap(),
+//                     (self.1).$r(ident1).unwrap()
+//                 ).apply_to_field2(f, (NilSelector, NilSelector))
+//             }
+//         }
+//         match (field0.ty_ident.ty, field1.ty_ident.ty) {
 
-            // (FieldType::Float, FieldType::Unsigned) =>
-            //     apply!(get_float_field get_unsigned_field),
-            // (FieldType::Float, FieldType::Signed) =>
-            //     apply!(get_float_field get_signed_field),
-            // (FieldType::Float, FieldType::Text) =>
-            //     apply!(get_float_field get_text_field),
-            // (FieldType::Float, FieldType::Boolean) =>
-            //     apply!(get_float_field get_boolean_field),
-            (FieldType::Float, FieldType::Float) =>
-                apply!(get_float_field get_float_field),
+//             (FieldType::Unsigned, FieldType::Unsigned) =>
+//                 apply!(get_unsigned_field get_unsigned_field),
+//             // (FieldType::Unsigned, FieldType::Signed) =>
+//             //     apply!(get_unsigned_field get_signed_field),
+//             // (FieldType::Unsigned, FieldType::Text) =>
+//             //     apply!(get_unsigned_field get_text_field),
+//             // (FieldType::Unsigned, FieldType::Boolean) =>
+//             //     apply!(get_unsigned_field get_boolean_field),
+//             // (FieldType::Unsigned, FieldType::Float) =>
+//             //     apply!(get_unsigned_field get_float_field),
 
-            (l, r) => Err(AgnesError::IncompatibleTypes(l, r))
-        }
-    }
-}
+//             // (FieldType::Signed, FieldType::Unsigned) =>
+//             //     apply!(get_signed_field get_unsigned_field),
+//             (FieldType::Signed, FieldType::Signed) =>
+//                 apply!(get_signed_field get_signed_field),
+//             // (FieldType::Signed, FieldType::Text) =>
+//             //     apply!(get_signed_field get_text_field),
+//             // (FieldType::Signed, FieldType::Boolean) =>
+//             //     apply!(get_signed_field get_boolean_field),
+//             // (FieldType::Signed, FieldType::Float) =>
+//             //     apply!(get_signed_field get_float_field),
+
+//             // (FieldType::Text, FieldType::Unsigned) =>
+//             //     apply!(get_text_field get_unsigned_field),
+//             // (FieldType::Text, FieldType::Signed) =>
+//             //     apply!(get_text_field get_signed_field),
+//             (FieldType::Text, FieldType::Text) =>
+//                 apply!(get_text_field get_text_field),
+//             // (FieldType::Text, FieldType::Boolean) =>
+//             //     apply!(get_text_field get_boolean_field),
+//             // (FieldType::Text, FieldType::Float) =>
+//             //     apply!(get_text_field get_float_field),
+
+//             // (FieldType::Boolean, FieldType::Unsigned) =>
+//             //     apply!(get_boolean_field get_unsigned_field),
+//             // (FieldType::Boolean, FieldType::Signed) =>
+//             //     apply!(get_boolean_field get_signed_field),
+//             // (FieldType::Boolean, FieldType::Text) =>
+//             //     apply!(get_boolean_field get_text_field),
+//             (FieldType::Boolean, FieldType::Boolean) =>
+//                 apply!(get_boolean_field get_boolean_field),
+//             // (FieldType::Boolean, FieldType::Float) =>
+//             //     apply!(get_boolean_field get_float_field),
+
+//             // (FieldType::Float, FieldType::Unsigned) =>
+//             //     apply!(get_float_field get_unsigned_field),
+//             // (FieldType::Float, FieldType::Signed) =>
+//             //     apply!(get_float_field get_signed_field),
+//             // (FieldType::Float, FieldType::Text) =>
+//             //     apply!(get_float_field get_text_field),
+//             // (FieldType::Float, FieldType::Boolean) =>
+//             //     apply!(get_float_field get_boolean_field),
+//             (FieldType::Float, FieldType::Float) =>
+//                 apply!(get_float_field get_float_field),
+
+//             (l, r) => Err(AgnesError::IncompatibleTypes(l, r))
+//         }
+//     }
+// }
 
 /// Trait for adding data (of valid types) to a `DataStore`.
 pub trait AddData<T: DataType> {
     /// Add a single value to the specified field.
     fn add(&mut self, ident: FieldIdent, value: MaybeNa<T>);
 }
-impl AddData<u64> for DataStore {
-    fn add(&mut self, ident: FieldIdent, value: MaybeNa<u64>) {
-        insert_value(&mut self.unsigned, ident, value);
+pub trait AddDataVec<T: DataType> {
+    fn add_data_vec(&mut self, ident: FieldIdent, data: Vec<MaybeNa<T>>);
+}
+
+macro_rules! impl_add_data {
+    ($($dtype:ty, $fty:path, $hm:tt);*) => {$(
+
+impl AddData<$dtype> for DataStore {
+    fn add(&mut self, ident: FieldIdent, value: MaybeNa<$dtype>) {
+        insert_value(&mut self.$hm, ident, value);
     }
 }
-impl AddData<i64> for DataStore {
-    fn add(&mut self, ident: FieldIdent, value: MaybeNa<i64>) {
-        insert_value(&mut self.signed, ident, value);
+impl AddDataVec<$dtype> for DataStore {
+    fn add_data_vec(&mut self, ident: FieldIdent, mut data: Vec<MaybeNa<$dtype>>) {
+        self.add_field(TypedFieldIdent { ident: ident.clone(), ty: $fty });
+        for datum in data.drain(..) {
+            insert_value(&mut self.$hm, ident.clone(), datum);
+        }
     }
 }
-impl AddData<String> for DataStore {
-    fn add(&mut self, ident: FieldIdent, value: MaybeNa<String>) {
-        insert_value(&mut self.text, ident, value);
-    }
+
+    )*}
 }
-impl AddData<bool> for DataStore {
-    fn add(&mut self, ident: FieldIdent, value: MaybeNa<bool>) {
-        insert_value(&mut self.boolean, ident, value);
-    }
-}
-impl AddData<f64> for DataStore {
-    fn add(&mut self, ident: FieldIdent, value: MaybeNa<f64>) {
-        insert_value(&mut self.float, ident, value);
-    }
-}
+impl_add_data!(
+    u64,    FieldType::Unsigned, unsigned;
+    i64,    FieldType::Signed,   signed;
+    String, FieldType::Text,     text;
+    bool,   FieldType::Boolean,  boolean;
+    f64,    FieldType::Float,    float
+);
+
+// impl AddData<i64> for DataStore {
+//     fn add(&mut self, ident: FieldIdent, value: MaybeNa<i64>) {
+//         insert_value(&mut self.signed, ident, value);
+//     }
+// }
+// impl AddData<String> for DataStore {
+//     fn add(&mut self, ident: FieldIdent, value: MaybeNa<String>) {
+//         insert_value(&mut self.text, ident, value);
+//     }
+// }
+// impl AddData<bool> for DataStore {
+//     fn add(&mut self, ident: FieldIdent, value: MaybeNa<bool>) {
+//         insert_value(&mut self.boolean, ident, value);
+//     }
+// }
+// impl AddData<f64> for DataStore {
+//     fn add(&mut self, ident: FieldIdent, value: MaybeNa<f64>) {
+//         insert_value(&mut self.float, ident, value);
+//     }
+// }
 
 fn max_len<K, T: DataType>(h: &HashMap<K, MaskedData<T>>) -> usize where K: Eq + Hash {
     h.values().fold(0, |acc, v| max(acc, v.len()))

@@ -17,13 +17,6 @@ pub trait ApplyToField2<S: Selector> {
     fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (S, S)) -> Result<T::Output>;
 }
 
-/// Trait implemented by data structures that represent a single column / vector / field of data.
-pub trait DataIndex<T: DataType> {
-    /// Returns the data (possibly NA) at the specified index, if it exists.
-    fn get_data(&self, idx: usize) -> Result<MaybeNa<&T>>;
-    /// Returns the length of this data field.
-    fn len(&self) -> usize;
-}
 /// Trait for a type-dependent function that applies to a single field.
 pub trait FieldFn {
     /// The desired output of this function.

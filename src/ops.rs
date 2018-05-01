@@ -10,7 +10,7 @@ use view::{DataView};
 use store::{DataStore, AddData};
 use error::*;
 use masked::MaybeNa;
-use apply::{ApplyToField, ApplyToField2, FieldFn, Field2Fn, DataIndex, FieldSelector};
+use apply::{DataIndex, FieldSelector};
 
 /// Error during data operations type inference.
 #[derive(Debug)]
@@ -320,7 +320,6 @@ impl_div!(
     boolean: |x: bool, divisor: f64| -> f64 { btf(x) / divisor }; // boolean / f64 -> f64
     float: |x: f64, divisor: f64| -> f64 { x / divisor }; // float * f64 -> f64
 );
-
 
 struct Add2Fn<'a, 'b> {
     target_ds: &'a mut DataStore,

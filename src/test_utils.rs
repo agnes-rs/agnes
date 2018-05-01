@@ -123,22 +123,25 @@ pub(crate) fn dept_table_from_masked(deptids: MaskedData<u64>, names: MaskedData
 macro_rules! impl_assert_vec_eq_and_pred {
     ($dtype:ty) => {
 
+use view::DataView;
+use apply::{Matches, MatchesAll};
+
 #[allow(dead_code)]
-pub(crate) fn assert_vec_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
-    where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
-          R: Into<$dtype>
+pub(crate) fn assert_dv_eq_vec<'a, R>(left: &DataView, ident: &'a FieldIdent, mut right: Vec<R>)
+    // where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
+          where R: Into<$dtype>
 {
     let right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
     for (i, rval) in (0..right.len()).zip(right) {
-        assert!(left.matches(FieldIndexSelector(ident, i), rval.clone()).unwrap());
+        assert!(left.matches(rval.clone(), ident, i).unwrap());
     }
 }
 
 #[allow(dead_code)]
-pub(crate) fn assert_pred<'a, T, F>(left: &T, field: &'a FieldIdent, f: F)
-    where T: MatchesAll<FieldSelector<'a>, $dtype>, F: Fn(&$dtype) -> bool
+pub(crate) fn assert_dv_pred<'a, F>(left: &DataView, ident: &'a FieldIdent, f: F)
+    where F: Fn(&$dtype) -> bool
 {
-    assert!(left.matches_all(FieldSelector(field), f).unwrap());
+    assert!(left.matches_all(f, ident).unwrap());
 }
 
     }
@@ -147,17 +150,20 @@ pub(crate) fn assert_pred<'a, T, F>(left: &T, field: &'a FieldIdent, f: F)
 macro_rules! impl_assert_sorted_eq {
     ($dtype:ty) => {
 
+use apply::SortOrderBy;
+
 #[allow(dead_code)]
-pub(crate) fn assert_sorted_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
-    where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
+pub(crate) fn assert_dv_sorted_eq<'a, R>(left: &DataView, ident: &'a FieldIdent, mut right: Vec<R>)
+    where //T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
           R: Into<$dtype>
 {
-    let left_order = left.sort_order_by(FieldSelector(ident)).unwrap();
+    let left_order = left.sort_order_by(ident).unwrap();
+    println!("{:?}", left_order);
     let mut right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
     right.sort();
 
     for (lidx, rval) in left_order.iter().zip(right.iter()) {
-        assert!(left.matches(FieldIndexSelector(ident, *lidx), rval.clone()).unwrap());
+        assert!(left.matches(rval.clone(), ident, *lidx).unwrap());
     }
 }
 
@@ -168,7 +174,6 @@ macro_rules! impl_test_helpers {
     ($name:tt; $dtype:ty) => {
 
 pub(crate) mod $name {
-    use apply::*;
     use field::FieldIdent;
 
     impl_assert_vec_eq_and_pred!($dtype);
@@ -185,22 +190,23 @@ impl_test_helpers!(text;     String);
 impl_test_helpers!(boolean;  bool);
 
 pub(crate) mod float {
-    use apply::*;
     use field::FieldIdent;
+    use apply::SortOrderBy;
 
     impl_assert_vec_eq_and_pred!(f64);
 
     #[allow(dead_code)]
-    pub(crate) fn assert_sorted_eq<'a, T, R>(left: &T, ident: &'a FieldIdent, mut right: Vec<R>)
-        where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, f64>,
+    pub(crate) fn assert_dv_sorted_eq<'a, R>(left: &DataView, ident: &'a FieldIdent,
+        mut right: Vec<R>)
+        where //T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, f64>,
               R: Into<f64>
     {
-        let left_order = left.sort_order_by(FieldSelector(ident)).unwrap();
+        let left_order = left.sort_order_by(ident).unwrap();
         let mut right: Vec<f64> = right.drain(..).map(|r| r.into()).collect();
         right.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
         for (lidx, rval) in left_order.iter().zip(right.iter()) {
-            assert!(left.matches(FieldIndexSelector(ident, *lidx), rval.clone()).unwrap());
+            assert!(left.matches(rval.clone(), ident, *lidx).unwrap());
         }
     }
 

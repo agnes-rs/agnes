@@ -9,14 +9,14 @@ The `FieldFn` trait provides a framework for functions that apply to a field (co
 the data structure.
 */
 
-mod selector;
-pub use self::selector::*;
+mod select;
+pub use self::select::*;
 
-mod elem_fn;
-pub use self::elem_fn::*;
+mod map;
+pub use self::map::*;
 
-mod field_fn;
-pub use self::field_fn::*;
+// mod field_fn;
+// pub use self::field_fn::*;
 
 mod matches;
 pub use self::matches::*;

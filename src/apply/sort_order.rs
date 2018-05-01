@@ -1,17 +1,38 @@
 use std::cmp::Ordering;
-use apply::{Selector, ApplyToField, FieldFn, DataIndex};
+
 use error::Result;
+use field::FieldIdent;
+use view::DataView;
+use frame::DataFrame;
+use apply::{FieldMapFn, DataIndex};
 
 /// Helper trait / implementations retrieving the sort permutation for a field.
-pub trait SortOrderBy<S: Selector> {
+pub trait SortOrderBy {
     /// Returns the sort permutation for the field specified with the `Selector.
-    fn sort_order_by(&self, select: S) -> Result<Vec<usize>>;
+    fn sort_order_by(&self, ident: &FieldIdent) -> Result<Vec<usize>>;
 }
-impl<S: Selector, U> SortOrderBy<S> for U where U: ApplyToField<S> {
-    fn sort_order_by(&self, select: S) -> Result<Vec<usize>> {
-        self.apply_to_field(SortOrderFn {}, select)
+impl SortOrderBy for DataView {
+    fn sort_order_by(&self, ident: &FieldIdent) -> Result<Vec<usize>> {
+        self.apply_field(
+            &mut SortOrderFn {},
+            ident
+        )
     }
 }
+impl SortOrderBy for DataFrame {
+    fn sort_order_by(&self, ident: &FieldIdent) -> Result<Vec<usize>> {
+        self.apply_field(
+            &mut SortOrderFn {},
+            ident
+        )
+    }
+}
+
+// impl<S: Selector, U> SortOrderBy<S> for U where U: ApplyToField<S> {
+//     fn sort_order_by(&self, select: S) -> Result<Vec<usize>> {
+//         self.apply_to_field(SortOrderFn {}, select)
+//     }
+// }
 
 /// `FieldFn` function struct for retrieving the sort permutation order for a field.
 pub struct SortOrderFn {}
@@ -29,7 +50,7 @@ macro_rules! impl_sort_order_fn {
         }
     }
 }
-impl FieldFn for SortOrderFn {
+impl FieldMapFn for SortOrderFn {
     type Output = Vec<usize>;
     impl_sort_order_fn!(apply_unsigned; u64);
     impl_sort_order_fn!(apply_signed;   i64);

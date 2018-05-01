@@ -33,6 +33,6 @@ pub mod frame;
 pub mod masked;
 pub use masked::MaybeNa;
 pub mod apply;
-pub mod ops;
+// pub mod ops;
 
 #[cfg(test)] pub(crate) mod test_utils;

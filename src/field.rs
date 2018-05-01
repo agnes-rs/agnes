@@ -1,6 +1,6 @@
 //! Field-level structs.
 
-use std::fmt;
+use std::fmt::{self, Display, Debug};
 use std::hash::{Hash, Hasher};
 
 use serde::Serialize;
@@ -96,7 +96,7 @@ impl fmt::Display for FieldType {
 }
 
 /// Marker trait for types supported by Agnes data structures
-pub trait DataType: PartialOrd + Serialize {}
+pub trait DataType: PartialOrd + Serialize + Display + Debug {}
 impl DataType for u64 {}
 impl DataType for i64 {}
 impl DataType for String {}
