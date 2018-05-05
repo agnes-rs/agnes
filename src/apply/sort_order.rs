@@ -2,29 +2,27 @@ use std::cmp::Ordering;
 
 use error::Result;
 use field::FieldIdent;
-use view::DataView;
-use frame::DataFrame;
-use apply::{FieldMapFn, DataIndex};
+use apply::{FieldMapFn, FieldApply, FieldApplyTo, DataIndex};
 
 /// Helper trait / implementations retrieving the sort permutation for a field.
 pub trait SortOrderBy {
     /// Returns the sort permutation for the field specified with the `Selector.
     fn sort_order_by(&self, ident: &FieldIdent) -> Result<Vec<usize>>;
 }
-impl SortOrderBy for DataView {
+impl<T> SortOrderBy for T where T: FieldApplyTo {
     fn sort_order_by(&self, ident: &FieldIdent) -> Result<Vec<usize>> {
-        self.apply_field(
+        self.field_apply_to(
             &mut SortOrderFn {},
             ident
         )
     }
 }
-impl SortOrderBy for DataFrame {
-    fn sort_order_by(&self, ident: &FieldIdent) -> Result<Vec<usize>> {
-        self.apply_field(
-            &mut SortOrderFn {},
-            ident
-        )
+pub trait SortOrder {
+    fn sort_order(&self) -> Result<Vec<usize>>;
+}
+impl<T> SortOrder for T where T: FieldApply {
+    fn sort_order(&self) -> Result<Vec<usize>> {
+        self.field_apply(&mut SortOrderFn {})
     }
 }
 

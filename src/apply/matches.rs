@@ -1,5 +1,5 @@
 use masked::MaybeNa;
-use apply::MapFn;
+use apply::{ApplyToElem, ApplyTo, MapFn};
 use error::Result;
 use field::FieldIdent;
 use view::DataView;
@@ -85,7 +85,7 @@ macro_rules! impl_dataview_matches {
 
 impl Matches<$dtype> for DataView {
     fn matches(&self, target: $dtype, ident: &FieldIdent, idx: usize) -> Result<bool> {
-        self.apply_elem(
+        self.apply_to_elem(
             &mut $match_fn { value: MaybeNa::Exists(&target) },
             ident,
             idx
@@ -301,7 +301,7 @@ impl GetFilter<$dtype> for DataFrame {
     fn get_filter<F: Fn(&$dtype) -> bool>(&self, pred: F, ident: &FieldIdent)
         -> Result<Vec<usize>>
     {
-        Ok(self.apply(
+        Ok(self.apply_to(
             &mut $filter_fn { f: pred },
             ident
         )?.iter().enumerate()
@@ -481,7 +481,7 @@ impl MatchesAll<$dtype> for DataView
     fn matches_all<F: Fn(&$dtype) -> bool>(&self, pred: F, ident: &FieldIdent)
         -> Result<bool>
     {
-        Ok(self.apply(
+        Ok(self.apply_to(
             &mut $filter_fn { f: pred },
             ident
         )?.iter().all(|&b| b))

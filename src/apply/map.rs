@@ -1,13 +1,40 @@
 use masked::{MaybeNa, IntoMaybeNa};
 use error::*;
-use field::DataType;
+use field::{DataType, FieldIdent};
 use view::DataView;
 use store::{DataStore, AddDataVec};
-use apply::DataIndex;
+use apply::{DataIndex, ReduceDataIndex};
 
+/// Apply a `MapFn` (single-element mapping function) to this data structure
 pub trait Apply {
     fn apply<F: MapFn>(&self, f: &mut F) -> Result<Vec<F::Output>>;
 }
+
+pub trait ApplyTo {
+    fn apply_to<F: MapFn>(&self, f: &mut F, ident: &FieldIdent) -> Result<Vec<F::Output>>;
+}
+// impl<'a, T> ApplyTo for T where T: Apply {
+//     fn apply_to<F: MapFn>(&self, f: &mut F, ident: &FieldIdent) -> Result<Vec<F::Output>> {
+//         Selection { data: self, ident }.apply(f)
+//     }
+// }
+
+pub trait ApplyToElem {
+    fn apply_to_elem<F: MapFn>(&self, f: &mut F, ident: &FieldIdent, idx: usize)
+        -> Result<F::Output>;
+}
+
+pub trait FieldApply {
+    fn field_apply<F: FieldMapFn>(&self, f: &mut F) -> Result<F::Output>;
+}
+pub trait FieldApplyTo {
+    fn field_apply_to<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent) -> Result<F::Output>;
+}
+// impl<'a, T> FieldApplyTo for T where T: Apply {
+//     fn field_apply_to<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent) -> Result<F::Output> {
+//         Selection { data: self, ident }.field_apply(f)
+//     }
+// }
 
 #[derive(Debug, Clone)]
 pub struct Map<'a, D: 'a + Apply, F: MapFn> {
@@ -155,7 +182,7 @@ pub trait ApplyToDatum<T: DataType> {
     type Output: IntoMaybeNa;
     fn apply_to_datum(&mut self, value: MaybeNa<&T>) -> Self::Output;
 }
-macro_rules! impl_apply_elem {
+macro_rules! impl_apply_datum {
     ($($dtype:ty, $f:tt);*) => {$(
 
 impl<T> ApplyToDatum<$dtype> for T where T: MapFn {
@@ -167,7 +194,7 @@ impl<T> ApplyToDatum<$dtype> for T where T: MapFn {
 
     )*}
 }
-impl_apply_elem!(
+impl_apply_datum!(
     u64,    apply_unsigned;
     i64,    apply_signed;
     String, apply_text;
@@ -204,32 +231,41 @@ pub trait FieldMapFn {
 // }
 
 
-// pub trait ReduceFn {
-//     /// The desired output of this function.
-//     type Output;
-//     type Initializer: ReduceInitializer<Self::Output>;
+pub trait FieldReduceFn<'a> {
+    /// The desired output of this function.
+    type Output;
+    // type Initializer: ReduceInitializer<Self::Output>;
 
-//     /// The method to use when working with unsigned (`u64`) data.
-//     fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &T) -> Self::Output;
-//     /// The method to use when working with signed (`i64`) data.
-//     fn apply_signed<T: DataIndex<i64>>(&mut self, field: &T) -> Self::Output;
-//     /// The method to use when working with text (`String`) data.
-//     fn apply_text<T: DataIndex<String>>(&mut self, field: &T) -> Self::Output;
-//     /// The method to use when working with boolean (`bool`) data.
-//     fn apply_boolean<T: DataIndex<bool>>(&mut self, field: &T) -> Self::Output;
-//     /// The method to use when working with floating-point (`f64`) data.
-//     fn apply_float<T: DataIndex<f64>>(&mut self, field: &T) -> Self::Output;
-// }
+    fn reduce(&mut self, fields: Vec<ReduceDataIndex<'a>>) -> Self::Output;
+
+    // /// The method to use when working with unsigned (`u64`) data.
+    // fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &T) -> Self::Output;
+    // /// The method to use when working with signed (`i64`) data.
+    // fn apply_signed<T: DataIndex<i64>>(&mut self, field: &T) -> Self::Output;
+    // /// The method to use when working with text (`String`) data.
+    // fn apply_text<T: DataIndex<String>>(&mut self, field: &T) -> Self::Output;
+    // /// The method to use when working with boolean (`bool`) data.
+    // fn apply_boolean<T: DataIndex<bool>>(&mut self, field: &T) -> Self::Output;
+    // /// The method to use when working with floating-point (`f64`) data.
+    // fn apply_float<T: DataIndex<f64>>(&mut self, field: &T) -> Self::Output;
+}
+
+pub trait ApplyFieldReduce<'a> {
+    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
+        -> Result<F::Output>;
+}
 
 // pub trait ReduceInitializer<O> {
 //     fn initialize() -> O;
 // }
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use test_utils::*;
     use view::DataView;
+    use apply::Select;
 
     #[test]
     fn convert() {
@@ -255,7 +291,7 @@ mod tests {
                 value.map(|&val| if val < 0.0 { 0 } else { val as u64 })
             }
         }
-        let mapped: DataView = dv.select("VacationHrs").map(ConvertUnsigned {}).collect()
+        let mapped: DataView = dv.select(&"VacationHrs".into()).map(ConvertUnsigned {}).collect()
             .expect("failed to convert");
         println!("{}", mapped);
 
@@ -279,7 +315,7 @@ mod tests {
             }
         }
         let mapped2: DataView = dv
-            .select("VacationHrs")
+            .select(&"VacationHrs".into())
             .map(ConvertUnsigned {})
             .map(ConvertFloat {})
             .name("VacationHrs2")

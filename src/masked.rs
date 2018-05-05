@@ -201,6 +201,25 @@ impl<T: DataType> MaskedData<T> {
     }
 }
 
+macro_rules! impl_field_apply {
+    ($($apply_fn:tt; $dtype:ty)*) => {$(
+
+impl FieldApply for MaskedData<$dtype> {
+    fn field_apply<F: FieldMapFn>(&self, f: &mut F) -> error::Result<F::Output> {
+        Ok(f.$apply_fn(self))
+    }
+}
+
+    )*}
+}
+impl_field_apply!(
+    apply_unsigned; u64
+    apply_signed;   i64
+    apply_text;     String
+    apply_boolean;  bool
+    apply_float;    f64
+);
+
 // impl MaskedData<u64> {
 //     pub fn apply<F: MapFn>(&self, f: &mut F, idx: usize) -> error::Result<F::Output>
 //     {

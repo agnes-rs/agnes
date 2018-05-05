@@ -1,10 +1,8 @@
 use field::FieldIdent;
-use view::DataView;
-use apply::{Map, Apply, MapFn};
+use apply::{Map, Apply, ApplyTo, MapFn};
 use error::*;
 use field::DataType;
 use masked::MaybeNa;
-
 
 /// Trait implemented by data structures that represent a single column / vector / field of data.
 pub trait DataIndex<T: DataType> {
@@ -22,6 +20,14 @@ impl<'a, T: DataType> DataIndex<T> for Vec<MaybeNa<&'a T>> {
         self.len()
     }
 }
+impl<T: DataType> DataIndex<T> for Vec<MaybeNa<T>> {
+    fn get_data(&self, idx: usize) -> Result<MaybeNa<&T>> {
+        Ok(self[idx].as_ref())
+    }
+    fn len(&self) -> usize {
+        self.len()
+    }
+}
 impl<T: DataType> DataIndex<T> for Vec<T> {
     fn get_data(&self, idx: usize) -> Result<MaybeNa<&T>> {
         Ok(MaybeNa::Exists(&self[idx]))
@@ -31,15 +37,81 @@ impl<T: DataType> DataIndex<T> for Vec<T> {
     }
 }
 
+// pub trait TypedDataIndex {
+//     fn get_data_index_enum(&self) -> DataIndexEnum;
+//     // fn get_unsigned_data(&self, idx: usize) -> Result<MaybeNa<&u64>>;
+//     // fn get_signed_data(&self, idx: usize) -> Result<MaybeNa<&i64>>;
+//     // fn get_text_data(&self, idx: usize) -> Result<MaybeNa<&String>>;
+//     // fn get_boolean_data(&self, idx: usize) -> Result<MaybeNa<&bool>>;
+//     // fn get_float_data(&self, idx: usize) -> Result<MaybeNa<&f64>>;
+//     // fn len(&self) -> usize;
+// }
+// impl<U> TypedDataIndex for U where U: DataIndex<u64> + DataIndex<i64> + DataIndex<String>
+//     + DataIndex<bool> + DataIndex<f64>
+// {
+//     fn get_unsigned_data(&self, idx: usize) -> Result<MaybeNa<&u64>> {
+//         DataIndex::<u64>::get_data(self, idx)
+//     }
+//     fn get_signed_data(&self, idx: usize) -> Result<MaybeNa<&i64>> {
+//         DataIndex::<i64>::get_data(self, idx)
+//     }
+//     fn get_text_data(&self, idx: usize) -> Result<MaybeNa<&String>> {
+//         DataIndex::<String>::get_data(self, idx)
+//     }
+//     fn get_boolean_data(&self, idx: usize) -> Result<MaybeNa<&bool>> {
+//         DataIndex::<bool>::get_data(self, idx)
+//     }
+//     fn get_float_data(&self, idx: usize) -> Result<MaybeNa<&f64>> {
+//         DataIndex::<f64>::get_data(self, idx)
+//     }
+//     fn len(&self) -> usize {
+//         DataIndex::<u64>::len(self)
+//     }
+// }
+
+pub enum OwnedOrRef<'a, T: 'a + DataType> {
+    Owned(Box<DataIndex<T> + 'a>),
+    Ref(&'a DataIndex<T>)
+}
+impl<'a, T: 'a + DataType> OwnedOrRef<'a, T> {
+    pub fn as_ref(&'a self) -> &'a DataIndex<T> {
+        match *self {
+            OwnedOrRef::Owned(ref data) => data.as_ref(),
+            OwnedOrRef::Ref(data) => data,
+        }
+    }
+}
+impl<'a, T: 'a + DataType> DataIndex<T> for OwnedOrRef<'a, T> {
+    fn get_data(&self, idx: usize) -> Result<MaybeNa<&T>> {
+        match *self {
+            OwnedOrRef::Owned(ref data) => data.get_data(idx),
+            OwnedOrRef::Ref(ref data) => data.get_data(idx),
+        }
+    }
+    fn len(&self) -> usize {
+        match *self {
+            OwnedOrRef::Owned(ref data) => data.len(),
+            OwnedOrRef::Ref(ref data) => data.len(),
+        }
+    }
+}
+pub enum ReduceDataIndex<'a> {
+    Unsigned(OwnedOrRef<'a, u64>),
+    Signed(OwnedOrRef<'a, i64>),
+    Text(OwnedOrRef<'a, String>),
+    Boolean(OwnedOrRef<'a, bool>),
+    Float(OwnedOrRef<'a, f64>),
+}
+
 // pub trait FieldDataIndex<T: DataType> {
 //     fn get_field_data(&self, ident: &FieldIdent, idx: usize) -> Result<MaybeNa<&T>>;
 //     fn field_len(&self, ident: &FieldIdent) -> usize;
 // }
 
 #[derive(Debug, Clone)]
-pub struct Selection<'a> {
-    data: &'a DataView,
-    ident: FieldIdent,
+pub struct Selection<'a, 'b, D: 'a + ?Sized> {
+    pub data: &'a D,
+    pub ident: &'b FieldIdent,
 }
 // impl<'a, T: DataType, D: FieldDataIndex<T>> DataIndex<T> for Selection<'a, D>
 // {
@@ -51,9 +123,9 @@ pub struct Selection<'a> {
 //     }
 // }
 
-impl<'a> Apply for Selection<'a> {
+impl<'a, 'b, D: 'a + ApplyTo> Apply for Selection<'a, 'b, D> {
     fn apply<F: MapFn>(&self, f: &mut F) -> Result<Vec<F::Output>> {
-        self.data.apply(f, &self.ident)
+        self.data.apply_to(f, &self.ident)
     }
 }
 
@@ -69,18 +141,19 @@ impl<'a> Apply for Selection<'a> {
 //         self.data.apply_to_elem(self.f, &self.selector)
 //     }
 // }
-impl<'a> Selection<'a> {
-    pub fn new<I: Into<FieldIdent>>(data: &'a DataView, ident: I) -> Selection<'a> {
+impl<'a, 'b, D> Selection<'a, 'b, D> {
+    pub fn new(data: &'a D, ident: &'b FieldIdent) -> Selection<'a, 'b, D> {
         Selection {
             data,
-            ident: ident.into()
+            ident: ident
         }
     }
+}
+impl<'a, 'b, D: ApplyTo> Selection<'a, 'b, D> {
     pub fn map<F: MapFn>(&self, f: F) -> Map<Self, F> {
         Map::new(self, f, None)
     }
 }
-
 // pub trait Select {
 //     fn select<'a>(&'a self, selector: FieldSelector) -> Selection<'a, Self>;
 // }
@@ -92,6 +165,19 @@ impl<'a> Selection<'a> {
 //         }
 //     }
 // }
+
+pub trait Select {
+    fn select<'a, 'b>(&'a self, ident: &'b FieldIdent)
+       -> Selection<'a, 'b, Self>;
+}
+
+impl<T> Select for T {
+    fn select<'a, 'b>(&'a self, ident: &'b FieldIdent)
+        -> Selection<'a, 'b, Self>
+    {
+        Selection::new(self, ident)
+    }
+}
 
 /// Data selector for the `ApplyToElem` and `ApplyToField` methods.
 pub trait Selector: Clone {

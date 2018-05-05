@@ -1,5 +1,6 @@
 //! Data storage struct and implentation.
 
+use std::rc::Rc;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -176,6 +177,23 @@ impl DataStore {
             .and_then(|&index| self.fields.get(index).map(|&ref dsfield| dsfield.ty_ident.ty))
     }
 
+    pub fn get_data_index_enum(&self, ident: &FieldIdent) -> Option<ReduceDataIndex> {
+        self.field_map.get(ident).and_then(|&field_idx| {
+            match self.fields[field_idx].ty_ident.ty {
+                FieldType::Unsigned => self.get_unsigned_field(ident)
+                    .map(|data| ReduceDataIndex::Unsigned(OwnedOrRef::Ref(data))),
+                FieldType::Signed => self.get_signed_field(ident)
+                    .map(|data| ReduceDataIndex::Signed(OwnedOrRef::Ref(data))),
+                FieldType::Text => self.get_text_field(ident)
+                    .map(|data| ReduceDataIndex::Text(OwnedOrRef::Ref(data))),
+                FieldType::Boolean => self.get_boolean_field(ident)
+                    .map(|data| ReduceDataIndex::Boolean(OwnedOrRef::Ref(data))),
+                FieldType::Float => self.get_float_field(ident)
+                    .map(|data| ReduceDataIndex::Float(OwnedOrRef::Ref(data))),
+            }
+        })
+    }
+
     /// Get the list of field information structs for this data store
     pub fn fields(&self) -> Vec<&TypedFieldIdent> {
         self.fields.iter().map(|&ref s| &s.ty_ident).collect()
@@ -207,8 +225,10 @@ impl Default for DataStore {
     }
 }
 
-impl DataStore {
-    pub fn apply<F: MapFn>(&self, f: &mut F, ident: &FieldIdent, idx: usize) -> Result<F::Output> {
+impl ApplyToElem for DataStore {
+    fn apply_to_elem<F: MapFn>(&self, f: &mut F, ident: &FieldIdent, idx: usize)
+        -> Result<F::Output>
+    {
         self.field_map.get(ident)
             .ok_or(AgnesError::FieldNotFound(ident.clone()))
             .and_then(|&field_idx| {
@@ -247,7 +267,9 @@ impl DataStore {
             }
         )
     }
-    pub fn apply_field<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent)
+}
+impl FieldApplyTo for DataStore {
+    fn field_apply_to<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent)
         -> Result<F::Output>
     {
         self.field_map.get(ident)
@@ -271,6 +293,29 @@ impl DataStore {
                         .map(|data| f.apply_float(data)),
                 }
             })
+    }
+}
+impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, Rc<DataStore>> {
+    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
+        -> Result<F::Output>
+    {
+        self.data.get_data_index_enum(&self.ident)
+            .ok_or(AgnesError::FieldNotFound(self.ident.clone()))
+            .map(|data| f.reduce(vec![data]))
+        // self.store.apply_field_reduce(&mut FrameFieldReduceFn { frame: &self, reduce_fn: f },
+        //     &ident)
+    }
+
+}
+impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, Rc<DataStore>>> {
+    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
+        -> Result<F::Output>
+    {
+        self.iter().map(|selection| {
+            selection.data.get_data_index_enum(&selection.ident)
+                .ok_or(AgnesError::FieldNotFound(selection.ident.clone()))
+        }).collect::<Result<Vec<_>>>()
+            .map(|data_vec| f.reduce(data_vec))
     }
 }
 

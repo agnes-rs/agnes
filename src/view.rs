@@ -173,39 +173,83 @@ impl DataView {
             }
         }
     }
+}
 
 
-    pub fn apply<F: MapFn>(&self, f: &mut F, ident: &FieldIdent)
+impl ApplyTo for DataView {
+    fn apply_to<F: MapFn>(&self, f: &mut F, ident: &FieldIdent)
         -> error::Result<Vec<F::Output>>
     {
         self.fields.get(ident)
             .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
             .and_then(|view_field: &ViewField| {
-                self.frames[view_field.frame_idx].apply(f, &view_field.rident.ident)
-            }
-        )
-    }
-    pub fn apply_field<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent)
-        -> error::Result<F::Output>
-    {
-        self.fields.get(ident)
-            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-            .and_then(|view_field: &ViewField| {
-                self.frames[view_field.frame_idx].apply_field(f, &view_field.rident.ident)
-            }
-        )
-    }
-    pub fn apply_elem<F: MapFn>(&self, f: &mut F, ident: &FieldIdent, idx: usize)
-        -> error::Result<F::Output>
-    {
-        self.fields.get(ident)
-            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-            .and_then(|view_field: &ViewField| {
-                self.frames[view_field.frame_idx].apply_elem(f, &view_field.rident.ident, idx)
+                self.frames[view_field.frame_idx].apply_to(f, &view_field.rident.ident)
             }
         )
     }
 }
+impl ApplyToElem for DataView {
+    fn apply_to_elem<F: MapFn>(&self, f: &mut F, ident: &FieldIdent, idx: usize)
+        -> error::Result<F::Output>
+    {
+        self.fields.get(ident)
+            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
+            .and_then(|view_field: &ViewField| {
+                self.frames[view_field.frame_idx].apply_to_elem(f, &view_field.rident.ident, idx)
+            }
+        )
+    }
+}
+impl FieldApplyTo for DataView {
+    fn field_apply_to<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent)
+        -> error::Result<F::Output>
+    {
+        self.fields.get(ident)
+            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
+            .and_then(|view_field: &ViewField| {
+                self.frames[view_field.frame_idx].field_apply_to(f, &view_field.rident.ident)
+            }
+        )
+    }
+}
+
+impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, DataView> {
+    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
+        -> error::Result<F::Output>
+    {
+        self.data.fields.get(self.ident)
+            .ok_or(error::AgnesError::FieldNotFound(self.ident.clone()))
+            .and_then(|view_field: &ViewField| {
+                self.data.frames[view_field.frame_idx].select(&view_field.rident.ident)
+                    .apply_field_reduce(f)
+            }
+        )
+    }
+}
+impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, DataView>> {
+    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
+        -> error::Result<F::Output>
+    {
+        self.iter().map(|selection| {
+            selection.data.fields.get(selection.ident)
+                .ok_or(error::AgnesError::FieldNotFound(selection.ident.clone()))
+                .map(|view_field: &ViewField| {
+                    selection.data.frames[view_field.frame_idx].select(&view_field.rident.ident)
+                })
+        }).collect::<error::Result<Vec<_>>>()
+            .and_then(|frame_selections| frame_selections.apply_field_reduce(f))
+    }
+}
+// impl ApplyFieldReduce for Vec<&DataView> {
+//     fn apply_field_reduce<'c, F: FieldReduceFn<'c>>(&self, f: &mut F, ident: &FieldIdent)
+//         -> error::Result<F::Output>
+//     {
+//         self.iter().map(|view| {
+//             view.fields.get(ident)
+//                 .
+//         })
+//     }
+// }
 
 impl<T> Filter<T> for DataView where DataFrame: Filter<T> {
     fn filter<F: Fn(&T) -> bool>(&mut self, ident: &FieldIdent, pred: F)
@@ -339,7 +383,7 @@ impl Display for DataView {
         table.set_titles(self.fields.keys().into());
         let mut rows = vec![pt::row::Row::empty(); nrows.min(MAX_ROWS)];
         for field in self.fields.values() {
-            match self.apply(&mut AddCellToRow { rows: &mut rows, i: 0 },
+            match self.apply_to(&mut AddCellToRow { rows: &mut rows, i: 0 },
                 &field.rident.ident)
                 // &FieldIndexSelector(&field.rident.ident, i))
             {
@@ -376,12 +420,6 @@ impl<'a> MapFn for AddCellToRow<'a> {
     impl_apply_cell_to_row!(apply_float;    f64);
 }
 
-
-impl DataView {
-    pub fn select<'a, I: Into<FieldIdent>>(&'a self, ident: I) -> Selection<'a> {
-        Selection::new(self, ident)
-    }
-}
 // impl<T: DataType> FieldDataIndex<T> for DataView {
 //     fn get_field_data(&self, ident: &FieldIdent, idx: usize) -> error::Result<MaybeNa<&T>> {
 //         self.fields.get(ident).and_then(|view_field: &ViewField| {
