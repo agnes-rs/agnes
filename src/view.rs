@@ -165,6 +165,7 @@ impl DataView {
     /// store the contents of the joined `DataView`s.
     pub fn join(&self, other: &DataView, join: Join) -> error::Result<DataStore> {
         match join.predicate {
+            // TODO: implement hash join
             // Predicate::Equal => {
             //     hash_join(self, other, join)
             // },
@@ -315,7 +316,6 @@ impl Display for DataView {
         for field in self.fields.values() {
             match self.apply_to(&mut AddCellToRow { rows: &mut rows, i: 0 },
                 &field.rident.ident)
-                // &FieldIndexSelector(&field.rident.ident, i))
             {
                 Ok(_) => {},
                 Err(e) => { return write!(f, "view display error: {}", e); },

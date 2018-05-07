@@ -241,6 +241,9 @@ mod tests {
         let mapped: DataView = dv.select(&"VacationHrs".into()).map(ConvertUnsigned {}).collect()
             .expect("failed to convert");
         println!("{}", mapped);
+        unsigned::assert_dv_eq_vec(&mapped, &"Mapped".into(),
+            vec![47u64, 54, 98, 12, 0, 5, 22]
+        );
 
         struct ConvertFloat {}
         impl MapFn for ConvertFloat {
@@ -268,5 +271,8 @@ mod tests {
             .name("VacationHrs2")
             .collect().expect("convert failed");
         println!("{}", mapped2);
+        float::assert_dv_eq_vec(&mapped2, &"VacationHrs2".into(),
+            vec![47.0001, 54.0001, 98.0001, 12.0001, 0.0001, 5.0001, 22.0001]
+        );
     }
 }

@@ -205,10 +205,6 @@ impl<'a, 'b, F: FieldReduceFn<'a>> FieldReduceFn<'a> for FrameFieldReduceFn<'a, 
     type Output = F::Output;
     fn reduce(&mut self, mut fields: Vec<ReduceDataIndex<'a>>) -> F::Output {
         let data_vec = fields.drain(..).map(|field| {
-            // ReduceDataIndex::Framed {
-            //     frame: self.frame,
-            //     data: Box::new(field)
-            // }
             let field: ReduceDataIndex<'a> = field;
             match field {
                 ReduceDataIndex::Unsigned(field) =>
@@ -229,8 +225,6 @@ impl<'a, 'b, F: FieldReduceFn<'a>> FieldReduceFn<'a> for FrameFieldReduceFn<'a, 
             }
         }
         ).collect::<Vec<ReduceDataIndex<'a>>>();
-        // let data_vec = fields.iter().map(|field| Framed::new(self.frame, field))
-        //     .collect::<Vec<_>>();
         self.reduce_fn.reduce(data_vec)
     }
 }

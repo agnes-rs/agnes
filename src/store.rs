@@ -302,8 +302,6 @@ impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, Rc<DataStore>> {
         self.data.get_reduce_data_index(&self.ident)
             .ok_or(AgnesError::FieldNotFound(self.ident.clone()))
             .map(|data| f.reduce(vec![data]))
-        // self.store.apply_field_reduce(&mut FrameFieldReduceFn { frame: &self, reduce_fn: f },
-        //     &ident)
     }
 
 }

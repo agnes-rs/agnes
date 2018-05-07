@@ -385,16 +385,16 @@ impl_div_fieldmap_fn!(
 
 
 
-struct FieldInfo {
+struct FieldIdents {
     src_ident: FieldIdent,
     target_ident: TypedFieldIdent,
 }
 impl DataView {
-    fn get_field_infos<F, G>(
+    fn get_field_idents<F, G>(
             &self,
             infer_fn: F,
             target_name: G,
-        ) -> Result<Vec<FieldInfo>>
+        ) -> Result<Vec<FieldIdents>>
         where F: Fn(FieldType) -> Result<BinOpTypes>,
               G: Fn(FieldIdent) -> String
     {
@@ -402,7 +402,7 @@ impl DataView {
         for (ident, vf) in self.fields.iter() {
             let src_ty = self.frames[vf.frame_idx].get_field_type(&vf.rident.ident).unwrap();
             let bin_op_types = infer_fn(src_ty)?;
-            fields.push(FieldInfo {
+            fields.push(FieldIdents {
                 src_ident: ident.clone(),
                 target_ident: TypedFieldIdent {
                     ident: FieldIdent::Name(target_name(ident.clone())),
@@ -433,7 +433,7 @@ macro_rules! impl_op {
 impl<'a> $op<$dtype> for &'a DataView {
     type Output = Result<DataView>;
     fn $op_fn(self, rhs: $dtype) -> Result<DataView> {
-        let fields = self.get_field_infos(|src_ty| <$dtype>::$infer_fn(src_ty),
+        let fields = self.get_field_idents(|src_ty| <$dtype>::$infer_fn(src_ty),
             |ident| format!("{} {} {}", ident, $op_str, rhs))?;
         let mut store = DataStore::with_field_iter(fields.iter().map(|fi| fi.target_ident.clone()));
         for field_info in fields {
@@ -458,7 +458,7 @@ impl $op<$dtype> for DataView {
 impl<'a> $op<&'a DataView> for $dtype {
     type Output = Result<DataView>;
     fn $op_fn(self, rhs: &'a DataView) -> Result<DataView> {
-        let fields = rhs.get_field_infos(|src_ty| <$dtype>::$infer_fn(src_ty),
+        let fields = rhs.get_field_idents(|src_ty| <$dtype>::$infer_fn(src_ty),
             |ident| format!("{} {} {}", self, $op_str, ident))?;
         let mut store = DataStore::with_field_iter(fields.iter().map(|fi| fi.target_ident.clone()));
         for field_info in fields {
