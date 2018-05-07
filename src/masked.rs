@@ -45,6 +45,7 @@ impl<T: DataType> MaybeNa<T> {
             MaybeNa::Na => true,
         }
     }
+    /// Returns a `MaybeNa` which contains a reference to the original underlying datum.
     pub fn as_ref<'a>(&'a self) -> MaybeNa<&'a T> {
         match *self {
             MaybeNa::Exists(ref val) => MaybeNa::Exists(&val),
@@ -69,8 +70,11 @@ impl<'a, T: DataType + Clone> MaybeNa<&'a T> {
     }
 }
 
+/// Trait for any type that can be convert into a `MaybeNa` type.
 pub trait IntoMaybeNa {
+    /// The `DataType` of the resulting `MaybeNa` type,
     type DType: DataType;
+    /// Convert this type into a `MaybeNa`.
     fn into_maybena(self) -> MaybeNa<Self::DType>;
 }
 impl<D: DataType> IntoMaybeNa for MaybeNa<D> {
@@ -192,6 +196,7 @@ macro_rules! impl_masked_data_index {
 impl_masked_data_index!(u64 i64 String bool f64);
 
 impl<T: DataType> MaskedData<T> {
+    /// Apply a `MapFn` to this data vector at the specified index.
     pub fn apply<F: MapFn>(&self, f: &mut F, idx: usize)
         -> error::Result<<F as ApplyToDatum<T>>::Output>
         where F: ApplyToDatum<T>
@@ -219,146 +224,6 @@ impl_field_apply!(
     apply_boolean;  bool
     apply_float;    f64
 );
-
-// impl MaskedData<u64> {
-//     pub fn apply<F: MapFn>(&self, f: &mut F, idx: usize) -> error::Result<F::Output>
-//     {
-//         self.get(idx).map(|value| f.apply_unsigned(value))
-//             .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-//     }
-// }
-// impl MaskedData<i64> {
-//     pub fn apply<F: MapFn>(&self, f: &mut F, idx: usize) -> error::Result<F::Output>
-//     {
-//         self.get(idx).map(|value| f.apply_signed(value))
-//             .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-//     }
-// }
-// impl MaskedData<String> {
-//     pub fn apply<F: MapFn>(&self, f: &mut F, idx: usize) -> error::Result<F::Output>
-//     {
-//         self.get(idx).map(|value| f.apply_text(value))
-//             .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-//     }
-// }
-// impl MaskedData<bool> {
-//     pub fn apply<F: MapFn>(&self, f: &mut F, idx: usize) -> error::Result<F::Output>
-//     {
-//         self.get(idx).map(|value| f.apply_boolean(value))
-//             .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-//     }
-// }
-// impl MaskedData<f64> {
-//     pub fn apply<F: MapFn>(&self, f: &mut F, idx: usize) -> error::Result<F::Output>
-//     {
-//         self.get(idx).map(|value| f.apply_float(value))
-//             .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-//     }
-// }
-
-
-// impl Apply<IndexSelector> for MaskedData<u64> {
-//     fn apply<F: MapFn>(&self, mut f: &mut F, select: &IndexSelector) -> error::Result<F::Output>
-//     {
-//         let idx = select.index();
-//         self.get(idx).map(|value| f.apply_unsigned(value))
-//             .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-//     }
-// }
-// impl Apply<IndexSelector> for MaskedData<i64> {
-//     fn apply<F: MapFn>(&self, mut f: &mut F, select: &IndexSelector) -> error::Result<F::Output>
-//     {
-//         let idx = select.index();
-//         self.get(idx).map(|value| f.apply_signed(value))
-//             .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-//     }
-// }
-// impl Apply<IndexSelector> for MaskedData<String> {
-//     fn apply<F: MapFn>(&self, mut f: &mut F, select: &IndexSelector) -> error::Result<F::Output>
-//     {
-//         let idx = select.index();
-//         self.get(idx).map(|value| f.apply_text(value))
-//             .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-//     }
-// }
-// impl Apply<IndexSelector> for MaskedData<bool> {
-//     fn apply<F: MapFn>(&self, mut f: &mut F, select: &IndexSelector) -> error::Result<F::Output>
-//     {
-//         let idx = select.index();
-//         self.get(idx).map(|value| f.apply_boolean(value))
-//             .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-//     }
-// }
-// impl Apply<IndexSelector> for MaskedData<f64> {
-//     fn apply<F: MapFn>(&self, mut f: &mut F, select: &IndexSelector) -> error::Result<F::Output>
-//     {
-//         let idx = select.index();
-//         self.get(idx).map(|value| f.apply_float(value))
-//             .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-//     }
-// }
-
-// impl ApplyToField<NilSelector> for MaskedData<u64> {
-//     fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
-//         Ok(f.apply_unsigned(self))
-//     }
-// }
-// impl ApplyToField<NilSelector> for MaskedData<i64> {
-//     fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
-//         Ok(f.apply_signed(self))
-//     }
-// }
-// impl ApplyToField<NilSelector> for MaskedData<String> {
-//     fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
-//         Ok(f.apply_text(self))
-//     }
-// }
-// impl ApplyToField<NilSelector> for MaskedData<bool> {
-//     fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
-//         Ok(f.apply_boolean(self))
-//     }
-// }
-// impl ApplyToField<NilSelector> for MaskedData<f64> {
-//     fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
-//         Ok(f.apply_float(self))
-//     }
-// }
-
-// impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<u64>, &'b MaskedData<u64>) {
-//     fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
-//         -> error::Result<F::Output>
-//     {
-//         Ok(f.apply_unsigned(self))
-//     }
-// }
-// impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<i64>, &'b MaskedData<i64>) {
-//     fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
-//         -> error::Result<F::Output>
-//     {
-//         Ok(f.apply_signed(self))
-//     }
-// }
-// impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<String>, &'b MaskedData<String>) {
-//     fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
-//         -> error::Result<F::Output>
-//     {
-//         Ok(f.apply_text(self))
-//     }
-// }
-// impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<bool>, &'b MaskedData<bool>) {
-//     fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
-//         -> error::Result<F::Output>
-//     {
-//         Ok(f.apply_boolean(self))
-//     }
-// }
-// impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<f64>, &'b MaskedData<f64>) {
-//     fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
-//         -> error::Result<F::Output>
-//     {
-//         Ok(f.apply_float(self))
-//     }
-// }
 
 impl<T: Serialize> Serialize for MaskedData<T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {

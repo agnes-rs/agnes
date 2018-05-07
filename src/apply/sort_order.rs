@@ -4,9 +4,9 @@ use error::Result;
 use field::FieldIdent;
 use apply::{FieldMapFn, FieldApply, FieldApplyTo, DataIndex};
 
-/// Helper trait / implementations retrieving the sort permutation for a field.
+/// Helper trait retrieving the sort permutation for a field.
 pub trait SortOrderBy {
-    /// Returns the sort permutation for the field specified with the `Selector.
+    /// Returns the sort permutation for the field specified.
     fn sort_order_by(&self, ident: &FieldIdent) -> Result<Vec<usize>>;
 }
 impl<T> SortOrderBy for T where T: FieldApplyTo {
@@ -17,7 +17,9 @@ impl<T> SortOrderBy for T where T: FieldApplyTo {
         )
     }
 }
+/// Helper trait retrieving the sort permutation for a structure.
 pub trait SortOrder {
+    /// Returns the sort permutation for the data in thie data structure.
     fn sort_order(&self) -> Result<Vec<usize>>;
 }
 impl<T> SortOrder for T where T: FieldApply {
@@ -25,12 +27,6 @@ impl<T> SortOrder for T where T: FieldApply {
         self.field_apply(&mut SortOrderFn {})
     }
 }
-
-// impl<S: Selector, U> SortOrderBy<S> for U where U: ApplyToField<S> {
-//     fn sort_order_by(&self, select: S) -> Result<Vec<usize>> {
-//         self.apply_to_field(SortOrderFn {}, select)
-//     }
-// }
 
 /// `FieldFn` function struct for retrieving the sort permutation order for a field.
 pub struct SortOrderFn {}

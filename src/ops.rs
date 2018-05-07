@@ -207,8 +207,6 @@ impl<'a, 'b> FieldMapFn for $op_revfieldfn_ty<'a, 'b, $dtype> {
     }
 }
 
-
-
 // END IMPL_OP_FIELDMAP_FN
         }
 }

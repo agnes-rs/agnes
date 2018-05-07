@@ -142,41 +142,6 @@ impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, DataFrame>> {
     }
 }
 
-// impl<'a> Apply<FieldIndexSelector<'a>> for DataFrame {
-//     fn apply<F: MapFn>(&self, f: &mut F, select: &FieldIndexSelector)
-//         -> error::Result<F::Output>
-//     {
-//         let (ident, idx) = select.index();
-//         self.store.apply(f, &FieldIndexSelector(ident, self.map_index(idx)))
-//     }
-// }
-
-// impl<T: DataType> FieldDataIndex<T> for DataFrame {
-//     fn get_field_data(&self, ident: &FieldIdent, idx: usize) -> error::Result<MaybeNa<&T>> {
-//         self.store.get_field_data(ident, idx)
-//     }
-//     fn field_len(&self, _: &FieldIdent) -> usize {
-//         self.nrows()
-//     }
-// }
-
-
-// impl<'a> ApplyToField<FieldSelector<'a>> for DataFrame {
-//     fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector)
-//         -> error::Result<F::Output>
-//     {
-//         self.store.apply_to_field(FrameFieldFn { frame: &self, field_fn: f }, select)
-//     }
-// }
-// impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataFrame, &'c DataFrame) {
-//     fn apply_to_field2<F: Field2Fn>(&self, f: F, select: (FieldSelector, FieldSelector))
-//         -> error::Result<F::Output>
-//     {
-//         (self.0.store.as_ref(), self.1.store.as_ref()).apply_to_field2(
-//             FrameField2Fn { frames: (&self.0, &self.1), field_fn: f }, select)
-//     }
-// }
-
 impl From<DataStore> for DataFrame {
     fn from(store: DataStore) -> DataFrame {
         DataFrame {
@@ -207,30 +172,6 @@ impl<'a, 'b, T: DataType> DataIndex<T> for Framed<'a, 'b, T> {
     }
 
 }
-
-
-// struct FrameMapFn<'a, F: MapFn> {
-//     frame: &'a DataFrame,
-//     map_fn: F,
-// }
-// impl<'a, F: MapFn> MapFn for FrameMapFn<'a, F> {
-//     type Output = F::Output;
-//     fn apply_unsigned(&mut self, value: MaybeNa<&u64>) -> F::Output {
-//         self.map_fn.apply_unsigned(&Framed::new(self.frame, value))
-//     }
-//     fn apply_signed(&mut self, value: MaybeNa<&i64>) -> F::Output {
-//         self.map_fn.apply_signed(&Framed::new(self.frame, value))
-//     }
-//     fn apply_text(&mut self, value: MaybeNa<&String>) -> F::Output {
-//         self.map_fn.apply_text(&Framed::new(self.frame, value))
-//     }
-//     fn apply_boolean(&mut self, value: MaybeNa<&bool>) -> F::Output {
-//         self.map_fn.apply_boolean(&Framed::new(self.frame, value))
-//     }
-//     fn apply_float(&mut self, value: MaybeNa<&f64>) -> F::Output {
-//         self.map_fn.apply_float(&Framed::new(self.frame, value))
-//     }
-// }
 
 struct FrameFieldMapFn<'a, 'b, F: 'b + FieldMapFn> {
     frame: &'a DataFrame,
@@ -293,45 +234,6 @@ impl<'a, 'b, F: FieldReduceFn<'a>> FieldReduceFn<'a> for FrameFieldReduceFn<'a, 
         self.reduce_fn.reduce(data_vec)
     }
 }
-
-// struct FrameField2Fn<'a, 'b, F: Field2Fn> {
-//     frames: (&'a DataFrame, &'b DataFrame),
-//     field_fn: F,
-// }
-// impl<'a, 'b, F: Field2Fn> Field2Fn for FrameField2Fn<'a, 'b, F> {
-//     type Output = F::Output;
-//     fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &(&T, &T)) -> F::Output {
-//         self.field_fn.apply_unsigned(&(
-//             &Framed::new(self.frames.0, field.0),
-//             &Framed::new(self.frames.1, field.1)
-//         ))
-//     }
-//     fn apply_signed<T: DataIndex<i64>>(&mut self, field: &(&T, &T)) -> F::Output {
-//         self.field_fn.apply_signed(&(
-//             &Framed::new(self.frames.0, field.0),
-//             &Framed::new(self.frames.1, field.1)
-//         ))
-//     }
-//     fn apply_text<T: DataIndex<String>>(&mut self, field: &(&T, &T)) -> F::Output {
-//         self.field_fn.apply_text(&(
-//             &Framed::new(self.frames.0, field.0),
-//             &Framed::new(self.frames.1, field.1)
-//         ))
-//     }
-//     fn apply_boolean<T: DataIndex<bool>>(&mut self, field: &(&T, &T)) -> F::Output {
-//         self.field_fn.apply_boolean(&(
-//             &Framed::new(self.frames.0, field.0),
-//             &Framed::new(self.frames.1, field.1)
-//         ))
-//     }
-//     fn apply_float<T: DataIndex<f64>>(&mut self, field: &(&T, &T)) -> F::Output {
-//         self.field_fn.apply_float(&(
-//             &Framed::new(self.frames.0, field.0),
-//             &Framed::new(self.frames.1, field.1)
-//         ))
-//     }
-
-// }
 
 pub(crate) struct SerializedField<'a> {
     pub(crate) ident: FieldIdent,

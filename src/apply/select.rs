@@ -37,43 +37,16 @@ impl<T: DataType> DataIndex<T> for Vec<T> {
     }
 }
 
-// pub trait TypedDataIndex {
-//     fn get_data_index_enum(&self) -> DataIndexEnum;
-//     // fn get_unsigned_data(&self, idx: usize) -> Result<MaybeNa<&u64>>;
-//     // fn get_signed_data(&self, idx: usize) -> Result<MaybeNa<&i64>>;
-//     // fn get_text_data(&self, idx: usize) -> Result<MaybeNa<&String>>;
-//     // fn get_boolean_data(&self, idx: usize) -> Result<MaybeNa<&bool>>;
-//     // fn get_float_data(&self, idx: usize) -> Result<MaybeNa<&f64>>;
-//     // fn len(&self) -> usize;
-// }
-// impl<U> TypedDataIndex for U where U: DataIndex<u64> + DataIndex<i64> + DataIndex<String>
-//     + DataIndex<bool> + DataIndex<f64>
-// {
-//     fn get_unsigned_data(&self, idx: usize) -> Result<MaybeNa<&u64>> {
-//         DataIndex::<u64>::get_data(self, idx)
-//     }
-//     fn get_signed_data(&self, idx: usize) -> Result<MaybeNa<&i64>> {
-//         DataIndex::<i64>::get_data(self, idx)
-//     }
-//     fn get_text_data(&self, idx: usize) -> Result<MaybeNa<&String>> {
-//         DataIndex::<String>::get_data(self, idx)
-//     }
-//     fn get_boolean_data(&self, idx: usize) -> Result<MaybeNa<&bool>> {
-//         DataIndex::<bool>::get_data(self, idx)
-//     }
-//     fn get_float_data(&self, idx: usize) -> Result<MaybeNa<&f64>> {
-//         DataIndex::<f64>::get_data(self, idx)
-//     }
-//     fn len(&self) -> usize {
-//         DataIndex::<u64>::len(self)
-//     }
-// }
-
+/// Either an owned data structure or reference to a data structure that implements `DataIndex`.
 pub enum OwnedOrRef<'a, T: 'a + DataType> {
+    /// A boxed data structure that implemented `DataIndex`.
     Owned(Box<DataIndex<T> + 'a>),
+    /// A reference to a data structure that implements `DataIndex`.
     Ref(&'a DataIndex<T>)
 }
 impl<'a, T: 'a + DataType> OwnedOrRef<'a, T> {
+    /// Returns a reference to the underlying `DataIndex`, whether this `OwnedOrRef` owns the data
+    /// or simply possesses a reference to it.
     pub fn as_ref(&'a self) -> &'a DataIndex<T> {
         match *self {
             OwnedOrRef::Owned(ref data) => data.as_ref(),
@@ -95,33 +68,31 @@ impl<'a, T: 'a + DataType> DataIndex<T> for OwnedOrRef<'a, T> {
         }
     }
 }
+
+/// A generic structure to hold either an owned or reference structure which implement `DataIndex`,
+/// of any of the accepted agnes types.
 pub enum ReduceDataIndex<'a> {
+    /// An unsigned data structure implementing `DataIndex`.
     Unsigned(OwnedOrRef<'a, u64>),
+    /// An signed data structure implementing `DataIndex`.
     Signed(OwnedOrRef<'a, i64>),
+    /// An text data structure implementing `DataIndex`.
     Text(OwnedOrRef<'a, String>),
+    /// An boolean data structure implementing `DataIndex`.
     Boolean(OwnedOrRef<'a, bool>),
+    /// An floating-point data structure implementing `DataIndex`.
     Float(OwnedOrRef<'a, f64>),
 }
 
-// pub trait FieldDataIndex<T: DataType> {
-//     fn get_field_data(&self, ident: &FieldIdent, idx: usize) -> Result<MaybeNa<&T>>;
-//     fn field_len(&self, ident: &FieldIdent) -> usize;
-// }
-
+/// Type for accessing a specified field (identified by a `FieldIdent`) for an underlying data
+/// structure.
 #[derive(Debug, Clone)]
 pub struct Selection<'a, 'b, D: 'a + ?Sized> {
+    /// Underlying data structure for this selection. Contains the field identified by `ident`.
     pub data: &'a D,
+    /// Identifier of the field within the `data` structure.
     pub ident: &'b FieldIdent,
 }
-// impl<'a, T: DataType, D: FieldDataIndex<T>> DataIndex<T> for Selection<'a, D>
-// {
-//     fn get_data(&self, idx: usize) -> Result<MaybeNa<&T>> {
-//         self.data.get_field_data(&self.ident, idx)
-//     }
-//     fn len(&self) -> usize {
-//         self.data.field_len(&self.ident)
-//     }
-// }
 
 impl<'a, 'b, D: 'a + ApplyTo> Apply for Selection<'a, 'b, D> {
     fn apply<F: MapFn>(&self, f: &mut F) -> Result<Vec<F::Output>> {
@@ -129,19 +100,8 @@ impl<'a, 'b, D: 'a + ApplyTo> Apply for Selection<'a, 'b, D> {
     }
 }
 
-// impl<'a, D> Apply<NilSelector> for Selection<'a, D>
-//     where for<'b> D: Apply<FieldSelector<'b>>
-// {
-//     fn apply<F: MapFn>(&self, f: &mut F, select: &NilSelector) -> Result<F::Output> {
-//         self.data.apply(f, &FieldSelector(&self.ident))
-//     }
-// }
-// impl<'a, S: Selector, T: DataType, D: 'a + DataIndex<T>> ApplyToElem<S> for Selection<'a, T, D, S> {
-//     fn apply_to_elem<F: MapFn>(&self, f: F, select: &S) -> Result<F::Output> {
-//         self.data.apply_to_elem(self.f, &self.selector)
-//     }
-// }
 impl<'a, 'b, D> Selection<'a, 'b, D> {
+    /// Create a new `Selection` object from specified data and identifier.
     pub fn new(data: &'a D, ident: &'b FieldIdent) -> Selection<'a, 'b, D> {
         Selection {
             data,
@@ -150,25 +110,16 @@ impl<'a, 'b, D> Selection<'a, 'b, D> {
     }
 }
 impl<'a, 'b, D: ApplyTo> Selection<'a, 'b, D> {
+    /// Apply a `MapFn` to this selection (to be lazy evaluated).
     pub fn map<F: MapFn>(&self, f: F) -> Map<Self, F> {
         Map::new(self, f, None)
     }
 }
-// pub trait Select {
-//     fn select<'a>(&'a self, selector: FieldSelector) -> Selection<'a, Self>;
-// }
-// impl<D> Select for D {
-//     fn select<'a>(&'a self, selector: FieldSelector<'a>) -> Selection<'a, Self> {
-//         Selection {
-//             data: self,
-//             selector: selector
-//         }
-//     }
-// }
 
+/// Trait for types that can have a specific field selected (for applying `MapFn`s).
 pub trait Select {
-    fn select<'a, 'b>(&'a self, ident: &'b FieldIdent)
-       -> Selection<'a, 'b, Self>;
+    /// Select the specified field.
+    fn select<'a, 'b>(&'a self, ident: &'b FieldIdent) -> Selection<'a, 'b, Self>;
 }
 
 impl<T> Select for T {
