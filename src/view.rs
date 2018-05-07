@@ -19,9 +19,9 @@ use indexmap::IndexMap;
 use serde::ser::{self, Serialize, Serializer, SerializeMap};
 use prettytable as pt;
 
-use frame::{DataFrame, FramedField, Filter, SortBy};
+use frame::{DataFrame, Filter, SortBy, SerializedField};
 use masked::{MaybeNa};
-use field::{FieldIdent, RFieldIdent, FieldType};
+use field::{FieldIdent, RFieldIdent, FieldType, TypedFieldIdent};
 use error;
 use store::DataStore;
 use join::{Join, sort_merge_join, compute_merged_frames,
@@ -97,6 +97,16 @@ impl DataView {
             self.frames[view_field.frame_idx].get_field_type(&view_field.rident.ident)
         })
     }
+    /// Return the field types (as `TypedFieldIdent` structs) of this DataView
+    pub fn field_types(&self) -> Vec<TypedFieldIdent> {
+        self.fields.iter().map(|(ident, vf)| {
+            TypedFieldIdent {
+                ident: ident.clone(),
+                // since we're iterating over fields we know exist, unwrap is safe
+                ty: self.frames[vf.frame_idx].get_field_type(&vf.rident.ident).unwrap()
+            }
+        }).collect()
+    }
     /// Returns `true` if this `DataView` contains this field.
     pub fn has_field(&self, s: &FieldIdent) -> bool {
         self.fields.contains_key(s)
@@ -155,6 +165,7 @@ impl DataView {
     /// store the contents of the joined `DataView`s.
     pub fn join(&self, other: &DataView, join: Join) -> error::Result<DataStore> {
         match join.predicate {
+            // TODO: implement hash join
             // Predicate::Equal => {
             //     hash_join(self, other, join)
             // },
@@ -162,6 +173,72 @@ impl DataView {
                 sort_merge_join(self, other, join)
             }
         }
+    }
+}
+
+
+impl ApplyTo for DataView {
+    fn apply_to<F: MapFn>(&self, f: &mut F, ident: &FieldIdent)
+        -> error::Result<Vec<F::Output>>
+    {
+        self.fields.get(ident)
+            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
+            .and_then(|view_field: &ViewField| {
+                self.frames[view_field.frame_idx].apply_to(f, &view_field.rident.ident)
+            }
+        )
+    }
+}
+impl ApplyToElem for DataView {
+    fn apply_to_elem<F: MapFn>(&self, f: &mut F, ident: &FieldIdent, idx: usize)
+        -> error::Result<F::Output>
+    {
+        self.fields.get(ident)
+            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
+            .and_then(|view_field: &ViewField| {
+                self.frames[view_field.frame_idx].apply_to_elem(f, &view_field.rident.ident, idx)
+            }
+        )
+    }
+}
+impl FieldApplyTo for DataView {
+    fn field_apply_to<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent)
+        -> error::Result<F::Output>
+    {
+        self.fields.get(ident)
+            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
+            .and_then(|view_field: &ViewField| {
+                self.frames[view_field.frame_idx].field_apply_to(f, &view_field.rident.ident)
+            }
+        )
+    }
+}
+
+impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, DataView> {
+    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
+        -> error::Result<F::Output>
+    {
+        self.data.fields.get(self.ident)
+            .ok_or(error::AgnesError::FieldNotFound(self.ident.clone()))
+            .and_then(|view_field: &ViewField| {
+                self.data.frames[view_field.frame_idx].select(&view_field.rident.ident)
+                    .apply_field_reduce(f)
+            }
+        )
+    }
+}
+impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, DataView>> {
+    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
+        -> error::Result<F::Output>
+    {
+        self.iter().map(|selection| {
+            selection.data.fields.get(selection.ident)
+                .ok_or(error::AgnesError::FieldNotFound(selection.ident.clone()))
+                .map(|view_field: &ViewField| {
+                    selection.data.frames[view_field.frame_idx].select(&view_field.rident.ident)
+                })
+        }).collect::<error::Result<Vec<_>>>()
+            .and_then(|frame_selections| frame_selections.apply_field_reduce(f))
     }
 }
 
@@ -205,63 +282,6 @@ impl SortBy for DataView {
     }
 }
 
-impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataView {
-    fn apply_to_elem<T: ElemFn>(&self, f: T, select: FieldIndexSelector<'a>)
-        -> error::Result<T::Output>
-    {
-        let (ident, idx) = select.index();
-        self.fields.get(ident)
-            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-            .and_then(|view_field: &ViewField| {
-                self.frames[view_field.frame_idx].apply_to_elem(f,
-                    FieldIndexSelector(&view_field.rident.ident, idx))
-            }
-        )
-    }
-}
-impl<'a> ApplyToField<FieldSelector<'a>> for DataView {
-    fn apply_to_field<T: FieldFn>(&self, f: T, select: FieldSelector) -> error::Result<T::Output> {
-        let ident = select.index();
-        self.fields.get(ident)
-            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-            .and_then(|view_field: &ViewField| {
-                self.frames[view_field.frame_idx].apply_to_field(f,
-                    FieldSelector(&view_field.rident.ident))
-            }
-        )
-    }
-}
-// two fields on same dataview
-impl<'a> ApplyToField2<FieldSelector<'a>> for DataView {
-    fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (FieldSelector, FieldSelector))
-        -> error::Result<T::Output>
-    {
-        (self, self).apply_to_field2(f, select)
-    }
-}
-// fields on two different dataviews
-impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataView, &'c DataView) {
-    fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (FieldSelector, FieldSelector))
-        -> error::Result<T::Output>
-    {
-        let (ident0, ident1) = (select.0.index(), select.1.index());
-        let vf0 = self.0.fields.get(ident0);
-        let vf1 = self.1.fields.get(ident1);
-        match (vf0, vf1) {
-            (Some(vf0), Some(vf1)) => {
-                (&self.0.frames[vf0.frame_idx], &self.1.frames[vf1.frame_idx])
-                    .apply_to_field2(f, (
-                        FieldSelector(&vf0.rident.ident),
-                        FieldSelector(&vf1.rident.ident)
-                    ))
-            },
-            (None, _) => Err(error::AgnesError::FieldNotFound(ident0.clone())),
-            _ => Err(error::AgnesError::FieldNotFound(ident1.clone())),
-        }
-    }
-}
-
-
 impl From<DataStore> for DataView {
     fn from(store: DataStore) -> DataView {
         let mut fields = IndexMap::new();
@@ -292,16 +312,16 @@ impl Display for DataView {
 
         let mut table = pt::Table::new();
         table.set_titles(self.fields.keys().into());
-        for i in 0..nrows.min(MAX_ROWS) {
-            let mut row = pt::row::Row::empty();
-            for field in self.fields.values() {
-                match self.apply_to_elem(AddCellToRow { row: &mut row },
-                    FieldIndexSelector(&field.rident.ident, i))
-                {
-                    Ok(_) => {},
-                    Err(e) => { return write!(f, "view display error: {}", e); },
-                };
-            }
+        let mut rows = vec![pt::row::Row::empty(); nrows.min(MAX_ROWS)];
+        for field in self.fields.values() {
+            match self.apply_to(&mut AddCellToRow { rows: &mut rows, i: 0 },
+                &field.rident.ident)
+            {
+                Ok(_) => {},
+                Err(e) => { return write!(f, "view display error: {}", e); },
+            };
+        }
+        for row in rows.drain(..) {
             table.add_row(row);
         }
         table.set_format(*pt::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
@@ -310,16 +330,18 @@ impl Display for DataView {
 }
 
 struct AddCellToRow<'a> {
-    row: &'a mut pt::row::Row
+    rows: &'a mut Vec<pt::row::Row>,
+    i: usize
 }
 macro_rules! impl_apply_cell_to_row {
     ($name:tt; $ty:ty) => {
         fn $name(&mut self, value: MaybeNa<&$ty>) {
-            self.row.add_cell(cell!(value))
+            self.rows[self.i].add_cell(cell!(value));
+            self.i += 1;
         }
     }
 }
-impl<'a> ElemFn for AddCellToRow<'a> {
+impl<'a> MapFn for AddCellToRow<'a> {
     type Output = ();
     impl_apply_cell_to_row!(apply_unsigned; u64);
     impl_apply_cell_to_row!(apply_signed;   i64);
@@ -332,7 +354,7 @@ impl Serialize for DataView {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let mut map = serializer.serialize_map(Some(self.fields.len()))?;
         for field in self.fields.values() {
-            map.serialize_entry(&field.rident.to_string(), &FramedField {
+            map.serialize_entry(&field.rident.to_string(), &SerializedField {
                 ident: field.rident.ident.clone(),
                 frame: &self.frames[field.frame_idx]
             })?;
@@ -357,7 +379,7 @@ impl Serialize for FieldView {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
             where S: Serializer {
         if self.frame.has_field(&self.field.ident) {
-            FramedField {
+            SerializedField {
                 ident: self.field.to_renamed_field_ident(),
                 frame: &self.frame
             }.serialize(serializer)
@@ -682,24 +704,25 @@ mod tests {
         // set filtering by department ID
         let mut dv1 = orig_dv.clone();
         dv1.filter(&"DeptId".into(), |val: &u64| *val == 1).unwrap();
+        println!("{}", dv1);
         assert_eq!(dv1.nrows(), 3);
-        text::assert_sorted_eq(&dv1, &"EmpName".into(), vec!["Sally", "Bob", "Cara"]);
+        text::assert_dv_sorted_eq(&dv1, &"EmpName".into(), vec!["Sally", "Bob", "Cara"]);
 
         // filter a second time
         dv1.filter(&"EmpId".into(), |val: &u64| *val >= 6).unwrap();
         assert_eq!(dv1.nrows(), 1);
-        text::assert_sorted_eq(&dv1, &"EmpName".into(), vec!["Cara"]);
+        text::assert_dv_sorted_eq(&dv1, &"EmpName".into(), vec!["Cara"]);
 
         // that same filter on the original DV has different results
         let mut dv2 = orig_dv.clone();
         dv2.filter(&"EmpId".into(), |val: &u64| *val >= 6).unwrap();
         assert_eq!(dv2.nrows(), 4);
-        text::assert_sorted_eq(&dv2, &"EmpName".into(), vec!["Cara", "Louis", "Louise", "Ann"]);
+        text::assert_dv_sorted_eq(&dv2, &"EmpName".into(), vec!["Cara", "Louis", "Louise", "Ann"]);
 
         // let's try filtering by a different department on dv2
         dv2.filter(&"DeptId".into(), |val: &u64| *val == 4).unwrap();
         assert_eq!(dv2.nrows(), 2);
-        text::assert_sorted_eq(&dv2, &"EmpName".into(), vec!["Louise", "Ann"]);
+        text::assert_dv_sorted_eq(&dv2, &"EmpName".into(), vec!["Louise", "Ann"]);
     }
 
     #[test]
@@ -710,32 +733,32 @@ mod tests {
         // sort by name
         let mut dv1 = orig_dv.clone();
         dv1.sort_by(&"EmpName".into()).unwrap();
-        text::assert_vec_eq(&dv1, &"EmpName".into(),
+        text::assert_dv_eq_vec(&dv1, &"EmpName".into(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
         );
-        unsigned::assert_vec_eq(&dv1, &"EmpId".into(), vec![10u64, 5, 6, 2, 8, 9, 0]);
+        unsigned::assert_dv_eq_vec(&dv1, &"EmpId".into(), vec![10u64, 5, 6, 2, 8, 9, 0]);
 
         // re-sort by empid
         let mut dv2 = dv1.clone();
         dv2.sort_by(&"EmpId".into()).unwrap();
-        text::assert_vec_eq(&dv2, &"EmpName".into(),
+        text::assert_dv_eq_vec(&dv2, &"EmpName".into(),
             vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"]
         );
-        unsigned::assert_vec_eq(&dv2, &"EmpId".into(), vec![0u64, 2, 5, 6, 8, 9, 10]);
+        unsigned::assert_dv_eq_vec(&dv2, &"EmpId".into(), vec![0u64, 2, 5, 6, 8, 9, 10]);
 
         // make sure dv1 is still sorted by EmpName
-        text::assert_vec_eq(&dv1, &"EmpName".into(),
+        text::assert_dv_eq_vec(&dv1, &"EmpName".into(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
         );
-        unsigned::assert_vec_eq(&dv1, &"EmpId".into(), vec![10u64, 5, 6, 2, 8, 9, 0]);
+        unsigned::assert_dv_eq_vec(&dv1, &"EmpId".into(), vec![10u64, 5, 6, 2, 8, 9, 0]);
 
         // starting with sorted by name, sort by vacation hours
         let mut dv3 = dv1.clone();
         dv3.sort_by(&"VacationHrs".into()).unwrap();
-        text::assert_vec_eq(&dv3, &"EmpName".into(),
+        text::assert_dv_eq_vec(&dv3, &"EmpName".into(),
             vec!["Louis", "Louise", "Cara", "Ann", "Sally", "Jamie", "Bob"]
         );
-        unsigned::assert_vec_eq(&dv3, &"EmpId".into(), vec![8u64, 9, 6, 10, 0, 2, 5]);
+        unsigned::assert_dv_eq_vec(&dv3, &"EmpId".into(), vec![8u64, 9, 6, 10, 0, 2, 5]);
     }
 
     #[test]
@@ -748,14 +771,14 @@ mod tests {
         dv1.filter(&"VacationHrs".into(), |&val: &f64| val >= 0.0).unwrap();
         assert_eq!(dv1.nrows(), 6);
         // only Louis has negative hours, so rest of employees still remain
-        text::assert_vec_eq(&dv1, &"EmpName".into(),
+        text::assert_dv_eq_vec(&dv1, &"EmpName".into(),
             vec!["Sally", "Jamie", "Bob", "Cara", "Louise", "Ann"]
         );
 
         // next, sort by employee name
         let mut dv2 = dv1.clone();
         dv2.sort_by(&"EmpName".into()).unwrap();
-        text::assert_vec_eq(&dv2, &"EmpName".into(),
+        text::assert_dv_eq_vec(&dv2, &"EmpName".into(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louise", "Sally"]
         );
 
@@ -764,10 +787,10 @@ mod tests {
         dv3.filter(&"DeptId".into(), |&val: &u64| val == 1).unwrap();
         assert_eq!(dv3.nrows(), 3);
         // should just be the people in department 1, in employee name order
-        text::assert_vec_eq(&dv3, &"EmpName".into(), vec!["Bob", "Cara", "Sally"]);
+        text::assert_dv_eq_vec(&dv3, &"EmpName".into(), vec!["Bob", "Cara", "Sally"]);
 
         // check that dv1 still has the original ordering
-        text::assert_vec_eq(&dv1, &"EmpName".into(),
+        text::assert_dv_eq_vec(&dv1, &"EmpName".into(),
             vec!["Sally", "Jamie", "Bob", "Cara", "Louise", "Ann"]
         );
 
@@ -775,10 +798,10 @@ mod tests {
         dv1.filter(&"DeptId".into(), |&val: &u64| val == 1).unwrap();
         assert_eq!(dv1.nrows(), 3);
         // should be the people in department 1, but in original name order
-        text::assert_vec_eq(&dv1, &"EmpName".into(), vec!["Sally", "Bob", "Cara"]);
+        text::assert_dv_eq_vec(&dv1, &"EmpName".into(), vec!["Sally", "Bob", "Cara"]);
 
         // make sure dv2 hasn't been affected by any of the other changes
-        text::assert_vec_eq(&dv2, &"EmpName".into(),
+        text::assert_dv_eq_vec(&dv2, &"EmpName".into(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louise", "Sally"]
         );
     }

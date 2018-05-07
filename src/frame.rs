@@ -4,14 +4,14 @@ underlying data store, along with record-based filtering and sorting details.
 */
 use std::rc::Rc;
 use std::marker::PhantomData;
-
-use store::DataStore;
-use masked::MaybeNa;
 use serde::{Serialize, Serializer};
 use serde::ser::{self, SerializeSeq};
-use field::{FieldIdent, FieldType};
+
+use store::DataStore;
+use field::{DataType, FieldIdent, FieldType};
 use apply::*;
 use error;
+use masked::MaybeNa;
 
 /// A data frame. A `DataStore` reference along with record-based filtering and sorting details.
 #[derive(Debug, Clone)]
@@ -74,7 +74,7 @@ impl Filter<$dtype> for DataFrame {
     fn filter<F: Fn(&$dtype) -> bool>(&mut self, ident: &FieldIdent, pred: F)
         -> error::Result<Vec<usize>>
     {
-        let filter = self.get_filter(FieldSelector(ident), pred)?;
+        let filter = self.get_filter(pred, ident)?;
         self.update_permutation(&filter);
         Ok(filter)
     }
@@ -91,31 +91,54 @@ pub trait SortBy {
 }
 impl SortBy for DataFrame {
     fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>> {
-        let sort_order = self.sort_order_by(FieldSelector(ident))?;
+        let sort_order = self.sort_order_by(ident)?;
         self.update_permutation(&sort_order);
         Ok(sort_order)
     }
 }
 
-impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataFrame {
-    fn apply_to_elem<T: ElemFn>(&self, f: T, select: FieldIndexSelector)
-        -> error::Result<T::Output>
+impl ApplyTo for DataFrame {
+    fn apply_to<F: MapFn>(&self, f: &mut F, ident: &FieldIdent)
+        -> error::Result<Vec<F::Output>>
     {
-        let (ident, idx) = select.index();
-        self.store.apply_to_elem(f, FieldIndexSelector(ident, self.map_index(idx)))
+        (0..self.nrows()).map(|idx| {
+            self.store.apply_to_elem(f, &ident, self.map_index(idx))
+        }).collect()
     }
 }
-impl<'a> ApplyToField<FieldSelector<'a>> for DataFrame {
-    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector) -> error::Result<F::Output> {
-        self.store.apply_to_field(FrameFieldFn { frame: &self, field_fn: f }, select)
-    }
-}
-impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataFrame, &'c DataFrame) {
-    fn apply_to_field2<F: Field2Fn>(&self, f: F, select: (FieldSelector, FieldSelector))
+impl ApplyToElem for DataFrame {
+    fn apply_to_elem<F: MapFn>(&self, f: &mut F, ident: &FieldIdent, idx: usize)
         -> error::Result<F::Output>
     {
-        (self.0.store.as_ref(), self.1.store.as_ref()).apply_to_field2(
-            FrameField2Fn { frames: (&self.0, &self.1), field_fn: f }, select)
+        self.store.apply_to_elem(f, &ident, self.map_index(idx))
+    }
+}
+impl FieldApplyTo for DataFrame {
+    fn field_apply_to<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent)
+        -> error::Result<F::Output>
+    {
+        self.store.field_apply_to(&mut FrameFieldMapFn { frame: &self, field_fn: f }, &ident)
+    }
+}
+
+impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, DataFrame> {
+    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
+        -> error::Result<F::Output>
+    {
+        self.data.store.select(self.ident)
+            .apply_field_reduce(&mut FrameFieldReduceFn {
+                frame: &self.data,
+                reduce_fn: f,
+            })
+    }
+}
+impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, DataFrame>> {
+    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
+        -> error::Result<F::Output>
+    {
+        self.iter().map(|selection| {
+            selection.data.store.select(selection.ident)
+        }).collect::<Vec<_>>().apply_field_reduce(f)
     }
 }
 
@@ -128,17 +151,19 @@ impl From<DataStore> for DataFrame {
     }
 }
 
-struct Framed<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> {
+// Structure to hold references to a data structure (e.g. DataStore) and a frame used to view
+// that structure. Provides DataIndex for the underlying data structure, as view through the frame.
+struct Framed<'a, 'b, T: 'b + DataType> {
     frame: &'a DataFrame,
-    data: &'b D,
+    data: OwnedOrRef<'b, T>,
     dtype: PhantomData<T>,
 }
-impl<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> Framed<'a, 'b, T, D> {
-    fn new(frame: &'a DataFrame, data: &'b D) -> Framed<'a, 'b, T, D> {
+impl<'a, 'b, T: DataType> Framed<'a, 'b, T> {
+    fn new(frame: &'a DataFrame, data: OwnedOrRef<'b, T>) -> Framed<'a, 'b, T> {
         Framed { frame, data, dtype: PhantomData }
     }
 }
-impl<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> DataIndex<T> for Framed<'a, 'b, T, D> {
+impl<'a, 'b, T: DataType> DataIndex<T> for Framed<'a, 'b, T> {
     fn get_data(&self, idx: usize) -> error::Result<MaybeNa<&T>> {
         self.data.get_data(self.frame.map_index(idx))
     }
@@ -147,69 +172,64 @@ impl<'a, 'b, T: PartialOrd, D: 'b + DataIndex<T>> DataIndex<T> for Framed<'a, 'b
     }
 
 }
-struct FrameFieldFn<'a, F: FieldFn> {
+
+struct FrameFieldMapFn<'a, 'b, F: 'b + FieldMapFn> {
     frame: &'a DataFrame,
-    field_fn: F,
+    field_fn: &'b mut F,
 }
-impl<'a, F: FieldFn> FieldFn for FrameFieldFn<'a, F> {
+impl<'a, 'b, F: 'b + FieldMapFn> FieldMapFn for FrameFieldMapFn<'a, 'b, F> {
     type Output = F::Output;
     fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &T) -> F::Output {
-        self.field_fn.apply_unsigned(&Framed::new(self.frame, field))
+        self.field_fn.apply_unsigned(&Framed::new(self.frame, OwnedOrRef::Ref(field)))
     }
     fn apply_signed<T: DataIndex<i64>>(&mut self, field: &T) -> F::Output {
-        self.field_fn.apply_signed(&Framed::new(self.frame, field))
+        self.field_fn.apply_signed(&Framed::new(self.frame, OwnedOrRef::Ref(field)))
     }
     fn apply_text<T: DataIndex<String>>(&mut self, field: &T) -> F::Output {
-        self.field_fn.apply_text(&Framed::new(self.frame, field))
+        self.field_fn.apply_text(&Framed::new(self.frame, OwnedOrRef::Ref(field)))
     }
     fn apply_boolean<T: DataIndex<bool>>(&mut self, field: &T) -> F::Output {
-        self.field_fn.apply_boolean(&Framed::new(self.frame, field))
+        self.field_fn.apply_boolean(&Framed::new(self.frame, OwnedOrRef::Ref(field)))
     }
     fn apply_float<T: DataIndex<f64>>(&mut self, field: &T) -> F::Output {
-        self.field_fn.apply_float(&Framed::new(self.frame, field))
+        self.field_fn.apply_float(&Framed::new(self.frame, OwnedOrRef::Ref(field)))
     }
 }
-struct FrameField2Fn<'a, 'b, F: Field2Fn> {
-    frames: (&'a DataFrame, &'b DataFrame),
-    field_fn: F,
+
+struct FrameFieldReduceFn<'a, 'b, F: 'b + FieldReduceFn<'a>> {
+    frame: &'a DataFrame,
+    reduce_fn: &'b mut F,
 }
-impl<'a, 'b, F: Field2Fn> Field2Fn for FrameField2Fn<'a, 'b, F> {
+impl<'a, 'b, F: FieldReduceFn<'a>> FieldReduceFn<'a> for FrameFieldReduceFn<'a, 'b, F>
+{
     type Output = F::Output;
-    fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &(&T, &T)) -> F::Output {
-        self.field_fn.apply_unsigned(&(
-            &Framed::new(self.frames.0, field.0),
-            &Framed::new(self.frames.1, field.1)
-        ))
+    fn reduce(&mut self, mut fields: Vec<ReduceDataIndex<'a>>) -> F::Output {
+        let data_vec = fields.drain(..).map(|field| {
+            let field: ReduceDataIndex<'a> = field;
+            match field {
+                ReduceDataIndex::Unsigned(field) =>
+                    ReduceDataIndex::Unsigned(OwnedOrRef::Owned(Box::new(
+                        Framed::new(self.frame, field)))),
+                ReduceDataIndex::Signed(field) =>
+                    ReduceDataIndex::Signed(OwnedOrRef::Owned(Box::new(
+                        Framed::new(self.frame, field)))),
+                ReduceDataIndex::Text(field) =>
+                    ReduceDataIndex::Text(OwnedOrRef::Owned(Box::new(
+                        Framed::new(self.frame, field)))),
+                ReduceDataIndex::Boolean(field) =>
+                    ReduceDataIndex::Boolean(OwnedOrRef::Owned(Box::new(
+                        Framed::new(self.frame, field)))),
+                ReduceDataIndex::Float(field) =>
+                    ReduceDataIndex::Float(OwnedOrRef::Owned(Box::new(
+                        Framed::new(self.frame, field)))),
+            }
+        }
+        ).collect::<Vec<ReduceDataIndex<'a>>>();
+        self.reduce_fn.reduce(data_vec)
     }
-    fn apply_signed<T: DataIndex<i64>>(&mut self, field: &(&T, &T)) -> F::Output {
-        self.field_fn.apply_signed(&(
-            &Framed::new(self.frames.0, field.0),
-            &Framed::new(self.frames.1, field.1)
-        ))
-    }
-    fn apply_text<T: DataIndex<String>>(&mut self, field: &(&T, &T)) -> F::Output {
-        self.field_fn.apply_text(&(
-            &Framed::new(self.frames.0, field.0),
-            &Framed::new(self.frames.1, field.1)
-        ))
-    }
-    fn apply_boolean<T: DataIndex<bool>>(&mut self, field: &(&T, &T)) -> F::Output {
-        self.field_fn.apply_boolean(&(
-            &Framed::new(self.frames.0, field.0),
-            &Framed::new(self.frames.1, field.1)
-        ))
-    }
-    fn apply_float<T: DataIndex<f64>>(&mut self, field: &(&T, &T)) -> F::Output {
-        self.field_fn.apply_float(&(
-            &Framed::new(self.frames.0, field.0),
-            &Framed::new(self.frames.1, field.1)
-        ))
-    }
-
 }
 
-// TODO: update this to use with the FramedFieldFn / Framed framework?
-pub(crate) struct FramedField<'a> {
+pub(crate) struct SerializedField<'a> {
     pub(crate) ident: FieldIdent,
     pub(crate) frame: &'a DataFrame
 }
@@ -219,7 +239,7 @@ struct SerializeFn<'b, S: Serializer> {
     frame: &'b DataFrame
 }
 macro_rules! sresult { ($s:tt) => (Result<$s::Ok, $s::Error>) }
-fn do_serialize<'a, 'b, T: PartialOrd + Serialize, S: 'a + Serializer>(
+fn do_serialize<'a, 'b, T: DataType + Serialize, S: 'a + Serializer>(
         sfn: &mut SerializeFn<'b, S>, field: &DataIndex<T>
     ) -> sresult![S]
 {
@@ -233,7 +253,7 @@ fn do_serialize<'a, 'b, T: PartialOrd + Serialize, S: 'a + Serializer>(
     }
     seq.end()
 }
-impl<'b, Ser: Serializer> FieldFn for SerializeFn<'b, Ser> {
+impl<'b, Ser: Serializer> FieldMapFn for SerializeFn<'b, Ser> {
     type Output = sresult![Ser];
     fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &T) -> sresult![Ser] {
         do_serialize(self, field)
@@ -253,11 +273,11 @@ impl<'b, Ser: Serializer> FieldFn for SerializeFn<'b, Ser> {
 }
 
 
-impl<'b> Serialize for FramedField<'b> {
+impl<'b> Serialize for SerializedField<'b> {
     fn serialize<S>(&self, serializer: S) -> sresult![S] where S: Serializer {
-        self.frame.apply_to_field(
-            SerializeFn { serializer: Some(serializer), frame: &self.frame },
-            FieldSelector(&self.ident)
+        self.frame.field_apply_to(
+            &mut SerializeFn { serializer: Some(serializer), frame: &self.frame },
+            &self.ident
         ).unwrap_or(
             Err(ser::Error::custom(format!("missing field: {}", self.ident.to_string())))
         )

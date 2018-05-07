@@ -2,19 +2,20 @@
 
 use serde::ser::{Serialize, Serializer, SerializeSeq};
 
+use field::DataType;
 use bit_vec::BitVec;
 use apply::*;
 use error;
 
 /// Missing value container.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum MaybeNa<T: PartialOrd> {
+pub enum MaybeNa<T: DataType> {
     /// Indicates a missing (NA) value.
     Na,
     /// Indicates an existing value.
     Exists(T)
 }
-impl<T: ToString + PartialOrd> ToString for MaybeNa<T> {
+impl<T: ToString + DataType> ToString for MaybeNa<T> {
     fn to_string(&self) -> String {
         match *self {
             MaybeNa::Na => "NA".into(),
@@ -22,7 +23,7 @@ impl<T: ToString + PartialOrd> ToString for MaybeNa<T> {
         }
     }
 }
-impl<T: PartialOrd> MaybeNa<T> {
+impl<T: DataType> MaybeNa<T> {
     /// Unwrap a `MaybeNa`, revealing the data contained within. Panics if called on an `Na` value.
     pub fn unwrap(self) -> T {
         match self {
@@ -44,8 +45,22 @@ impl<T: PartialOrd> MaybeNa<T> {
             MaybeNa::Na => true,
         }
     }
+    /// Returns a `MaybeNa` which contains a reference to the original underlying datum.
+    pub fn as_ref<'a>(&'a self) -> MaybeNa<&'a T> {
+        match *self {
+            MaybeNa::Exists(ref val) => MaybeNa::Exists(&val),
+            MaybeNa::Na => MaybeNa::Na
+        }
+    }
+    /// Applies function `f` if this `MaybeNa` exists.
+    pub fn map<U: DataType, F: FnMut(T) -> U>(self, mut f: F) -> MaybeNa<U> {
+        match self {
+            MaybeNa::Exists(val) => MaybeNa::Exists(f(val)),
+            MaybeNa::Na => MaybeNa::Na
+        }
+    }
 }
-impl<'a, T: PartialOrd + Clone> MaybeNa<&'a T> {
+impl<'a, T: DataType + Clone> MaybeNa<&'a T> {
     /// Create a owner `MaybeNa` out of a reference-holding `MaybeNa` using `clone()`.
     pub fn cloned(self) -> MaybeNa<T> {
         match self {
@@ -55,13 +70,33 @@ impl<'a, T: PartialOrd + Clone> MaybeNa<&'a T> {
     }
 }
 
+/// Trait for any type that can be convert into a `MaybeNa` type.
+pub trait IntoMaybeNa {
+    /// The `DataType` of the resulting `MaybeNa` type,
+    type DType: DataType;
+    /// Convert this type into a `MaybeNa`.
+    fn into_maybena(self) -> MaybeNa<Self::DType>;
+}
+impl<D: DataType> IntoMaybeNa for MaybeNa<D> {
+    type DType = D;
+    fn into_maybena(self) -> MaybeNa<D> { self }
+}
+impl IntoMaybeNa for () {
+    type DType = bool;
+    fn into_maybena(self) -> MaybeNa<bool> { MaybeNa::Na }
+}
+impl<D: DataType> IntoMaybeNa for D {
+    type DType = D;
+    fn into_maybena(self) -> MaybeNa<D> { MaybeNa::Exists(self) }
+}
+
 /// Data vector along with bit-vector-based mask indicating whether or not values exist.
 #[derive(Debug, Clone)]
 pub struct MaskedData<T> {
     mask: BitVec,
     data: Vec<T>
 }
-impl<T: PartialOrd> MaskedData<T> {
+impl<T: DataType> MaskedData<T> {
     /// Length of this data vector
     pub fn len(&self) -> usize {
         assert_eq!(self.mask.len(), self.data.len());
@@ -91,7 +126,7 @@ impl<T: PartialOrd> MaskedData<T> {
         }).collect()
     }
 }
-impl<T: Default + PartialOrd> MaskedData<T> {
+impl<T: Default + DataType> MaskedData<T> {
     /// Create new empty `MaskedData` struct.
     pub fn new() -> MaskedData<T> {
         MaskedData {
@@ -140,7 +175,7 @@ impl<T: Default + PartialOrd> MaskedData<T> {
         ret
     }
 }
-impl<T: PartialOrd + Default, U: Into<T>> From<Vec<U>> for MaskedData<T> {
+impl<T: DataType + Default, U: Into<T>> From<Vec<U>> for MaskedData<T> {
     fn from(other: Vec<U>) -> MaskedData<T> {
         MaskedData::from_vec(other)
     }
@@ -160,108 +195,35 @@ macro_rules! impl_masked_data_index {
 }
 impl_masked_data_index!(u64 i64 String bool f64);
 
-impl ApplyToElem<IndexSelector> for MaskedData<u64> {
-    fn apply_to_elem<F: ElemFn>(&self, mut f: F, select: IndexSelector) -> error::Result<F::Output>
+impl<T: DataType> MaskedData<T> {
+    /// Apply a `MapFn` to this data vector at the specified index.
+    pub fn apply<F: MapFn>(&self, f: &mut F, idx: usize)
+        -> error::Result<<F as ApplyToDatum<T>>::Output>
+        where F: ApplyToDatum<T>
     {
-        let idx = select.index();
-        self.get(idx).map(|value| f.apply_unsigned(value))
-            .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-    }
-}
-impl ApplyToElem<IndexSelector> for MaskedData<i64> {
-    fn apply_to_elem<F: ElemFn>(&self, mut f: F, select: IndexSelector) -> error::Result<F::Output>
-    {
-        let idx = select.index();
-        self.get(idx).map(|value| f.apply_signed(value))
-            .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-    }
-}
-impl ApplyToElem<IndexSelector> for MaskedData<String> {
-    fn apply_to_elem<F: ElemFn>(&self, mut f: F, select: IndexSelector) -> error::Result<F::Output>
-    {
-        let idx = select.index();
-        self.get(idx).map(|value| f.apply_text(value))
-            .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-    }
-}
-impl ApplyToElem<IndexSelector> for MaskedData<bool> {
-    fn apply_to_elem<F: ElemFn>(&self, mut f: F, select: IndexSelector) -> error::Result<F::Output>
-    {
-        let idx = select.index();
-        self.get(idx).map(|value| f.apply_boolean(value))
-            .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-    }
-}
-impl ApplyToElem<IndexSelector> for MaskedData<f64> {
-    fn apply_to_elem<F: ElemFn>(&self, mut f: F, select: IndexSelector) -> error::Result<F::Output>
-    {
-        let idx = select.index();
-        self.get(idx).map(|value| f.apply_float(value))
+        self.get(idx).map(|value| f.apply_to_datum(value))
             .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
     }
 }
 
-impl ApplyToField<NilSelector> for MaskedData<u64> {
-    fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
-        Ok(f.apply_unsigned(self))
-    }
-}
-impl ApplyToField<NilSelector> for MaskedData<i64> {
-    fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
-        Ok(f.apply_signed(self))
-    }
-}
-impl ApplyToField<NilSelector> for MaskedData<String> {
-    fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
-        Ok(f.apply_text(self))
-    }
-}
-impl ApplyToField<NilSelector> for MaskedData<bool> {
-    fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
-        Ok(f.apply_boolean(self))
-    }
-}
-impl ApplyToField<NilSelector> for MaskedData<f64> {
-    fn apply_to_field<F: FieldFn>(&self, mut f: F, _: NilSelector) -> error::Result<F::Output> {
-        Ok(f.apply_float(self))
+macro_rules! impl_field_apply {
+    ($($apply_fn:tt; $dtype:ty)*) => {$(
+
+impl FieldApply for MaskedData<$dtype> {
+    fn field_apply<F: FieldMapFn>(&self, f: &mut F) -> error::Result<F::Output> {
+        Ok(f.$apply_fn(self))
     }
 }
 
-impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<u64>, &'b MaskedData<u64>) {
-    fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
-        -> error::Result<F::Output>
-    {
-        Ok(f.apply_unsigned(self))
-    }
+    )*}
 }
-impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<i64>, &'b MaskedData<i64>) {
-    fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
-        -> error::Result<F::Output>
-    {
-        Ok(f.apply_signed(self))
-    }
-}
-impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<String>, &'b MaskedData<String>) {
-    fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
-        -> error::Result<F::Output>
-    {
-        Ok(f.apply_text(self))
-    }
-}
-impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<bool>, &'b MaskedData<bool>) {
-    fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
-        -> error::Result<F::Output>
-    {
-        Ok(f.apply_boolean(self))
-    }
-}
-impl<'a, 'b> ApplyToField2<NilSelector> for (&'a MaskedData<f64>, &'b MaskedData<f64>) {
-    fn apply_to_field2<F: Field2Fn>(&self, mut f: F, _: (NilSelector, NilSelector))
-        -> error::Result<F::Output>
-    {
-        Ok(f.apply_float(self))
-    }
-}
+impl_field_apply!(
+    apply_unsigned; u64
+    apply_signed;   i64
+    apply_text;     String
+    apply_boolean;  bool
+    apply_float;    f64
+);
 
 impl<T: Serialize> Serialize for MaskedData<T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {

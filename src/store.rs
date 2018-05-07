@@ -1,10 +1,11 @@
 //! Data storage struct and implentation.
 
+use std::rc::Rc;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use field::{FieldIdent, TypedFieldIdent, DsField, FieldType};
+use field::{FieldIdent, DataType, TypedFieldIdent, DsField, FieldType};
 use masked::{MaskedData};
 use error::*;
 use MaybeNa;
@@ -71,6 +72,23 @@ impl DataStore {
             float: HashMap::new(),
         };
         for field in fields.drain(..) {
+            ds.add_field(field);
+        }
+        ds
+    }
+    /// Create a new `DataStore` from an interator of fields.
+    pub fn with_field_iter<I: Iterator<Item=TypedFieldIdent>>(field_iter: I) -> DataStore {
+        let mut ds = DataStore {
+            fields: vec![],
+            field_map: HashMap::new(),
+
+            unsigned: HashMap::new(),
+            signed: HashMap::new(),
+            text: HashMap::new(),
+            boolean: HashMap::new(),
+            float: HashMap::new(),
+        };
+        for field in field_iter {
             ds.add_field(field);
         }
         ds
@@ -159,6 +177,23 @@ impl DataStore {
             .and_then(|&index| self.fields.get(index).map(|&ref dsfield| dsfield.ty_ident.ty))
     }
 
+    fn get_reduce_data_index(&self, ident: &FieldIdent) -> Option<ReduceDataIndex> {
+        self.field_map.get(ident).and_then(|&field_idx| {
+            match self.fields[field_idx].ty_ident.ty {
+                FieldType::Unsigned => self.get_unsigned_field(ident)
+                    .map(|data| ReduceDataIndex::Unsigned(OwnedOrRef::Ref(data))),
+                FieldType::Signed => self.get_signed_field(ident)
+                    .map(|data| ReduceDataIndex::Signed(OwnedOrRef::Ref(data))),
+                FieldType::Text => self.get_text_field(ident)
+                    .map(|data| ReduceDataIndex::Text(OwnedOrRef::Ref(data))),
+                FieldType::Boolean => self.get_boolean_field(ident)
+                    .map(|data| ReduceDataIndex::Boolean(OwnedOrRef::Ref(data))),
+                FieldType::Float => self.get_float_field(ident)
+                    .map(|data| ReduceDataIndex::Float(OwnedOrRef::Ref(data))),
+            }
+        })
+    }
+
     /// Get the list of field information structs for this data store
     pub fn fields(&self) -> Vec<&TypedFieldIdent> {
         self.fields.iter().map(|&ref s| &s.ty_ident).collect()
@@ -190,9 +225,10 @@ impl Default for DataStore {
     }
 }
 
-impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataStore {
-    fn apply_to_elem<F: ElemFn>(&self, f: F, select: FieldIndexSelector) -> Result<F::Output> {
-        let (ident, idx) = select.index();
+impl ApplyToElem for DataStore {
+    fn apply_to_elem<F: MapFn>(&self, f: &mut F, ident: &FieldIdent, idx: usize)
+        -> Result<F::Output>
+    {
         self.field_map.get(ident)
             .ok_or(AgnesError::FieldNotFound(ident.clone()))
             .and_then(|&field_idx| {
@@ -200,31 +236,31 @@ impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataStore {
                     FieldType::Unsigned => self.get_unsigned_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
                         .and_then(|data| {
-                            data.apply_to_elem(f, IndexSelector(idx))
+                            data.apply(f, idx)
                         }
                     ),
                     FieldType::Signed => self.get_signed_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
                         .and_then(|data| {
-                            data.apply_to_elem(f, IndexSelector(idx))
+                            data.apply(f, idx)
                         }
                     ),
                     FieldType::Text => self.get_text_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
                         .and_then(|data| {
-                            data.apply_to_elem(f, IndexSelector(idx))
+                            data.apply(f, idx)
                         }
                     ),
                     FieldType::Boolean => self.get_boolean_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
                         .and_then(|data| {
-                            data.apply_to_elem(f, IndexSelector(idx))
+                            data.apply(f, idx)
                         }
                     ),
                     FieldType::Float => self.get_float_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
                         .and_then(|data| {
-                            data.apply_to_elem(f, IndexSelector(idx))
+                            data.apply(f, idx)
                         }
                     )
                 }
@@ -232,111 +268,97 @@ impl<'a> ApplyToElem<FieldIndexSelector<'a>> for DataStore {
         )
     }
 }
-
-impl<'a> ApplyToField<FieldSelector<'a>> for DataStore {
-    fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector) -> Result<F::Output> {
-        let ident = select.index();
+impl FieldApplyTo for DataStore {
+    fn field_apply_to<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent)
+        -> Result<F::Output>
+    {
         self.field_map.get(ident)
             .ok_or(AgnesError::FieldNotFound(ident.clone()))
             .and_then(|&field_idx| {
                 match self.fields[field_idx].ty_ident.ty {
                     FieldType::Unsigned => self.get_unsigned_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
-                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                        .map(|data| f.apply_unsigned(data)),
                     FieldType::Signed => self.get_signed_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
-                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                        .map(|data| f.apply_signed(data)),
                     FieldType::Text => self.get_text_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
-                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                        .map(|data| f.apply_text(data)),
                     FieldType::Boolean => self.get_boolean_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
-                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                        .map(|data| f.apply_boolean(data)),
                     FieldType::Float => self.get_float_field(ident)
                         .ok_or(AgnesError::FieldNotFound(ident.clone()))
-                        .and_then(|data| data.apply_to_field(f, NilSelector)),
+                        .map(|data| f.apply_float(data)),
                 }
-            }
-        )
+            })
     }
 }
-
-impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataStore, &'c DataStore) {
-    fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (FieldSelector, FieldSelector))
-        -> Result<T::Output>
+impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, Rc<DataStore>> {
+    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
+        -> Result<F::Output>
     {
-        let (ident0, ident1) = (select.0.index(), select.1.index());
-        let (field0, field1) = (
-            &self.0.field_map.get(ident0).map(|&field_idx| &self.0.fields[field_idx]),
-            &self.1.field_map.get(ident1).map(|&field_idx| &self.1.fields[field_idx]),
-        );
-        println!("{}:{} {}:{}", ident0, field0.is_some(), ident1, field1.is_some());
-        let (field0, field1) = match (field0, field1) {
-            (&Some(ref field0), &Some(ref field1)) => (field0, field1),
-            (&None, _) => { return Err(AgnesError::FieldNotFound(ident0.clone())); },
-            (_, &None) => { return Err(AgnesError::FieldNotFound(ident1.clone())); }
-        };
-        match (field0.ty_ident.ty, field1.ty_ident.ty) {
-            (FieldType::Unsigned, FieldType::Unsigned) => (
-                self.0.get_unsigned_field(ident0).unwrap(),
-                self.1.get_unsigned_field(ident1).unwrap()
-            ).apply_to_field2(f, (NilSelector, NilSelector)),
-            (FieldType::Signed, FieldType::Signed) => (
-                self.0.get_signed_field(ident0).unwrap(),
-                self.1.get_signed_field(ident1).unwrap()
-            ).apply_to_field2(f, (NilSelector, NilSelector)),
-            (FieldType::Text, FieldType::Text) => (
-                self.0.get_text_field(ident0).unwrap(),
-                self.1.get_text_field(ident1).unwrap()
-            ).apply_to_field2(f, (NilSelector, NilSelector)),
-            (FieldType::Boolean, FieldType::Boolean) => (
-                self.0.get_boolean_field(ident0).unwrap(),
-                self.1.get_boolean_field(ident1).unwrap()
-            ).apply_to_field2(f, (NilSelector, NilSelector)),
-            (FieldType::Float, FieldType::Float) => (
-                self.0.get_float_field(ident0).unwrap(),
-                self.1.get_float_field(ident1).unwrap()
-            ).apply_to_field2(f, (NilSelector, NilSelector)),
-            (ty1, ty2) => Err(AgnesError::IncompatibleTypes(ty1, ty2))
-        }
+        self.data.get_reduce_data_index(&self.ident)
+            .ok_or(AgnesError::FieldNotFound(self.ident.clone()))
+            .map(|data| f.reduce(vec![data]))
+    }
+
+}
+impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, Rc<DataStore>>> {
+    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
+        -> Result<F::Output>
+    {
+        self.iter().map(|selection| {
+            selection.data.get_reduce_data_index(&selection.ident)
+                .ok_or(AgnesError::FieldNotFound(selection.ident.clone()))
+        }).collect::<Result<Vec<_>>>()
+            .map(|data_vec| f.reduce(data_vec))
     }
 }
 
 /// Trait for adding data (of valid types) to a `DataStore`.
-pub trait AddData<T: PartialOrd> {
+pub trait AddData<T: DataType> {
     /// Add a single value to the specified field.
     fn add(&mut self, ident: FieldIdent, value: MaybeNa<T>);
 }
-impl AddData<u64> for DataStore {
-    fn add(&mut self, ident: FieldIdent, value: MaybeNa<u64>) {
-        insert_value(&mut self.unsigned, ident, value);
+/// Trait for adding a vector of data (of valid types) to a `DataStore`.
+pub trait AddDataVec<T: DataType> {
+    /// Add a vector of data values to the specified field.
+    fn add_data_vec(&mut self, ident: FieldIdent, data: Vec<MaybeNa<T>>);
+}
+
+macro_rules! impl_add_data {
+    ($($dtype:ty, $fty:path, $hm:tt);*) => {$(
+
+impl AddData<$dtype> for DataStore {
+    fn add(&mut self, ident: FieldIdent, value: MaybeNa<$dtype>) {
+        insert_value(&mut self.$hm, ident, value);
     }
 }
-impl AddData<i64> for DataStore {
-    fn add(&mut self, ident: FieldIdent, value: MaybeNa<i64>) {
-        insert_value(&mut self.signed, ident, value);
-    }
-}
-impl AddData<String> for DataStore {
-    fn add(&mut self, ident: FieldIdent, value: MaybeNa<String>) {
-        insert_value(&mut self.text, ident, value);
-    }
-}
-impl AddData<bool> for DataStore {
-    fn add(&mut self, ident: FieldIdent, value: MaybeNa<bool>) {
-        insert_value(&mut self.boolean, ident, value);
-    }
-}
-impl AddData<f64> for DataStore {
-    fn add(&mut self, ident: FieldIdent, value: MaybeNa<f64>) {
-        insert_value(&mut self.float, ident, value);
+impl AddDataVec<$dtype> for DataStore {
+    fn add_data_vec(&mut self, ident: FieldIdent, mut data: Vec<MaybeNa<$dtype>>) {
+        self.add_field(TypedFieldIdent { ident: ident.clone(), ty: $fty });
+        for datum in data.drain(..) {
+            insert_value(&mut self.$hm, ident.clone(), datum);
+        }
     }
 }
 
-fn max_len<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>) -> usize where K: Eq + Hash {
+    )*}
+}
+impl_add_data!(
+    u64,    FieldType::Unsigned, unsigned;
+    i64,    FieldType::Signed,   signed;
+    String, FieldType::Text,     text;
+    bool,   FieldType::Boolean,  boolean;
+    f64,    FieldType::Float,    float
+);
+
+fn max_len<K, T: DataType>(h: &HashMap<K, MaskedData<T>>) -> usize where K: Eq + Hash {
     h.values().fold(0, |acc, v| max(acc, v.len()))
 }
-fn is_hm_homogeneous<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>) -> Option<usize>
+fn is_hm_homogeneous<K, T: DataType>(h: &HashMap<K, MaskedData<T>>) -> Option<usize>
     where K: Eq + Hash
 {
     let mut all_same_len = true;
@@ -351,7 +373,7 @@ fn is_hm_homogeneous<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>) -> Option<
     }
     if all_same_len { Some(target_len) } else { None }
 }
-fn is_hm_homogeneous_with<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>, value: usize)
+fn is_hm_homogeneous_with<K, T: DataType>(h: &HashMap<K, MaskedData<T>>, value: usize)
     -> Option<usize> where K: Eq + Hash
 {
     is_hm_homogeneous(h).and_then(|x| {
@@ -362,14 +384,14 @@ fn is_hm_homogeneous_with<K, T: PartialOrd>(h: &HashMap<K, MaskedData<T>>, value
         } else { None }
     })
 }
-fn insert_value<T: Default + PartialOrd>(
+fn insert_value<T: Default + DataType>(
     h: &mut HashMap<FieldIdent, MaskedData<T>>,
     k: FieldIdent,
     v: MaybeNa<T>)
 {
     h.entry(k).or_insert(MaskedData::new()).push(v);
 }
-fn parse<T: PartialOrd, F>(value_str: String, f: F) -> Result<MaybeNa<T>> where F: Fn(String)
+fn parse<T: DataType, F>(value_str: String, f: F) -> Result<MaybeNa<T>> where F: Fn(String)
     -> Result<T>
 {
     if value_str.trim().len() == 0 {

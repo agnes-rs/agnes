@@ -1,15 +1,30 @@
 use std::cmp::Ordering;
-use apply::{Selector, ApplyToField, FieldFn, DataIndex};
-use error::Result;
 
-/// Helper trait / implementations retrieving the sort permutation for a field.
-pub trait SortOrderBy<S: Selector> {
-    /// Returns the sort permutation for the field specified with the `Selector.
-    fn sort_order_by(&self, select: S) -> Result<Vec<usize>>;
+use error::Result;
+use field::FieldIdent;
+use apply::{FieldMapFn, FieldApply, FieldApplyTo, DataIndex};
+
+/// Helper trait retrieving the sort permutation for a field.
+pub trait SortOrderBy {
+    /// Returns the sort permutation for the field specified.
+    fn sort_order_by(&self, ident: &FieldIdent) -> Result<Vec<usize>>;
 }
-impl<S: Selector, T> SortOrderBy<S> for T where T: ApplyToField<S> {
-    fn sort_order_by(&self, select: S) -> Result<Vec<usize>> {
-        self.apply_to_field(SortOrderFn {}, select)
+impl<T> SortOrderBy for T where T: FieldApplyTo {
+    fn sort_order_by(&self, ident: &FieldIdent) -> Result<Vec<usize>> {
+        self.field_apply_to(
+            &mut SortOrderFn {},
+            ident
+        )
+    }
+}
+/// Helper trait retrieving the sort permutation for a structure.
+pub trait SortOrder {
+    /// Returns the sort permutation for the data in thie data structure.
+    fn sort_order(&self) -> Result<Vec<usize>>;
+}
+impl<T> SortOrder for T where T: FieldApply {
+    fn sort_order(&self) -> Result<Vec<usize>> {
+        self.field_apply(&mut SortOrderFn {})
     }
 }
 
@@ -29,7 +44,7 @@ macro_rules! impl_sort_order_fn {
         }
     }
 }
-impl FieldFn for SortOrderFn {
+impl FieldMapFn for SortOrderFn {
     type Output = Vec<usize>;
     impl_sort_order_fn!(apply_unsigned; u64);
     impl_sort_order_fn!(apply_signed;   i64);
