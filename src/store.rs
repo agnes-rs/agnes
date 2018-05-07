@@ -357,27 +357,6 @@ impl_add_data!(
     f64,    FieldType::Float,    float
 );
 
-// impl AddData<i64> for DataStore {
-//     fn add(&mut self, ident: FieldIdent, value: MaybeNa<i64>) {
-//         insert_value(&mut self.signed, ident, value);
-//     }
-// }
-// impl AddData<String> for DataStore {
-//     fn add(&mut self, ident: FieldIdent, value: MaybeNa<String>) {
-//         insert_value(&mut self.text, ident, value);
-//     }
-// }
-// impl AddData<bool> for DataStore {
-//     fn add(&mut self, ident: FieldIdent, value: MaybeNa<bool>) {
-//         insert_value(&mut self.boolean, ident, value);
-//     }
-// }
-// impl AddData<f64> for DataStore {
-//     fn add(&mut self, ident: FieldIdent, value: MaybeNa<f64>) {
-//         insert_value(&mut self.float, ident, value);
-//     }
-// }
-
 fn max_len<K, T: DataType>(h: &HashMap<K, MaskedData<T>>) -> usize where K: Eq + Hash {
     h.values().fold(0, |acc, v| max(acc, v.len()))
 }

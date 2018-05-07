@@ -249,24 +249,7 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
             }
         }
     }
-    /*
-    macro_rules! impl_find_merge_indices {
-        ($name:tt; $ty:ty) => {
-            fn $name<'a, T: DataIndex<$ty>>(&mut self, field: &(&T, &T)) -> Vec<(usize, usize)> {
-                merge_masked_data(&self.left_perm, &self.right_perm, field.0, field.1,
-                    self.predicate)
-            }
-        }
-    }
-    impl Field2Fn for FindMergeIndices {
-        type Output = Vec<(usize, usize)>;
 
-        impl_find_merge_indices!(apply_unsigned; u64);
-        impl_find_merge_indices!(apply_signed;   i64);
-        impl_find_merge_indices!(apply_text;     String);
-        impl_find_merge_indices!(apply_boolean;  bool);
-        impl_find_merge_indices!(apply_float;    f64);
-    }*/
     // find the join indices
     let merge_indices = vec![left.select(&join.left_field), right.select(&join.right_field)]
         .apply_field_reduce(&mut FindMergeIndices {
@@ -274,11 +257,6 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
             right_perm,
             predicate: join.predicate
         })?;
-    // let merge_indices = vec![left, right].apply_field_reduce(FindMergeIndices {
-    //     left_perm,
-    //     right_perm,
-    //     predicate: join.predicate
-    // }, (FieldSelector(&join.left_field), FieldSelector(&join.right_field)))?;
 
     // compute merged frame list and field list for the new dataframe
     // compute the field list for the new dataframe

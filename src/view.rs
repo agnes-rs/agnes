@@ -240,16 +240,6 @@ impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, DataView>> {
             .and_then(|frame_selections| frame_selections.apply_field_reduce(f))
     }
 }
-// impl ApplyFieldReduce for Vec<&DataView> {
-//     fn apply_field_reduce<'c, F: FieldReduceFn<'c>>(&self, f: &mut F, ident: &FieldIdent)
-//         -> error::Result<F::Output>
-//     {
-//         self.iter().map(|view| {
-//             view.fields.get(ident)
-//                 .
-//         })
-//     }
-// }
 
 impl<T> Filter<T> for DataView where DataFrame: Filter<T> {
     fn filter<F: Fn(&T) -> bool>(&mut self, ident: &FieldIdent, pred: F)
@@ -290,66 +280,6 @@ impl SortBy for DataView {
         }
     }
 }
-
-
-// impl<'a> Apply<FieldIndexSelector<'a>> for DataView {
-//     fn apply<F: MapFn>(&self, f: &mut F, select: &FieldIndexSelector<'a>)
-//         -> error::Result<F::Output>
-//     {
-//         let (ident, idx) = select.index();
-//         self.fields.get(ident)
-//             .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-//             .and_then(|view_field: &ViewField| {
-//                 self.frames[view_field.frame_idx].apply(f,
-//                     &FieldIndexSelector(&view_field.rident.ident, idx))
-//             }
-//         )
-//     }
-// }
-// impl<'a> ApplyToField<FieldSelector<'a>> for DataView {
-//     fn apply_to_field<F: FieldFn>(&self, f: F, select: FieldSelector)
-//         -> error::Result<F::Output>
-//     {
-//         let ident = select.index();
-//         self.fields.get(ident)
-//             .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-//             .and_then(|view_field: &ViewField| {
-//                 self.frames[view_field.frame_idx].apply_to_field(f,
-//                     FieldSelector(&view_field.rident.ident))
-//             }
-//         )
-//     }
-// }
-// // two fields on same dataview
-// impl<'a> ApplyToField2<FieldSelector<'a>> for DataView {
-//     fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (FieldSelector, FieldSelector))
-//         -> error::Result<T::Output>
-//     {
-//         (self, self).apply_to_field2(f, select)
-//     }
-// }
-// // fields on two different dataviews
-// impl<'a, 'b, 'c> ApplyToField2<FieldSelector<'a>> for (&'b DataView, &'c DataView) {
-//     fn apply_to_field2<T: Field2Fn>(&self, f: T, select: (FieldSelector, FieldSelector))
-//         -> error::Result<T::Output>
-//     {
-//         let (ident0, ident1) = (select.0.index(), select.1.index());
-//         let vf0 = self.0.fields.get(ident0);
-//         let vf1 = self.1.fields.get(ident1);
-//         match (vf0, vf1) {
-//             (Some(vf0), Some(vf1)) => {
-//                 (&self.0.frames[vf0.frame_idx], &self.1.frames[vf1.frame_idx])
-//                     .apply_to_field2(f, (
-//                         FieldSelector(&vf0.rident.ident),
-//                         FieldSelector(&vf1.rident.ident)
-//                     ))
-//             },
-//             (None, _) => Err(error::AgnesError::FieldNotFound(ident0.clone())),
-//             _ => Err(error::AgnesError::FieldNotFound(ident1.clone())),
-//         }
-//     }
-// }
-
 
 impl From<DataStore> for DataView {
     fn from(store: DataStore) -> DataView {
@@ -419,27 +349,6 @@ impl<'a> MapFn for AddCellToRow<'a> {
     impl_apply_cell_to_row!(apply_boolean;  bool);
     impl_apply_cell_to_row!(apply_float;    f64);
 }
-
-// impl<T: DataType> FieldDataIndex<T> for DataView {
-//     fn get_field_data(&self, ident: &FieldIdent, idx: usize) -> error::Result<MaybeNa<&T>> {
-//         self.fields.get(ident).and_then(|view_field: &ViewField| {
-//             self.frames[view_field.frame_idx].get_field_data(&view_field.rident.ident, idx)
-//         }).ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-//     }
-//     fn field_len(&self, _: &FieldIdent) -> usize {
-//         self.nrows()
-//     }
-// }
-
-// impl FromMap<u64> for DataView {
-//     fn from_map<'a, D: 'a, F>(map: Map<'a, D, F>, ident: FieldIdent) -> DataView
-//         where F: MapFn<Output=u64>
-//     {
-//         DataStore::with_data((ident, ))
-//     }
-// }
-
-
 
 impl Serialize for DataView {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
