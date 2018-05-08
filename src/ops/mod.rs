@@ -12,4 +12,3 @@ mod scalar_op;
 pub(crate) use self::scalar_op::*;
 
 mod field_op;
-pub use self::field_op::*;
