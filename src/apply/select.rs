@@ -69,7 +69,7 @@ impl<'a, T: 'a + DataType> DataIndex<T> for OwnedOrRef<'a, T> {
     }
 }
 
-/// A generic structure to hold either an owned or reference structure which implement `DataIndex`,
+/// A generic structure to hold either an owned or reference structure which implements `DataIndex`,
 /// of any of the accepted agnes types.
 pub enum ReduceDataIndex<'a> {
     /// An unsigned data structure implementing `DataIndex`.

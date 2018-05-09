@@ -51,6 +51,8 @@ pub enum AgnesError {
     TypeInference(TypeError),
     /// DataView operation field type inference error
     FieldTypeInference(FieldTypeError),
+    /// Invalid operation
+    InvalidOp(String),
 }
 
 /// Wrapper for DataFrame-based results.
@@ -80,7 +82,8 @@ impl fmt::Display for AgnesError {
                 ty1, ty2),
             AgnesError::TypeInference(ref err) => write!(f, "Type inference error: {}", err),
             AgnesError::FieldTypeInference(ref err) => write!(f,
-                "Field type inference error: {}", err)
+                "Field type inference error: {}", err),
+            AgnesError::InvalidOp(ref s) => write!(f, "Invalid operation: {}", s),
         }
     }
 }
@@ -103,6 +106,7 @@ impl Error for AgnesError {
             AgnesError::IncompatibleTypes(_, _) => "incompatible types",
             AgnesError::TypeInference(ref err) => err.description(),
             AgnesError::FieldTypeInference(ref err) => err.description(),
+            AgnesError::InvalidOp(ref s) => s,
         }
     }
 
@@ -123,6 +127,7 @@ impl Error for AgnesError {
             AgnesError::IncompatibleTypes(_, _) => None,
             AgnesError::TypeInference(ref err) => Some(err),
             AgnesError::FieldTypeInference(ref err) => Some(err),
+            AgnesError::InvalidOp(_) => None,
         }
     }
 }

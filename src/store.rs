@@ -48,7 +48,8 @@ impl DataStore {
         }
     }
 
-    fn add_field(&mut self, field: TypedFieldIdent) {
+    /// Add an empty field to a DataStore.
+    pub fn add_field(&mut self, field: TypedFieldIdent) {
         let ident = field.ident.clone();
         if !self.field_map.contains_key(&ident) {
             let index = self.fields.len();

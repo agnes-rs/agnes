@@ -1,8 +1,9 @@
-use std::ops::{Add, Sub, Mul, Div};
+use std::ops::{Add, Sub, Mul, Div, Neg};
 
 use error::*;
 use field::{TypedFieldIdent, DataType, FieldType, FieldIdent};
-use apply::{DataIndex, ReduceDataIndex, ApplyFieldReduce, FieldReduceFn, Select, OwnedOrRef};
+use apply::{DataIndex, ReduceDataIndex, ApplyFieldReduce, FieldReduceFn, Select, OwnedOrRef,
+    AddToDs, Convert, SingleTypeFn};
 use ops::{BinOpTypes, utb, itb, btu, bti, btf, ftb};
 use store::{DataStore, AddData};
 use masked::MaybeNa;
@@ -373,6 +374,61 @@ fn div<T: DataType + Copy + Div<T, Output=T>>(l: &T, r: &T) -> T { *l / *r }
 #[inline]
 fn booldiv(l: &bool, r: &bool) -> bool { *l & !*r }
 impl_dv_dv_op!(Div2Fn, Div, div, "/", div, booldiv, infer_ft_div_result);
+
+impl<'a> Neg for &'a DataView {
+    type Output = Result<DataView>;
+    fn neg(self) -> Result<DataView> {
+        let mut store = DataStore::empty();
+        for (ident, vf) in self.fields.iter() {
+            let new_ident = FieldIdent::Name(format!("-{}", ident));
+            let output_ty = infer_neg_output_type(
+                self.frames[vf.frame_idx].get_field_type(&vf.rident.ident).unwrap()
+            )?;
+            store.add_field(TypedFieldIdent {
+                ident: new_ident.clone(),
+                ty: output_ty
+            });
+            match output_ty {
+                FieldType::Signed => {
+                    self.select(ident)
+                        .map(Convert::<i64>::new())
+                        .map(SingleTypeFn::new(|&x: &i64| -> i64 { -x }))
+                        .map(AddToDs {
+                            ds: &mut store,
+                            ident: new_ident,
+                        }).collect::<Vec<_>>()?;
+                },
+                FieldType::Float  => {
+                    self.select(ident)
+                        .map(Convert::<f64>::new())
+                        .map(SingleTypeFn::new(|&x: &f64| -> f64 { -x }))
+                        .map(AddToDs {
+                            ds: &mut store,
+                            ident: new_ident,
+                        }).collect::<Vec<_>>()?;
+                },
+                _ => unreachable![]
+            }
+        }
+        Ok(store.into())
+    }
+}
+impl Neg for DataView {
+    type Output = Result<DataView>;
+    fn neg(self) -> Result<DataView> {
+        (&self).neg()
+    }
+}
+fn infer_neg_output_type(ft: FieldType) -> Result<FieldType> {
+    match ft {
+        FieldType::Unsigned => Ok(FieldType::Signed),
+        FieldType::Signed   => Ok(FieldType::Signed),
+        FieldType::Text     => Err(AgnesError::InvalidOp(
+            "Unable to apply negation operator '-' to field of type 'Text'".into())),
+        FieldType::Boolean  => Ok(FieldType::Signed),
+        FieldType::Float    => Ok(FieldType::Float),
+    }
+}
 
 
 #[cfg(test)]
@@ -940,5 +996,25 @@ mod tests {
             vec![  5.0,  1.5,  8.0,  0.4,    0.2,  0.0, INF],
             FieldType::Float, float
         );
+    }
+
+    #[test]
+    fn neg_field() {
+        let dv: DataView = DataStore::with_data(
+            vec![("Foo", vec![0u64, 5, 2, 6, 3].into())], None, None, None, None
+        ).into();
+        let computed_dv: DataView = (-dv).unwrap();
+        let target_ident = FieldIdent::Name("-Foo".into());
+        assert_eq!(computed_dv.get_field_type(&target_ident).unwrap(), FieldType::Signed);
+        signed::assert_dv_eq_vec(&computed_dv, &target_ident, vec![0i64, -5, -2, -6, -3]);
+
+        let dv: DataView = DataStore::with_data(
+            None, None, None, None, vec![("Foo", vec![0.0, -5.0, 2.0, 6.0, -3.0].into())]
+        ).into();
+        let computed_dv: DataView = (-dv).unwrap();
+        println!("{}", computed_dv);
+        let target_ident = FieldIdent::Name("-Foo".into());
+        assert_eq!(computed_dv.get_field_type(&target_ident).unwrap(), FieldType::Float);
+        float::assert_dv_eq_vec(&computed_dv, &target_ident, vec![0.0, 5.0, -2.0, -6.0, 3.0]);
     }
 }

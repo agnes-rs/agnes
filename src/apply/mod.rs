@@ -20,3 +20,12 @@ pub use self::matches::*;
 
 mod sort_order;
 pub use self::sort_order::*;
+
+mod add_to_ds;
+pub use self::add_to_ds::AddToDs;
+
+mod single_type;
+pub use self::single_type::*;
+
+mod convert;
+pub use self::convert::*;

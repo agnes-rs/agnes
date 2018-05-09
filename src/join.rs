@@ -9,7 +9,7 @@ use frame::{DataFrame};
 use field::{RFieldIdent, DataType, FieldIdent, TypedFieldIdent};
 use masked::MaybeNa;
 use view::{DataView, ViewField};
-use store::{DataStore, AddData};
+use store::{DataStore};
 use apply::*;
 use error::*;
 
@@ -280,25 +280,6 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
         })
         .collect::<Vec<_>>());
 
-    struct AddToDs<'a> {
-        ds: &'a mut DataStore,
-        ident: FieldIdent
-    }
-    macro_rules! impl_add_to_ds {
-        ($name:tt; $ty:ty) => {
-            fn $name(&mut self, value: MaybeNa<&$ty>) {
-                self.ds.add(self.ident.clone(), value.cloned())
-            }
-        }
-    }
-    impl<'a> MapFn for AddToDs<'a> {
-        type Output = ();
-        impl_add_to_ds!(apply_unsigned; u64);
-        impl_add_to_ds!(apply_signed;   i64);
-        impl_add_to_ds!(apply_text;     String);
-        impl_add_to_ds!(apply_boolean;  bool);
-        impl_add_to_ds!(apply_float;    f64);
-    }
     for (left_idx, right_idx) in merge_indices {
         let mut field_idx = 0;
         for left_ident in left.fields.keys() {
