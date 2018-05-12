@@ -149,108 +149,164 @@ pub trait MapFn {
 
 #[macro_export]
 macro_rules! map_fn {
+    // Using a prexisting type
     ($map_fn_ty:ty, Output = $output:ty; $($rest:tt)*) => {
         impl MapFn for $map_fn_ty {
             type Output = $output;
             map_fn_impl!($($rest)*);
         }
     };
+    // create a type (private, no generics)
     ($map_fn_ty:ident {
         type Output = $output:ty;
-        $($attr:ident: $attr_ty:ty),*
+        $($attrs:tt)*
     } $($rest:tt)*) => {
         struct $map_fn_ty {
-            $($attr: $attr_ty),*
+            $($attrs)*
         }
         impl MapFn for $map_fn_ty {
             type Output = $output;
             map_fn_impl!($($rest)*);
         }
     };
+    // create a type (private, with generics)
+    ($map_fn_ty:ident<($($generics:tt)*)> {
+        type Output = $output:ty;
+        $($attrs:tt)*
+    } $($rest:tt)*) => {
+        struct $map_fn_ty<$($generics)*> {
+            $($attrs)*
+        }
+        impl<$($generics)*> MapFn for $map_fn_ty<$($generics)*> {
+            type Output = $output;
+            map_fn_impl!($($rest)*);
+        }
+    };
+    // create a type (private, with generics + bounds)
+    ($map_fn_ty:ident<($($generics:tt)*)> where $($bounds:tt)* {
+        type Output = $output:ty;
+        $($attrs:tt)*
+    } $($rest:tt)*) => {
+        struct $map_fn_ty<$($generics)*> {
+            $($attrs)*
+        }
+        impl<$($generics)*> MapFn for $map_fn_ty<$($generics)*> where $($bounds)* {
+            type Output = $output;
+            map_fn_impl!($($rest)*);
+        }
+    };
+    // create a type (public, no generics)
     (pub $map_fn_ty:ident {
         type Output = $output:ty;
-        $($attr:ident: $attr_ty:ty),*
+        $($attrs:tt)*
     } $($rest:tt)*) => {
         pub struct $map_fn_ty {
-            $($attr: $attr_ty),*
+            $($attrs)*
         }
         impl MapFn for $map_fn_ty {
             type Output = $output;
             map_fn_impl!($($rest)*);
         }
-    }
-
+    };
+    // create a type (public, with generics)
+    (pub $map_fn_ty:ident<($($generics:tt)*)> {
+        type Output = $output:ty;
+        $($attrs:tt)*
+    } $($rest:tt)*) => {
+        pub struct $map_fn_ty<$($generics)*> {
+            $($attrs)*
+        }
+        impl<$($generics)*> MapFn for $map_fn_ty<$($generics)*> {
+            type Output = $output;
+            map_fn_impl!($($rest)*);
+        }
+    };
+    // create a type (public, with generics + bounds)
+    (pub $map_fn_ty:ident<($($generics:tt)*)> where $($bounds:tt)* {
+        type Output = $output:ty;
+        $($attrs:tt)*
+    } $($rest:tt)*) => {
+        pub struct $map_fn_ty<$($generics)*> {
+            $($attrs)*
+        }
+        impl<$($generics)*> MapFn for $map_fn_ty<$($generics)*> where $($bounds)* {
+            type Output = $output;
+            map_fn_impl!($($rest)*);
+        }
+    };
 }
 #[macro_export]
 macro_rules! map_fn_impl {
-    (fn [$dtype1:tt](self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        map_fn_impl!(fn $dtype1(self, $value) { $($body)* });
+    (fn [$dtype1:tt]($self:ident, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        map_fn_impl!(fn $dtype1($self, $value) { $($body)* });
         map_fn_impl!($($rest)*);
     );
-    (fn [$dtype1:tt, $dtype2:tt](self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        map_fn_impl!(fn $dtype1(self, $value) { $($body)* });
-        map_fn_impl!(fn $dtype2(self, $value) { $($body)* });
+    (fn [$dtype1:tt, $dtype2:tt]($self:ident, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        map_fn_impl!(fn $dtype1($self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype2($self, $value) { $($body)* });
         map_fn_impl!($($rest)*);
     );
-    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt](self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        map_fn_impl!(fn $dtype1(self, $value) { $($body)* });
-        map_fn_impl!(fn $dtype2(self, $value) { $($body)* });
-        map_fn_impl!(fn $dtype3(self, $value) { $($body)* });
-        map_fn_impl!($($rest)*);
-    );
-    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt, $dtype4:tt](self, $value:ident)
+    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt]($self:ident, $value:ident)
             { $($body:tt)* } $($rest:tt)*) =>
     (
-        map_fn_impl!(fn $dtype1(self, $value) { $($body)* });
-        map_fn_impl!(fn $dtype2(self, $value) { $($body)* });
-        map_fn_impl!(fn $dtype3(self, $value) { $($body)* });
-        map_fn_impl!(fn $dtype4(self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype1($self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype2($self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype3($self, $value) { $($body)* });
         map_fn_impl!($($rest)*);
     );
-    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt, $dtype4:tt, $dtype5:tt](self, $value:ident)
+    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt, $dtype4:tt]($self:ident, $value:ident)
+            { $($body:tt)* } $($rest:tt)*) =>
+    (
+        map_fn_impl!(fn $dtype1($self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype2($self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype3($self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype4($self, $value) { $($body)* });
+        map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt, $dtype4:tt, $dtype5:tt]($self:ident, $value:ident)
             { $($body:tt)* }) =>
     (
-        map_fn_impl!(fn $dtype1(self, $value) { $($body)* });
-        map_fn_impl!(fn $dtype2(self, $value) { $($body)* });
-        map_fn_impl!(fn $dtype3(self, $value) { $($body)* });
-        map_fn_impl!(fn $dtype4(self, $value) { $($body)* });
-        map_fn_impl!(fn $dtype4(self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype1($self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype2($self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype3($self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype4($self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype4($self, $value) { $($body)* });
     );
-    (fn all(self, $value:ident) { $($body:tt)* }) => (
+    (fn all($self:ident, $value:ident) { $($body:tt)* }) => (
         map_fn_impl!(
-            fn unsigned(self, $value) { $($body)* }
-            fn signed(self, $value) { $($body)* }
-            fn text(self, $value) { $($body)* }
-            fn boolean(self, $value) { $($body)* }
-            fn float(self, $value) { $($body)* }
+            fn unsigned($self, $value) { $($body)* }
+            fn signed($self, $value) { $($body)* }
+            fn text($self, $value) { $($body)* }
+            fn boolean($self, $value) { $($body)* }
+            fn float($self, $value) { $($body)* }
         );
     );
-    (fn unsigned(self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_unsigned(&mut self, $value: MaybeNa<&u64>) -> Self::Output {
+    (fn unsigned($self:ident, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_unsigned(&mut $self, $value: MaybeNa<&u64>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
     );
-    (fn signed(self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_signed(&mut self, $value: MaybeNa<&i64>) -> Self::Output {
+    (fn signed($self:ident, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_signed(&mut $self, $value: MaybeNa<&i64>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
     );
-    (fn text(self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_text(&mut self, $value: MaybeNa<&String>) -> Self::Output {
+    (fn text($self:ident, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_text(&mut $self, $value: MaybeNa<&String>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
     );
-    (fn boolean(self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_boolean(&mut self, $value: MaybeNa<&bool>) -> Self::Output {
+    (fn boolean($self:ident, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_boolean(&mut $self, $value: MaybeNa<&bool>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
     );
-    (fn float(self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_float(&mut self, $value: MaybeNa<&f64>) -> Self::Output {
+    (fn float($self:ident, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_float(&mut $self, $value: MaybeNa<&f64>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);

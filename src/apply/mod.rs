@@ -22,7 +22,7 @@ mod sort_order;
 pub use self::sort_order::*;
 
 mod add_to_ds;
-pub use self::add_to_ds::AddToDs;
+pub use self::add_to_ds::*;
 
 mod single_type;
 pub use self::single_type::*;

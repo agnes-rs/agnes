@@ -3,7 +3,7 @@ use std::ops::{Add, Sub, Mul, Div, Neg};
 use error::*;
 use field::{TypedFieldIdent, DataType, FieldType, FieldIdent};
 use apply::{DataIndex, ReduceDataIndex, ApplyFieldReduce, FieldReduceFn, Select, OwnedOrRef,
-    AddToDs, Convert, SingleTypeFn};
+    AddToDsFn, Convert, SingleTypeFn};
 use ops::{BinOpTypes, utb, itb, btu, bti, btf, ftb};
 use store::{DataStore, AddData};
 use masked::MaybeNa;
@@ -393,7 +393,7 @@ impl<'a> Neg for &'a DataView {
                     self.select(ident)
                         .map(Convert::<i64>::new())
                         .map(SingleTypeFn::new(|&x: &i64| -> i64 { -x }))
-                        .map(AddToDs {
+                        .map(AddToDsFn {
                             ds: &mut store,
                             ident: new_ident,
                         }).collect::<Vec<_>>()?;
@@ -402,7 +402,7 @@ impl<'a> Neg for &'a DataView {
                     self.select(ident)
                         .map(Convert::<f64>::new())
                         .map(SingleTypeFn::new(|&x: &f64| -> f64 { -x }))
-                        .map(AddToDs {
+                        .map(AddToDsFn {
                             ds: &mut store,
                             ident: new_ident,
                         }).collect::<Vec<_>>()?;
