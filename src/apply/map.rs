@@ -183,7 +183,7 @@ macro_rules! map_fn {
         }
     };
     // create a type (private, with generics + bounds)
-    ($map_fn_ty:ident<($($generics:tt)*)> where $($bounds:tt)* {
+    ($map_fn_ty:ident<($($generics:tt)*)> where ($($bounds:tt)*) {
         type Output = $output:ty;
         $($attrs:tt)*
     } $($rest:tt)*) => {
@@ -222,7 +222,7 @@ macro_rules! map_fn {
         }
     };
     // create a type (public, with generics + bounds)
-    (pub $map_fn_ty:ident<($($generics:tt)*)> where $($bounds:tt)* {
+    (pub $map_fn_ty:ident<($($generics:tt)*)> where ($($bounds:tt)*) {
         type Output = $output:ty;
         $($attrs:tt)*
     } $($rest:tt)*) => {

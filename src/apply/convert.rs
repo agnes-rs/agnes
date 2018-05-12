@@ -151,29 +151,20 @@ impl<'a, T: Clone, U: DtFrom<T>> DtFrom<&'a T> for U {
 }
 
 /// `MapFn` for conversion into a new data type.
-pub struct Convert<T> {
-    phantom: PhantomData<T>,
-}
-impl<T> Convert<T> {
+map_fn![
+    pub ConvertFn<(T)> where (T: DataType + DtFrom<u64> + DtFrom<i64> + DtFrom<String>
+        + DtFrom<bool> + DtFrom<f64>)
+    {
+        type Output = MaybeNa<T>;
+        phantom: PhantomData<T>,
+    }
+    fn all(self, value) {
+        value.map(T::dt_from)
+    }
+];
+impl<T> ConvertFn<T> {
     /// Create a new conversion `MapFn`.
-    pub fn new() -> Convert<T> {
-        Convert { phantom: PhantomData }
+    pub fn new() -> ConvertFn<T> {
+    ConvertFn { phantom: PhantomData }
     }
-}
-macro_rules! impl_convert {
-    ($name:tt; $ty:ty) => {
-        fn $name(&mut self, value: MaybeNa<&$ty>) -> MaybeNa<T> {
-            value.map(T::dt_from)
-        }
-    }
-}
-impl<T> MapFn for Convert<T>
-    where T: DataType + DtFrom<u64> + DtFrom<i64> + DtFrom<String> + DtFrom<bool> + DtFrom<f64>
-{
-    type Output = MaybeNa<T>;
-    impl_convert!(apply_unsigned; u64);
-    impl_convert!(apply_signed;   i64);
-    impl_convert!(apply_text;     String);
-    impl_convert!(apply_boolean;  bool);
-    impl_convert!(apply_float;    f64);
 }
