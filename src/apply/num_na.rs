@@ -11,25 +11,14 @@ impl<T> NumNa for T where T: FieldApplyTo {
     }
 }
 
-macro_rules! impl_num_na_fn {
-    ($name:tt, $ty:ty) => {
-        fn $name<'a, T: DataIndex<$ty>>(&mut self, field: &T) -> usize {
-            (0..field.len()).fold(0, |acc, idx| {
-                acc + if field.get_data(idx).unwrap().is_na() { 1 } else { 0 }
-            })
-        }
+field_map_fn![
+    NumNaFn { type Output = usize; }
+    fn all(self, field) {
+        (0..field.len()).fold(0, |acc, idx| {
+            acc + if field.get_data(idx).unwrap().is_na() { 1 } else { 0 }
+        })
     }
-}
-pub struct NumNaFn {}
-impl FieldMapFn for NumNaFn {
-    type Output = usize;
-    impl_num_na_fn!(apply_unsigned, u64);
-    impl_num_na_fn!(apply_signed,   i64);
-    impl_num_na_fn!(apply_text,     String);
-    impl_num_na_fn!(apply_boolean,  bool);
-    impl_num_na_fn!(apply_float,    f64);
-}
-
+];
 
 #[cfg(test)]
 mod tests {

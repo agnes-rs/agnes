@@ -134,6 +134,7 @@ impl<F: MapFn, G: MapFn> MapFn for Composed<F, G>
 pub trait MapFn {
     /// The desired output of this function.
     type Output: IntoMaybeNa;
+
     /// The method to use when working with unsigned (`u64`) data.
     fn apply_unsigned(&mut self, value: MaybeNa<&u64>) -> Self::Output;
     /// The method to use when working with signed (`i64`) data.
@@ -145,6 +146,118 @@ pub trait MapFn {
     /// The method to use when working with floating-point (`f64`) data.
     fn apply_float(&mut self, value: MaybeNa<&f64>) -> Self::Output;
 }
+
+#[macro_export]
+macro_rules! map_fn {
+    ($map_fn_ty:ty, Output = $output:ty; $($rest:tt)*) => {
+        impl MapFn for $map_fn_ty {
+            type Output = $output;
+            map_fn_impl!($($rest)*);
+        }
+    };
+    ($map_fn_ty:ident {
+        type Output = $output:ty;
+        $($attr:ident: $attr_ty:ty),*
+    } $($rest:tt)*) => {
+        struct $map_fn_ty {
+            $($attr: $attr_ty),*
+        }
+        impl MapFn for $map_fn_ty {
+            type Output = $output;
+            map_fn_impl!($($rest)*);
+        }
+    };
+    (pub $map_fn_ty:ident {
+        type Output = $output:ty;
+        $($attr:ident: $attr_ty:ty),*
+    } $($rest:tt)*) => {
+        pub struct $map_fn_ty {
+            $($attr: $attr_ty),*
+        }
+        impl MapFn for $map_fn_ty {
+            type Output = $output;
+            map_fn_impl!($($rest)*);
+        }
+    }
+
+}
+#[macro_export]
+macro_rules! map_fn_impl {
+    (fn [$dtype1:tt](self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        map_fn_impl!(fn $dtype1(self, $value) { $($body)* });
+        map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt](self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        map_fn_impl!(fn $dtype1(self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype2(self, $value) { $($body)* });
+        map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt](self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        map_fn_impl!(fn $dtype1(self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype2(self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype3(self, $value) { $($body)* });
+        map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt, $dtype4:tt](self, $value:ident)
+            { $($body:tt)* } $($rest:tt)*) =>
+    (
+        map_fn_impl!(fn $dtype1(self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype2(self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype3(self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype4(self, $value) { $($body)* });
+        map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt, $dtype4:tt, $dtype5:tt](self, $value:ident)
+            { $($body:tt)* }) =>
+    (
+        map_fn_impl!(fn $dtype1(self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype2(self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype3(self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype4(self, $value) { $($body)* });
+        map_fn_impl!(fn $dtype4(self, $value) { $($body)* });
+    );
+    (fn all(self, $value:ident) { $($body:tt)* }) => (
+        map_fn_impl!(
+            fn unsigned(self, $value) { $($body)* }
+            fn signed(self, $value) { $($body)* }
+            fn text(self, $value) { $($body)* }
+            fn boolean(self, $value) { $($body)* }
+            fn float(self, $value) { $($body)* }
+        );
+    );
+    (fn unsigned(self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_unsigned(&mut self, $value: MaybeNa<&u64>) -> Self::Output {
+            $($body)*
+        }
+        map_fn_impl!($($rest)*);
+    );
+    (fn signed(self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_signed(&mut self, $value: MaybeNa<&i64>) -> Self::Output {
+            $($body)*
+        }
+        map_fn_impl!($($rest)*);
+    );
+    (fn text(self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_text(&mut self, $value: MaybeNa<&String>) -> Self::Output {
+            $($body)*
+        }
+        map_fn_impl!($($rest)*);
+    );
+    (fn boolean(self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_boolean(&mut self, $value: MaybeNa<&bool>) -> Self::Output {
+            $($body)*
+        }
+        map_fn_impl!($($rest)*);
+    );
+    (fn float(self, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_float(&mut self, $value: MaybeNa<&f64>) -> Self::Output {
+            $($body)*
+        }
+        map_fn_impl!($($rest)*);
+    );
+    () => ()
+}
+
 /// Trait for structures that can be applied to a single `MaybeNa` value, resulting in a specific
 /// output.
 pub trait ApplyToDatum<T: DataType> {
@@ -190,6 +303,133 @@ pub trait FieldMapFn {
     fn apply_float<T: DataIndex<f64>>(&mut self, field: &T) -> Self::Output;
 }
 
+#[macro_export]
+macro_rules! field_map_fn {
+    ($map_fn_ty:ty, Output = $output:ty; $($rest:tt)*) => {
+        impl FieldMapFn for $map_fn_ty {
+            type Output = $output;
+            field_map_fn_impl!($($rest)*);
+        }
+    };
+    ($map_fn_ty:ident {
+        type Output = $output:ty;
+        $($attr:ident: $attr_ty:ty),*
+    } $($rest:tt)*) => {
+        struct $map_fn_ty {
+            $($attr: $attr_ty),*
+        }
+        impl FieldMapFn for $map_fn_ty {
+            type Output = $output;
+            field_map_fn_impl!($($rest)*);
+        }
+    };
+    (pub $map_fn_ty:ident {
+        type Output = $output:ty;
+        $($attr:ident: $attr_ty:ty),*
+    } $($rest:tt)*) => {
+        pub struct $map_fn_ty {
+            $($attr: $attr_ty),*
+        }
+        impl FieldMapFn for $map_fn_ty {
+            type Output = $output;
+            field_map_fn_impl!($($rest)*);
+        }
+    }
+
+}
+#[macro_export]
+macro_rules! field_map_fn_impl {
+    (fn [$dtype1:tt](self, $field:ident) { $($body:tt)* } $($rest:tt)*) => (
+        field_map_fn_impl!(fn $dtype1(self, $field) { $($body)* });
+        field_map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt](self, $field:ident) { $($body:tt)* } $($rest:tt)*) => (
+        field_map_fn_impl!(fn $dtype1(self, $field) { $($body)* });
+        field_map_fn_impl!(fn $dtype2(self, $field) { $($body)* });
+        field_map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt](self, $field:ident) { $($body:tt)* } $($rest:tt)*) => (
+        field_map_fn_impl!(fn $dtype1(self, $field) { $($body)* });
+        field_map_fn_impl!(fn $dtype2(self, $field) { $($body)* });
+        field_map_fn_impl!(fn $dtype3(self, $field) { $($body)* });
+        field_map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt, $dtype4:tt](self, $field:ident)
+            { $($body:tt)* } $($rest:tt)*) =>
+    (
+        field_map_fn_impl!(fn $dtype1(self, $field) { $($body)* });
+        field_map_fn_impl!(fn $dtype2(self, $field) { $($body)* });
+        field_map_fn_impl!(fn $dtype3(self, $field) { $($body)* });
+        field_map_fn_impl!(fn $dtype4(self, $field) { $($body)* });
+        field_map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt, $dtype4:tt, $dtype5:tt](self, $field:ident)
+            { $($body:tt)* }) =>
+    (
+        field_map_fn_impl!(fn $dtype1(self, $field) { $($body)* });
+        field_map_fn_impl!(fn $dtype2(self, $field) { $($body)* });
+        field_map_fn_impl!(fn $dtype3(self, $field) { $($body)* });
+        field_map_fn_impl!(fn $dtype4(self, $field) { $($body)* });
+        field_map_fn_impl!(fn $dtype4(self, $field) { $($body)* });
+    );
+    (fn all(self, $field:ident) { $($body:tt)* }) => (
+        field_map_fn_impl!(
+            fn unsigned(self, $field) { $($body)* }
+            fn signed(self, $field) { $($body)* }
+            fn text(self, $field) { $($body)* }
+            fn boolean(self, $field) { $($body)* }
+            fn float(self, $field) { $($body)* }
+        );
+    );
+    (fn unsigned(self, $field:ident) { $($body:tt)* } $($rest:tt)*) => (
+        #[allow(unused_variables)]
+        fn apply_unsigned<T: DataIndex<u64>>(&mut self, $field: &T) -> Self::Output {
+            #[allow(dead_code)]
+            type DType = u64;
+            $($body)*
+        }
+        field_map_fn_impl!($($rest)*);
+    );
+    (fn signed(self, $field:ident) { $($body:tt)* } $($rest:tt)*) => (
+        #[allow(unused_variables)]
+        fn apply_signed<T: DataIndex<i64>>(&mut self, $field: &T) -> Self::Output {
+            #[allow(dead_code)]
+            type DType = i64;
+            $($body)*
+        }
+        field_map_fn_impl!($($rest)*);
+    );
+    (fn text(self, $field:ident) { $($body:tt)* } $($rest:tt)*) => (
+        #[allow(unused_variables)]
+        fn apply_text<T: DataIndex<String>>(&mut self, $field: &T) -> Self::Output {
+            #[allow(dead_code)]
+            type DType = String;
+            $($body)*
+        }
+        field_map_fn_impl!($($rest)*);
+    );
+    (fn boolean(self, $field:ident) { $($body:tt)* } $($rest:tt)*) => (
+        #[allow(unused_variables)]
+        fn apply_boolean<T: DataIndex<bool>>(&mut self, $field: &T) -> Self::Output {
+            #[allow(dead_code)]
+            type DType = bool;
+            $($body)*
+        }
+        field_map_fn_impl!($($rest)*);
+    );
+    (fn float(self, $field:ident) { $($body:tt)* } $($rest:tt)*) => (
+        #[allow(unused_variables)]
+        fn apply_float<T: DataIndex<f64>>(&mut self, $field: &T) -> Self::Output {
+            #[allow(dead_code)]
+            type DType = f64;
+            $($body)*
+        }
+        field_map_fn_impl!($($rest)*);
+    );
+    () => ()
+}
+
+
 /// Trait for combiner functions to apply to a field.
 pub trait FieldReduceFn<'a> {
     /// The desired output of this function.
@@ -219,25 +459,14 @@ mod tests {
         let dv = sample_merged_emp_table();
         println!("{}", dv);
 
-        struct ConvertUnsigned {}
-        impl MapFn for ConvertUnsigned {
-            type Output = MaybeNa<u64>;
-            fn apply_unsigned(&mut self, value: MaybeNa<&u64>) -> Self::Output {
-                value.map(|&val| val)
-            }
-            fn apply_signed(&mut self, value: MaybeNa<&i64>) -> Self::Output {
-                value.map(|&val| if val < 0 { 0 } else { val as u64 })
-            }
-            fn apply_text(&mut self, value: MaybeNa<&String>) -> Self::Output {
-                value.map(|&ref val| val.parse().unwrap_or(0))
-            }
-            fn apply_boolean(&mut self, value: MaybeNa<&bool>) -> Self::Output {
-                value.map(|&val| if val { 1 } else { 0 })
-            }
-            fn apply_float(&mut self, value: MaybeNa<&f64>) -> Self::Output {
-                value.map(|&val| if val < 0.0 { 0 } else { val as u64 })
-            }
-        }
+        map_fn![
+            ConvertUnsigned { type Output = MaybeNa<u64>; }
+            fn unsigned(self, value) { value.map(|&val| val) }
+            fn signed(self, value) { value.map(|&val| if val < 0 { 0 } else { val as u64 }) }
+            fn text(self, value) { value.map(|&ref val| val.parse().unwrap_or(0)) }
+            fn boolean(self, value) { value.map(|&val| if val { 1 } else { 0 }) }
+            fn float(self, value) { value.map(|&val| if val < 0.0 { 0 } else { val as u64 }) }
+        ];
         let mapped: DataView = dv.select(&"VacationHrs".into()).map(ConvertUnsigned {}).collect()
             .expect("failed to convert");
         println!("{}", mapped);
@@ -245,25 +474,13 @@ mod tests {
             vec![47u64, 54, 98, 12, 0, 5, 22]
         );
 
-        struct ConvertFloat {}
-        impl MapFn for ConvertFloat {
-            type Output = MaybeNa<f64>;
-            fn apply_unsigned(&mut self, value: MaybeNa<&u64>) -> Self::Output {
-                value.map(|&val| val as f64 + 0.0001)
-            }
-            fn apply_signed(&mut self, value: MaybeNa<&i64>) -> Self::Output {
-                value.map(|&val| val as f64)
-            }
-            fn apply_text(&mut self, value: MaybeNa<&String>) -> Self::Output {
-                value.map(|&ref val| val.parse().unwrap_or(0.0))
-            }
-            fn apply_boolean(&mut self, value: MaybeNa<&bool>) -> Self::Output {
-                value.map(|&val| if val { 1.0 } else { 0.0 })
-            }
-            fn apply_float(&mut self, value: MaybeNa<&f64>) -> Self::Output {
-                value.map(|&val| val as f64)
-            }
-        }
+        map_fn![
+            ConvertFloat { type Output = MaybeNa<f64>; }
+            fn [signed, float](self, value) { value.map(|&val| val as f64) }
+            fn unsigned(self, value) { value.map(|&val| val as f64 + 0.0001) }
+            fn text(self, value) { value.map(|&ref val| val.parse().unwrap_or(0.0)) }
+            fn boolean(self, value) { value.map(|&val| if val { 1.0 } else { 0.0 }) }
+        ];
         let mapped2: DataView = dv
             .select(&"VacationHrs".into())
             .map(ConvertUnsigned {})

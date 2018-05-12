@@ -12,7 +12,7 @@ the data structure.
 mod select;
 pub use self::select::*;
 
-mod map;
+#[macro_use] mod map;
 pub use self::map::*;
 
 mod matches;
