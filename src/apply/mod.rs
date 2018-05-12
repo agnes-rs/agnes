@@ -30,5 +30,8 @@ pub use self::single_type::*;
 mod num_na;
 pub use self::num_na::*;
 
+mod sum;
+pub use self::sum::*;
+
 mod convert;
 pub use self::convert::*;

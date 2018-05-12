@@ -96,7 +96,7 @@ impl fmt::Display for FieldType {
 }
 
 /// Marker trait for types supported by Agnes data structures
-pub trait DataType: PartialOrd + Serialize + Display + Debug {}
+pub trait DataType: PartialOrd + Serialize + Display + Debug + DtZero {}
 impl DataType for u64 {}
 impl DataType for i64 {}
 impl DataType for String {}
@@ -104,6 +104,60 @@ impl DataType for bool {}
 impl DataType for f64 {}
 
 impl<'a, T> DataType for &'a T where T: DataType {}
+
+
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
+pub enum DtValue {
+    Unsigned(u64),
+    Signed(i64),
+    Text(String),
+    Boolean(bool),
+    Float(f64),
+}
+impl From<u64> for DtValue {
+    fn from(orig: u64) -> DtValue { DtValue::Unsigned(orig) }
+}
+impl From<i64> for DtValue {
+    fn from(orig: i64) -> DtValue { DtValue::Signed(orig) }
+}
+impl From<String> for DtValue {
+    fn from(orig: String) -> DtValue { DtValue::Text(orig) }
+}
+impl From<bool> for DtValue {
+    fn from(orig: bool) -> DtValue { DtValue::Boolean(orig) }
+}
+impl From<f64> for DtValue {
+    fn from(orig: f64) -> DtValue { DtValue::Float(orig) }
+}
+
+pub trait DtZero {
+    type Output;
+    fn dt_zero() -> Self::Output;
+}
+impl DtZero for u64 {
+    type Output = u64;
+    fn dt_zero() -> u64 { 0 }
+}
+impl DtZero for i64 {
+    type Output = i64;
+    fn dt_zero() -> i64 { 0 }
+}
+impl DtZero for String {
+    type Output = u64;
+    fn dt_zero() -> u64 { 0 }
+}
+impl DtZero for bool {
+    type Output = u64;
+    fn dt_zero() -> u64 { 0 }
+}
+impl DtZero for f64 {
+    type Output = f64;
+    fn dt_zero() -> f64 { 0.0 }
+}
+impl<'a, T> DtZero for &'a T where T: DtZero {
+    type Output = <T as DtZero>::Output;
+    fn dt_zero() -> Self::Output { T::dt_zero() }
+}
 
 
 /// Possibly-renamed field identifier
