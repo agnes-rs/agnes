@@ -6,70 +6,55 @@ use view::DataView;
 use frame::DataFrame;
 use field::DataType;
 
-/// `MapFn` function for matching unsigned integer values.
-pub struct MatchesFnUnsigned<'a> {
-    value: MaybeNa<&'a u64>
-}
-impl<'a> MapFn for MatchesFnUnsigned<'a> {
-    type Output = bool;
-    fn apply_unsigned(&mut self, value: MaybeNa<&u64>) -> bool { self.value == value }
-    fn apply_signed(&mut self, _: MaybeNa<&i64>) -> bool { false }
-    fn apply_text(&mut self, _: MaybeNa<&String>) -> bool { false }
-    fn apply_boolean(&mut self, _: MaybeNa<&bool>) -> bool { false }
-    fn apply_float(&mut self, _: MaybeNa<&f64>) -> bool { false }
-}
+map_fn![
+    /// `MapFn` function for matching unsigned integer values.
+    pub MatchesFnUnsigned<('a)> {
+        type Output = bool;
+        value: MaybeNa<&'a u64>
+    }
+    fn unsigned(self, value) { self.value == value }
+    fn [signed, text, boolean, float](self, _) { false }
+];
 
-/// `MapFn` function for matching signed integer values.
-pub struct MatchesFnSigned<'a> {
-    value: MaybeNa<&'a i64>
-}
-impl<'a> MapFn for MatchesFnSigned<'a> {
-    type Output = bool;
-    fn apply_unsigned(&mut self, _: MaybeNa<&u64>) -> bool { false }
-    fn apply_signed(&mut self, value: MaybeNa<&i64>) -> bool { self.value == value }
-    fn apply_text(&mut self, _: MaybeNa<&String>) -> bool { false }
-    fn apply_boolean(&mut self, _: MaybeNa<&bool>) -> bool { false }
-    fn apply_float(&mut self, _: MaybeNa<&f64>) -> bool { false }
-}
+map_fn![
+    /// `MapFn` function for matching signed integer values.
+    pub MatchesFnSigned<('a)> {
+        type Output = bool;
+        value: MaybeNa<&'a i64>
+    }
+    fn signed(self, value) { self.value == value }
+    fn [unsigned, text, boolean, float](self, _) { false }
+];
 
-/// `MapFn` function for matching text values.
-pub struct MatchesFnText<'a> {
-    value: MaybeNa<&'a String>
-}
-impl<'a> MapFn for MatchesFnText<'a> {
-    type Output = bool;
-    fn apply_unsigned(&mut self, _: MaybeNa<&u64>) -> bool { false }
-    fn apply_signed(&mut self, _: MaybeNa<&i64>) -> bool { false }
-    fn apply_text(&mut self, value: MaybeNa<&String>) -> bool { self.value == value }
-    fn apply_boolean(&mut self, _: MaybeNa<&bool>) -> bool { false }
-    fn apply_float(&mut self, _: MaybeNa<&f64>) -> bool { false }
-}
+map_fn![
+    /// `MapFn` function for matching text values.
+    pub MatchesFnText<('a)> {
+        type Output = bool;
+        value: MaybeNa<&'a String>
+    }
+    fn text(self, value) { self.value == value }
+    fn [signed, unsigned, boolean, float](self, _) { false }
+];
 
-/// `MapFn` function for matching boolean values.
-pub struct MatchesFnBoolean<'a> {
-    value: MaybeNa<&'a bool>
-}
-impl<'a> MapFn for MatchesFnBoolean<'a> {
-    type Output = bool;
-    fn apply_unsigned(&mut self, _: MaybeNa<&u64>) -> bool { false }
-    fn apply_signed(&mut self, _: MaybeNa<&i64>) -> bool { false }
-    fn apply_text(&mut self, _: MaybeNa<&String>) -> bool { false }
-    fn apply_boolean(&mut self, value: MaybeNa<&bool>) -> bool { self.value == value }
-    fn apply_float(&mut self, _: MaybeNa<&f64>) -> bool { false }
-}
+map_fn![
+    /// `MapFn` function for matching boolean values.
+    pub MatchesFnBoolean<('a)> {
+        type Output = bool;
+        value: MaybeNa<&'a bool>
+    }
+    fn boolean(self, value) { self.value == value }
+    fn [unsigned, signed, text, float](self, _) { false }
+];
 
-/// `MapFn` function for matching floating-point values.
-pub struct MatchesFnFloat<'a> {
-    value: MaybeNa<&'a f64>
-}
-impl<'a> MapFn for MatchesFnFloat<'a> {
-    type Output = bool;
-    fn apply_unsigned(&mut self, _: MaybeNa<&u64>) -> bool { false }
-    fn apply_signed(&mut self, _: MaybeNa<&i64>) -> bool { false }
-    fn apply_text(&mut self, _: MaybeNa<&String>) -> bool { false }
-    fn apply_boolean(&mut self, _: MaybeNa<&bool>) -> bool { false }
-    fn apply_float(&mut self, value: MaybeNa<&f64>) -> bool { self.value == value }
-}
+map_fn![
+    /// `MapFn` function for matching floating-point values.
+    pub MatchesFnFloat<('a)> {
+        type Output = bool;
+        value: MaybeNa<&'a f64>
+    }
+    fn float(self, value) { self.value == value }
+    fn [unsigned, signed, text, boolean](self, _) { false }
+];
 
 /// Helper trait / implementations for matching a value. Returns `true` if the selected element
 /// matches the provided target value.
@@ -78,7 +63,6 @@ pub trait Matches<T> {
     /// value.
     fn matches(&self, target: T, ident: &FieldIdent, idx: usize) -> Result<bool>;
 }
-
 
 macro_rules! impl_dataview_matches {
     ($($dtype:ty, $match_fn:ident),*) => {$(
@@ -111,66 +95,59 @@ fn test_pred<T: DataType, F: Fn(&T) -> bool>(value: MaybeNa<&T>, f: &mut F) -> b
     }
 }
 
+map_fn![
+    /// `MapFn` function for finding an index set of unsigned integer values of a field that match
+    /// a predicate.
+    pub FilterFnUnsigned<(F)> where (F: Fn(&u64) -> bool) {
+        type Output = bool;
+        f: F
+    }
+    fn unsigned(self, value) { test_pred(value, &mut self.f) }
+    fn [signed, text, boolean, float](self, _) { false }
+];
 
+map_fn![
+    /// `MapFn` function for finding an index set of signed integer values of a field that match
+    /// a predicate.
+    pub FilterFnSigned<(F)> where (F: Fn(&i64) -> bool) {
+        type Output = bool;
+        f: F
+    }
+    fn signed(self, value) { test_pred(value, &mut self.f) }
+    fn [unsigned, text, boolean, float](self, _) { false }
+];
 
-/// `MapFn` function for finding an index set of unsigned integer values of a field that match
-/// a predicate.
-pub struct FilterFnUnsigned<F: Fn(&u64) -> bool> { f: F }
-impl<F: Fn(&u64) -> bool> MapFn for FilterFnUnsigned<F> {
-    type Output = bool;
-    fn apply_unsigned(&mut self, value: MaybeNa<&u64>) -> bool { test_pred(value, &mut self.f) }
-    fn apply_signed(&mut self, _: MaybeNa<&i64>) -> bool { false }
-    fn apply_text(&mut self, _: MaybeNa<&String>) -> bool { false }
-    fn apply_boolean(&mut self, _: MaybeNa<&bool>) -> bool { false }
-    fn apply_float(&mut self, _: MaybeNa<&f64>) -> bool { false }
-}
+map_fn![
+    /// `MapFn` function for finding an index set of text values of a field that match a predicate.
+    pub FilterFnText<(F)> where (F: Fn(&String) -> bool) {
+        type Output = bool;
+        f: F
+    }
+    fn text(self, value) { test_pred(value, &mut self.f) }
+    fn [unsigned, signed, boolean, float](self, _) { false }
+];
 
-/// `MapFn` function for finding an index set of signed integer values of a field that match
-/// a predicate.
-pub struct FilterFnSigned<F: Fn(&i64) -> bool> { f: F }
-impl<F: Fn(&i64) -> bool> MapFn for FilterFnSigned<F> {
-    type Output = bool;
-    fn apply_unsigned(&mut self, _: MaybeNa<&u64>) -> bool { false }
-    fn apply_signed(&mut self, value: MaybeNa<&i64>) -> bool { test_pred(value, &mut self.f) }
-    fn apply_text(&mut self, _: MaybeNa<&String>) -> bool { false }
-    fn apply_boolean(&mut self, _: MaybeNa<&bool>) -> bool { false }
-    fn apply_float(&mut self, _: MaybeNa<&f64>) -> bool { false }
-}
+map_fn![
+    /// `MapFn function for finding an index set of boolean values of a field that match
+    /// a predicate.
+    pub FilterFnBoolean<(F)> where (F: Fn(&bool) -> bool) {
+        type Output = bool;
+        f: F
+    }
+    fn boolean(self, value) { test_pred(value, &mut self.f) }
+    fn [unsigned, signed, text, float](self, _) { false }
+];
 
-/// `MapFn` function for finding an index set of text values of a field that match a predicate.
-pub struct FilterFnText<F: Fn(&String) -> bool> { f: F }
-impl<F: Fn(&String) -> bool> MapFn for FilterFnText<F> {
-    type Output = bool;
-    fn apply_unsigned(&mut self, _: MaybeNa<&u64>) -> bool { false }
-    fn apply_signed(&mut self, _: MaybeNa<&i64>) -> bool { false }
-    fn apply_text(&mut self, value: MaybeNa<&String>) -> bool { test_pred(value, &mut self.f) }
-    fn apply_boolean(&mut self, _: MaybeNa<&bool>) -> bool { false }
-    fn apply_float(&mut self, _: MaybeNa<&f64>) -> bool { false }
-}
-
-/// `MapFn function for finding an index set of boolean values of a field that match
-/// a predicate.
-pub struct FilterFnBoolean<F: Fn(&bool) -> bool> { f: F }
-impl<F: Fn(&bool) -> bool> MapFn for FilterFnBoolean<F> {
-    type Output = bool;
-    fn apply_unsigned(&mut self, _: MaybeNa<&u64>) -> bool { false }
-    fn apply_signed(&mut self, _: MaybeNa<&i64>) -> bool { false }
-    fn apply_text(&mut self, _: MaybeNa<&String>) -> bool { false }
-    fn apply_boolean(&mut self, value: MaybeNa<&bool>) -> bool { test_pred(value, &mut self.f) }
-    fn apply_float(&mut self, _: MaybeNa<&f64>) -> bool { false }
-}
-
-/// `MapFn` function for finding an index set of floating-point values of a field that match
-/// a predicate.
-pub struct FilterFnFloat<F: Fn(&f64) -> bool> { f: F }
-impl<F: Fn(&f64) -> bool> MapFn for FilterFnFloat<F> {
-    type Output = bool;
-    fn apply_unsigned(&mut self, _: MaybeNa<&u64>) -> bool { false }
-    fn apply_signed(&mut self, _: MaybeNa<&i64>) -> bool { false }
-    fn apply_text(&mut self, _: MaybeNa<&String>) -> bool { false }
-    fn apply_boolean(&mut self, _: MaybeNa<&bool>) -> bool { false }
-    fn apply_float(&mut self, value: MaybeNa<&f64>) -> bool { test_pred(value, &mut self.f) }
-}
+map_fn![
+    /// `MapFn` function for finding an index set of floating-point values of a field that match
+    /// a predicate.
+    pub FilterFnFloat<(F)> where (F: Fn(&f64) -> bool) {
+        type Output = bool;
+        f: F
+    }
+    fn float(self, value) { test_pred(value, &mut self.f) }
+    fn [unsigned, signed, text, boolean](self, _) { false }
+];
 
 /// Helper trait / implementations for finding an index set of values in a field that match a
 /// predicate. Returns a vector of indices of all elements in the field that pass the predicate.

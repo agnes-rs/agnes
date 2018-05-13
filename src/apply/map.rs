@@ -317,6 +317,80 @@ macro_rules! map_fn_impl {
         }
         map_fn_impl!($($rest)*);
     );
+    (fn [$dtype1:tt]($self:ident, _) { $($body:tt)* } $($rest:tt)*) => (
+        map_fn_impl!(fn $dtype1($self, _) { $($body)* });
+        map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt]($self:ident, _) { $($body:tt)* } $($rest:tt)*) => (
+        map_fn_impl!(fn $dtype1($self, _) { $($body)* });
+        map_fn_impl!(fn $dtype2($self, _) { $($body)* });
+        map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt]($self:ident, _)
+            { $($body:tt)* } $($rest:tt)*) =>
+    (
+        map_fn_impl!(fn $dtype1($self, _) { $($body)* });
+        map_fn_impl!(fn $dtype2($self, _) { $($body)* });
+        map_fn_impl!(fn $dtype3($self, _) { $($body)* });
+        map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt, $dtype4:tt]($self:ident, _)
+            { $($body:tt)* } $($rest:tt)*) =>
+    (
+        map_fn_impl!(fn $dtype1($self, _) { $($body)* });
+        map_fn_impl!(fn $dtype2($self, _) { $($body)* });
+        map_fn_impl!(fn $dtype3($self, _) { $($body)* });
+        map_fn_impl!(fn $dtype4($self, _) { $($body)* });
+        map_fn_impl!($($rest)*);
+    );
+    (fn [$dtype1:tt, $dtype2:tt, $dtype3:tt, $dtype4:tt, $dtype5:tt]($self:ident, _)
+            { $($body:tt)* }) =>
+    (
+        map_fn_impl!(fn $dtype1($self, _) { $($body)* });
+        map_fn_impl!(fn $dtype2($self, _) { $($body)* });
+        map_fn_impl!(fn $dtype3($self, _) { $($body)* });
+        map_fn_impl!(fn $dtype4($self, _) { $($body)* });
+        map_fn_impl!(fn $dtype4($self, _) { $($body)* });
+    );
+    (fn all($self:ident, _) { $($body:tt)* }) => (
+        map_fn_impl!(
+            fn unsigned($self, _) { $($body)* }
+            fn signed($self, _) { $($body)* }
+            fn text($self, _) { $($body)* }
+            fn boolean($self, _) { $($body)* }
+            fn float($self, _) { $($body)* }
+        );
+    );
+    (fn unsigned($self:ident, _) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_unsigned(&mut $self, _: MaybeNa<&u64>) -> Self::Output {
+            $($body)*
+        }
+        map_fn_impl!($($rest)*);
+    );
+    (fn signed($self:ident, _) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_signed(&mut $self, _: MaybeNa<&i64>) -> Self::Output {
+            $($body)*
+        }
+        map_fn_impl!($($rest)*);
+    );
+    (fn text($self:ident, _) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_text(&mut $self, _: MaybeNa<&String>) -> Self::Output {
+            $($body)*
+        }
+        map_fn_impl!($($rest)*);
+    );
+    (fn boolean($self:ident, _) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_boolean(&mut $self, _: MaybeNa<&bool>) -> Self::Output {
+            $($body)*
+        }
+        map_fn_impl!($($rest)*);
+    );
+    (fn float($self:ident, _) { $($body:tt)* } $($rest:tt)*) => (
+        fn apply_float(&mut $self, _: MaybeNa<&f64>) -> Self::Output {
+            $($body)*
+        }
+        map_fn_impl!($($rest)*);
+    );
     () => ()
 }
 
