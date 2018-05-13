@@ -2,7 +2,9 @@ use apply::{DataIndex, FieldMapFn, FieldApplyTo};
 use field::FieldIdent;
 use error::*;
 
+/// Helper trait / function for computing the number of NA values in a data structure.
 pub trait NumNa {
+    /// Compute the number of NA values in the specified field of this data structure.
     fn num_na(&self, ident: &FieldIdent) -> Result<usize>;
 }
 impl<T> NumNa for T where T: FieldApplyTo {

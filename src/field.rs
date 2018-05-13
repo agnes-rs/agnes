@@ -106,12 +106,18 @@ impl DataType for f64 {}
 impl<'a, T> DataType for &'a T where T: DataType {}
 
 
+/// Common enum for a single value of any of the valid Agnes data types.
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub enum DtValue {
+    /// Unsigned integer value
     Unsigned(u64),
+    /// Signed integer value
     Signed(i64),
+    /// Text value
     Text(String),
+    /// Boolean value
     Boolean(bool),
+    /// Floating-point value
     Float(f64),
 }
 impl From<u64> for DtValue {
@@ -130,8 +136,13 @@ impl From<f64> for DtValue {
     fn from(orig: f64) -> DtValue { DtValue::Float(orig) }
 }
 
+/// Trait to produce a valid value to indicate 'zero' for Agnes data types. Used when computing
+/// things like sums (which make sence when the data type is an integer or float, but maybe less
+/// sense when text or a boolean).
 pub trait DtZero {
+    /// The type of the 'zero' value for this Agnes data type.
     type Output;
+    /// Provide the 'zero' value for this Agnes data type.
     fn dt_zero() -> Self::Output;
 }
 impl DtZero for u64 {

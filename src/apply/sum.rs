@@ -3,7 +3,9 @@ use apply::{DataIndex, FieldMapFn, FieldApplyTo};
 use field::{DtZero, FieldType, DtValue, FieldIdent};
 use error::*;
 
+/// Helper trait for computing the sum of values in a data structure.
 pub trait Sum {
+    /// Compute the sum values in the specified field of this data structure.
     fn sum(&self, ident: &FieldIdent) -> Result<DtValue>;
 }
 impl<T> Sum for T where T: FieldApplyTo {

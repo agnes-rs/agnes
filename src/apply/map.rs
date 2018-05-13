@@ -157,10 +157,11 @@ macro_rules! map_fn {
         }
     };
     // create a type (private, no generics)
-    ($map_fn_ty:ident {
+    ($(#[$meta_attr:meta])* $map_fn_ty:ident {
         type Output = $output:ty;
         $($attrs:tt)*
     } $($rest:tt)*) => {
+        $(#[$meta_attr])*
         struct $map_fn_ty {
             $($attrs)*
         }
@@ -170,10 +171,11 @@ macro_rules! map_fn {
         }
     };
     // create a type (private, with generics)
-    ($map_fn_ty:ident<($($generics:tt)*)> {
+    ($(#[$meta_attr:meta])* $map_fn_ty:ident<($($generics:tt)*)> {
         type Output = $output:ty;
         $($attrs:tt)*
     } $($rest:tt)*) => {
+        $(#[$meta_attr])*
         struct $map_fn_ty<$($generics)*> {
             $($attrs)*
         }
@@ -183,10 +185,11 @@ macro_rules! map_fn {
         }
     };
     // create a type (private, with generics + bounds)
-    ($map_fn_ty:ident<($($generics:tt)*)> where ($($bounds:tt)*) {
+    ($(#[$meta_attr:meta])* $map_fn_ty:ident<($($generics:tt)*)> where ($($bounds:tt)*) {
         type Output = $output:ty;
         $($attrs:tt)*
     } $($rest:tt)*) => {
+        $(#[$meta_attr])*
         struct $map_fn_ty<$($generics)*> {
             $($attrs)*
         }
@@ -196,10 +199,11 @@ macro_rules! map_fn {
         }
     };
     // create a type (public, no generics)
-    (pub $map_fn_ty:ident {
+    ($(#[$meta_attr:meta])* pub $map_fn_ty:ident {
         type Output = $output:ty;
         $($attrs:tt)*
     } $($rest:tt)*) => {
+        $(#[$meta_attr])*
         pub struct $map_fn_ty {
             $($attrs)*
         }
@@ -209,10 +213,11 @@ macro_rules! map_fn {
         }
     };
     // create a type (public, with generics)
-    (pub $map_fn_ty:ident<($($generics:tt)*)> {
+    ($(#[$meta_attr:meta])* pub $map_fn_ty:ident<($($generics:tt)*)> {
         type Output = $output:ty;
         $($attrs:tt)*
     } $($rest:tt)*) => {
+        $(#[$meta_attr])*
         pub struct $map_fn_ty<$($generics)*> {
             $($attrs)*
         }
@@ -222,10 +227,11 @@ macro_rules! map_fn {
         }
     };
     // create a type (public, with generics + bounds)
-    (pub $map_fn_ty:ident<($($generics:tt)*)> where ($($bounds:tt)*) {
+    ($(#[$meta_attr:meta])* pub $map_fn_ty:ident<($($generics:tt)*)> where ($($bounds:tt)*) {
         type Output = $output:ty;
         $($attrs:tt)*
     } $($rest:tt)*) => {
+        $(#[$meta_attr])*
         pub struct $map_fn_ty<$($generics)*> {
             $($attrs)*
         }
@@ -361,16 +367,19 @@ pub trait FieldMapFn {
 
 #[macro_export]
 macro_rules! field_map_fn {
+    // Using a prexisting type
     ($map_fn_ty:ty, Output = $output:ty; $($rest:tt)*) => {
         impl FieldMapFn for $map_fn_ty {
             type Output = $output;
             field_map_fn_impl!($($rest)*);
         }
     };
-    ($map_fn_ty:ident {
+    // create a type (private, no generics)
+    ($(#[$meta_attr:meta])* $map_fn_ty:ident {
         type Output = $output:ty;
         $($attr:ident: $attr_ty:ty),*
     } $($rest:tt)*) => {
+        $(#[$meta_attr])*
         struct $map_fn_ty {
             $($attr: $attr_ty),*
         }
@@ -379,10 +388,40 @@ macro_rules! field_map_fn {
             field_map_fn_impl!($($rest)*);
         }
     };
-    (pub $map_fn_ty:ident {
+    // create a type (private, with generics)
+    ($(#[$meta_attr:meta])* $map_fn_ty:ident<($($generics:tt)*)> {
         type Output = $output:ty;
         $($attr:ident: $attr_ty:ty),*
     } $($rest:tt)*) => {
+        $(#[$meta_attr])*
+        struct $map_fn_ty<$($generics)*> {
+            $($attr: $attr_ty),*
+        }
+        impl<$($generics)*> FieldMapFn for $map_fn_ty<$($generics)*> {
+            type Output = $output;
+            field_map_fn_impl!($($rest)*);
+        }
+    };
+    // create a type (private, with generics + bounds)
+    ($(#[$meta_attr:meta])* $map_fn_ty:ident<($($generics:tt)*)> where ($($bounds:tt)*) {
+        type Output = $output:ty;
+        $($attr:ident: $attr_ty:ty),*
+    } $($rest:tt)*) => {
+        $(#[$meta_attr])*
+        struct $map_fn_ty<$($generics)*> {
+            $($attr: $attr_ty),*
+        }
+        impl<$($generics)*> FieldMapFn for $map_fn_ty<$($generics)*> where $($bounds)* {
+            type Output = $output;
+            field_map_fn_impl!($($rest)*);
+        }
+    };
+    // create a type (public, no generics)
+    ($(#[$meta_attr:meta])* pub $map_fn_ty:ident {
+        type Output = $output:ty;
+        $($attr:ident: $attr_ty:ty),*
+    } $($rest:tt)*) => {
+        $(#[$meta_attr])*
         pub struct $map_fn_ty {
             $($attr: $attr_ty),*
         }
@@ -390,8 +429,35 @@ macro_rules! field_map_fn {
             type Output = $output;
             field_map_fn_impl!($($rest)*);
         }
-    }
-
+    };
+    // create a type (public, with generics)
+    ($(#[$meta_attr:meta])* pub $map_fn_ty:ident<($($generics:tt)*)> {
+        type Output = $output:ty;
+        $($attr:ident: $attr_ty:ty),*
+    } $($rest:tt)*) => {
+        $(#[$meta_attr])*
+        pub struct $map_fn_ty<$($generics)*> {
+            $($attr: $attr_ty),*
+        }
+        impl<$($generics)*> FieldMapFn for $map_fn_ty<$($generics)*> {
+            type Output = $output;
+            field_map_fn_impl!($($rest)*);
+        }
+    };
+    // create a type (public, with generics + bounds)
+    ($(#[$meta_attr:meta])* pub $map_fn_ty:ident<($($generics:tt)*)> where ($($bounds:tt)*) {
+        type Output = $output:ty;
+        $($attr:ident: $attr_ty:ty),*
+    } $($rest:tt)*) => {
+        $(#[$meta_attr])*
+        pub struct $map_fn_ty<$($generics)*> {
+            $($attr: $attr_ty),*
+        }
+        impl<$($generics)*> FieldMapFn for $map_fn_ty<$($generics)*> where $($bounds)* {
+            type Output = $output;
+            field_map_fn_impl!($($rest)*);
+        }
+    };
 }
 #[macro_export]
 macro_rules! field_map_fn_impl {

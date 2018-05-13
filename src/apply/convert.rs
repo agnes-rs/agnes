@@ -150,8 +150,8 @@ impl<'a, T: Clone, U: DtFrom<T>> DtFrom<&'a T> for U {
     }
 }
 
-/// `MapFn` for conversion into a new data type.
 map_fn![
+    /// `MapFn` for conversion into a new data type.
     pub ConvertFn<(T)> where (T: DataType + DtFrom<u64> + DtFrom<i64> + DtFrom<String>
         + DtFrom<bool> + DtFrom<f64>)
     {

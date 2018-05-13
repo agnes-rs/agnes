@@ -3,11 +3,13 @@ use field::FieldIdent;
 use masked::MaybeNa;
 use apply::MapFn;
 
-/// `MapFn` for adding data to an existing `DataStore`.
 map_fn![
+    /// `MapFn` for adding data to an existing `DataStore`.
     pub AddToDsFn<('a)> {
         type Output = ();
+        /// Target `DataStore` to add to.
         pub ds: &'a mut DataStore,
+        /// Target field identifier within store to add to.
         pub ident: FieldIdent,
     }
     fn all(self, value) {

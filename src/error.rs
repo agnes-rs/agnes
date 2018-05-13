@@ -53,6 +53,7 @@ pub enum AgnesError {
     FieldTypeInference(FieldTypeError),
     /// Invalid operation
     InvalidOp(String),
+    /// Invalid type for an operation
     InvalidType(FieldType, String)
 }
 
