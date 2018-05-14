@@ -284,14 +284,14 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
         let mut field_idx = 0;
         for left_ident in left.fields.keys() {
             left.apply_to_elem(
-                &mut AddToDs { ds: &mut ds, ident: new_field_idents[field_idx].clone() },
+                &mut AddToDsFn { ds: &mut ds, ident: new_field_idents[field_idx].clone() },
                 &left_ident, left_idx
             )?;
             field_idx += 1;
         }
         for right_ident in right.fields.keys() {
             right.apply_to_elem(
-                &mut AddToDs { ds: &mut ds, ident: new_field_idents[field_idx].clone() },
+                &mut AddToDsFn { ds: &mut ds, ident: new_field_idents[field_idx].clone() },
                 &right_ident,
                 right_idx
             )?;

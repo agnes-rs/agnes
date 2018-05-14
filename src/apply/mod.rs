@@ -12,7 +12,7 @@ the data structure.
 mod select;
 pub use self::select::*;
 
-mod map;
+#[macro_use] mod map;
 pub use self::map::*;
 
 mod matches;
@@ -22,13 +22,13 @@ mod sort_order;
 pub use self::sort_order::*;
 
 mod add_to_ds;
-pub use self::add_to_ds::AddToDs;
+pub use self::add_to_ds::*;
 
 mod single_type;
 pub use self::single_type::*;
 
-mod num_na;
-pub use self::num_na::*;
+mod stats;
+pub use self::stats::*;
 
 mod convert;
 pub use self::convert::*;

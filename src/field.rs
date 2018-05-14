@@ -96,7 +96,7 @@ impl fmt::Display for FieldType {
 }
 
 /// Marker trait for types supported by Agnes data structures
-pub trait DataType: PartialOrd + Serialize + Display + Debug {}
+pub trait DataType: PartialOrd + Serialize + Display + Debug + DtZero {}
 impl DataType for u64 {}
 impl DataType for i64 {}
 impl DataType for String {}
@@ -104,6 +104,71 @@ impl DataType for bool {}
 impl DataType for f64 {}
 
 impl<'a, T> DataType for &'a T where T: DataType {}
+
+
+/// Common enum for a single value of any of the valid Agnes data types.
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
+pub enum DtValue {
+    /// Unsigned integer value
+    Unsigned(u64),
+    /// Signed integer value
+    Signed(i64),
+    /// Text value
+    Text(String),
+    /// Boolean value
+    Boolean(bool),
+    /// Floating-point value
+    Float(f64),
+}
+impl From<u64> for DtValue {
+    fn from(orig: u64) -> DtValue { DtValue::Unsigned(orig) }
+}
+impl From<i64> for DtValue {
+    fn from(orig: i64) -> DtValue { DtValue::Signed(orig) }
+}
+impl From<String> for DtValue {
+    fn from(orig: String) -> DtValue { DtValue::Text(orig) }
+}
+impl From<bool> for DtValue {
+    fn from(orig: bool) -> DtValue { DtValue::Boolean(orig) }
+}
+impl From<f64> for DtValue {
+    fn from(orig: f64) -> DtValue { DtValue::Float(orig) }
+}
+
+/// Trait to produce a valid value to indicate 'zero' for Agnes data types. Used when computing
+/// things like sums (which make sence when the data type is an integer or float, but maybe less
+/// sense when text or a boolean).
+pub trait DtZero {
+    /// The type of the 'zero' value for this Agnes data type.
+    type Output;
+    /// Provide the 'zero' value for this Agnes data type.
+    fn dt_zero() -> Self::Output;
+}
+impl DtZero for u64 {
+    type Output = u64;
+    fn dt_zero() -> u64 { 0 }
+}
+impl DtZero for i64 {
+    type Output = i64;
+    fn dt_zero() -> i64 { 0 }
+}
+impl DtZero for String {
+    type Output = u64;
+    fn dt_zero() -> u64 { 0 }
+}
+impl DtZero for bool {
+    type Output = u64;
+    fn dt_zero() -> u64 { 0 }
+}
+impl DtZero for f64 {
+    type Output = f64;
+    fn dt_zero() -> f64 { 0.0 }
+}
+impl<'a, T> DtZero for &'a T where T: DtZero {
+    type Output = <T as DtZero>::Output;
+    fn dt_zero() -> Self::Output { T::dt_zero() }
+}
 
 
 /// Possibly-renamed field identifier
