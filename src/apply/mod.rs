@@ -27,11 +27,8 @@ pub use self::add_to_ds::*;
 mod single_type;
 pub use self::single_type::*;
 
-mod num_na;
-pub use self::num_na::*;
-
-mod sum;
-pub use self::sum::*;
+mod stats;
+pub use self::stats::*;
 
 mod convert;
 pub use self::convert::*;
