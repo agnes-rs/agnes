@@ -16,6 +16,7 @@ parameters.
 use std::fmt::{self, Display, Formatter};
 
 use indexmap::IndexMap;
+use indexmap::map::Keys;
 use serde::ser::{self, Serialize, Serializer, SerializeMap};
 use prettytable as pt;
 
@@ -174,8 +175,38 @@ impl DataView {
             }
         }
     }
+
+    /// Returns an iterator over `Selection`s (the result of calling `select` on a DataView) of all
+    /// the fields in this DataView.
+    pub fn selections<'a>(&'a self) -> Selections<'a> {
+        Selections::new(self, self.fields.keys())
+    }
+
+    /// Returns an iterator over the fields (as `FieldIdent`s of this DataView.
+    pub fn fields<'a>(&'a self) -> Keys<'a, FieldIdent, ViewField> {
+        self.fields.keys()
+    }
 }
 
+/// An iterator over `Selection`s of fields in a DataView.
+pub struct Selections<'a> {
+    dv: &'a DataView,
+    keys: Keys<'a, FieldIdent, ViewField>
+}
+impl<'a> Selections<'a> {
+    fn new(dv: &'a DataView, keys: Keys<'a, FieldIdent, ViewField>) -> Selections<'a> {
+        Selections {
+            dv,
+            keys
+        }
+    }
+}
+impl<'a> Iterator for Selections<'a> {
+    type Item = Selection<'a, 'a, DataView>;
+    fn next(&mut self) -> Option<Selection<'a, 'a, DataView>> {
+        self.keys.next().map(|ident| Selection::new(self.dv, ident))
+    }
+}
 
 impl ApplyTo for DataView {
     fn apply_to<F: MapFn>(&self, f: &mut F, ident: &FieldIdent)
@@ -336,6 +367,8 @@ struct AddCellToRow<'a> {
 macro_rules! impl_apply_cell_to_row {
     ($name:tt; $ty:ty) => {
         fn $name(&mut self, value: MaybeNa<&$ty>) {
+            //FIXME: this will fail if i is > MAX_ROWS
+            // need to be able to short-circuit this once we hit MAX_ROWS
             self.rows[self.i].add_cell(cell!(value));
             self.i += 1;
         }

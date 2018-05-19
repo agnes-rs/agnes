@@ -96,7 +96,7 @@ impl fmt::Display for FieldType {
 }
 
 /// Marker trait for types supported by Agnes data structures
-pub trait DataType: PartialOrd + Serialize + Display + Debug + DtZero {}
+pub trait DataType: PartialOrd + Serialize + Display + Debug {}
 impl DataType for u64 {}
 impl DataType for i64 {}
 impl DataType for String {}
@@ -135,41 +135,17 @@ impl From<bool> for DtValue {
 impl From<f64> for DtValue {
     fn from(orig: f64) -> DtValue { DtValue::Float(orig) }
 }
-
-/// Trait to produce a valid value to indicate 'zero' for Agnes data types. Used when computing
-/// things like sums (which make sence when the data type is an integer or float, but maybe less
-/// sense when text or a boolean).
-pub trait DtZero {
-    /// The type of the 'zero' value for this Agnes data type.
-    type Output;
-    /// Provide the 'zero' value for this Agnes data type.
-    fn dt_zero() -> Self::Output;
+impl fmt::Display for DtValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            DtValue::Unsigned(u) => write!(f, "{}", u),
+            DtValue::Signed(i) => write!(f, "{}", i),
+            DtValue::Text(ref s) => write!(f, "{}", s),
+            DtValue::Boolean(b) => write!(f, "{}", b),
+            DtValue::Float(fl) => write!(f, "{}", fl),
+        }
+    }
 }
-impl DtZero for u64 {
-    type Output = u64;
-    fn dt_zero() -> u64 { 0 }
-}
-impl DtZero for i64 {
-    type Output = i64;
-    fn dt_zero() -> i64 { 0 }
-}
-impl DtZero for String {
-    type Output = u64;
-    fn dt_zero() -> u64 { 0 }
-}
-impl DtZero for bool {
-    type Output = u64;
-    fn dt_zero() -> u64 { 0 }
-}
-impl DtZero for f64 {
-    type Output = f64;
-    fn dt_zero() -> f64 { 0.0 }
-}
-impl<'a, T> DtZero for &'a T where T: DtZero {
-    type Output = <T as DtZero>::Output;
-    fn dt_zero() -> Self::Output { T::dt_zero() }
-}
-
 
 /// Possibly-renamed field identifier
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

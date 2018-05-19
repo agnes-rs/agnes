@@ -34,5 +34,7 @@ pub mod masked;
 pub use masked::MaybeNa;
 pub mod apply;
 pub mod ops;
+mod view_stats;
+pub use view_stats::ViewStats;
 
 #[cfg(test)] pub(crate) mod test_utils;
