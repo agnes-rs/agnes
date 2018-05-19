@@ -346,7 +346,7 @@ impl Display for DataView {
         let mut rows = vec![pt::row::Row::empty(); nrows.min(MAX_ROWS)];
         for field in self.fields.values() {
             match self.apply_to(&mut AddCellToRow { rows: &mut rows, i: 0 },
-                &field.rident.ident)
+                &field.rident.to_renamed_field_ident())
             {
                 Ok(_) => {},
                 Err(e) => { return write!(f, "view display error: {}", e); },
