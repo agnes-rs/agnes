@@ -3,7 +3,7 @@ use apply::{DataIndex, FieldMapFn, FieldApplyTo};
 use field::{FieldType, DtValue, FieldIdent};
 use error::*;
 
-/// Helper trait / function for computing the number of NA values in a data structure.
+/// Trait for computing the number of NA values in a data structure.
 pub trait NumNa {
     /// Compute the number of NA values in the specified field of this data structure.
     fn num_na(&self, ident: &FieldIdent) -> Result<usize>;
@@ -23,7 +23,7 @@ field_map_fn![
     }
 ];
 
-/// Helper trait / function for computing the number of non-NA values in a data structure.
+/// Trait for computing the number of non-NA values in a data structure.
 pub trait NumExists {
     /// Compute the number of non-NA values in the specified field of this data structure.
     fn num_exists(&self, ident: &FieldIdent) -> Result<usize>;
@@ -81,7 +81,7 @@ impl<'a, T> DtLimits for &'a T where T: DtLimits {
 }
 
 
-/// Helper trait for computing the sum of values in a data structure.
+/// Trait for computing the sum of values in a data structure.
 pub trait Sum {
     /// Compute the sum values in the specified field of this data structure.
     fn sum(&self, ident: &FieldIdent) -> Result<DtValue>;
@@ -115,7 +115,7 @@ field_map_fn![
     }
 ];
 
-/// Helper trait for computing the arithmetic mean of values in a data structure.
+/// Trait for computing the arithmetic mean of values in a data structure.
 pub trait Mean {
     /// Compute the arithmetic mean of values of the specified field of this data structure.
     fn mean(&self, ident: &FieldIdent) -> Result<f64>;
@@ -136,37 +136,62 @@ impl<T> Mean for T where T: FieldApplyTo {
     }
 }
 
-/// Helper trait for computing the sample standard deviation of a field of a data structure.
+/// Trait for computing the sample standard deviation of a field of a data structure.
 pub trait StDev {
     /// Compute the sample standard deviation of specified field in this data structure.
     fn stdev(&self, ident: &FieldIdent) -> Result<f64>;
 }
 impl<T> StDev for T where T: FieldApplyTo {
     fn stdev(&self, ident: &FieldIdent) -> Result<f64> {
-        let nexists = match self.num_exists(ident)? {
-            0 => { return Ok(0.0); },
-            val => val as f64,
-        };
-        Ok((nexists / (nexists - 1.0)).sqrt() * self.stdevp(ident)?)
+        self.var(&ident).map(|var| var.sqrt())
     }
 }
 
-/// Helper trait for computing the population standard deviation of a field of a data structure.
-pub trait StDevP {
-    /// Compute the population standard deviation of specified field in this data structure.
-    fn stdevp(&self, ident: &FieldIdent) -> Result<f64>;
+/// Trait for computing the sample variance of a field of a data structure.
+pub trait Var {
+    /// Compute the sample variance of specified field in this data structure.
+    fn var(&self, ident: &FieldIdent) -> Result<f64>;
 }
-impl<T> StDevP for T where T: FieldApplyTo {
-    fn stdevp(&self, ident: &FieldIdent) -> Result<f64> {
+impl<T> Var for T where T: FieldApplyTo {
+    fn var(&self, ident: &FieldIdent) -> Result<f64> {
         let nexists = match self.num_exists(ident)? {
             0 => { return Ok(0.0); },
             val => val as f64,
         };
         let sum_sq = self.field_apply_to(&mut SumSqFn {}, ident)??;
         let mean = self.mean(ident)?;
-        Ok((sum_sq / nexists - mean * mean).sqrt())
+        Ok(sum_sq / (nexists - 1.0) - nexists / (nexists - 1.0) * mean * mean)
     }
 }
+
+/// Trait for computing the population standard deviation of a field of a data structure.
+pub trait StDevP {
+    /// Compute the population standard deviation of specified field in this data structure.
+    fn stdevp(&self, ident: &FieldIdent) -> Result<f64>;
+}
+impl<T> StDevP for T where T: FieldApplyTo {
+    fn stdevp(&self, ident: &FieldIdent) -> Result<f64> {
+        self.varp(ident).map(|var| var.sqrt())
+    }
+}
+
+/// Trait for computing the population variance of a field of a data structure.
+pub trait VarP {
+    /// Compute the population variance of specified field in this data structure.
+    fn varp(&self, ident: &FieldIdent) -> Result<f64>;
+}
+impl<T> VarP for T where T: FieldApplyTo {
+    fn varp(&self, ident: &FieldIdent) -> Result<f64> {
+        let nexists = match self.num_exists(ident)? {
+            0 => { return Ok(0.0); },
+            val => val as f64,
+        };
+        let sum_sq = self.field_apply_to(&mut SumSqFn {}, ident)??;
+        let mean = self.mean(ident)?;
+        Ok(sum_sq / nexists - mean * mean)
+    }
+}
+
 field_map_fn![
     SumSqFn { type Output = Result<f64>; }
     fn [signed, unsigned, float](self, field) {
@@ -190,7 +215,7 @@ field_map_fn![
     }
 ];
 
-/// Helper trait for computing the minimum values in a field of a data structure.
+/// Trait for computing the minimum values in a field of a data structure.
 pub trait Min {
     /// Compute the minimum values of the specified field of this data structure.
     fn min(&self, ident: &FieldIdent) -> Result<DtValue>;
@@ -229,7 +254,7 @@ field_map_fn![
     }
 ];
 
-/// Helper trait for computing the maximum values in a field of a data structure.
+/// Trait for computing the maximum values in a field of a data structure.
 pub trait Max {
     /// Compute the maximum values of the specified field of this data structure.
     fn max(&self, ident: &FieldIdent) -> Result<DtValue>;
@@ -494,7 +519,9 @@ mod tests {
                 MaybeNa::Exists(-3.1)
             ]))]
         ).into();
+        assert!((dv.var(&"Foo".into()).unwrap() - 38.049048).abs() < 1e-6);
         assert!((dv.stdev(&"Foo".into()).unwrap() - 6.168391).abs() < 1e-6);
+        assert!((dv.varp(&"Foo".into()).unwrap() - 32.613469).abs() < 1e-6);
         assert!((dv.stdevp(&"Foo".into()).unwrap() - 5.710820).abs() < 1e-6);
         assert!((dv.mean(&"Foo".into()).unwrap() - 1.271429).abs() < 1e-6);
         assert_eq!(dv.sum(&"Foo".into()).unwrap(), DtValue::Float(8.9));
