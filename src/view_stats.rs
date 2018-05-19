@@ -7,7 +7,7 @@ use field::DtValue;
 use field::FieldIdent;
 use field::FieldType;
 use error::*;
-use apply::{Sum, Mean, Min, Max};
+use apply::{Sum, Mean, Min, Max, StDev};
 
 
 /// Structure containing general statistics of a `DataView`.
@@ -49,7 +49,7 @@ impl DataView {
                     max: self.max(ident).map(|val| Some(val)).or_else(err_handler)?,
                     sum: self.sum(ident).map(|val| Some(val)).or_else(err_handler)?,
                     mean: self.mean(ident).map(|val| Some(val)).or_else(err_handler)?,
-                    stdev: None
+                    stdev: self.stdev(ident).map(|val| Some(val)).or_else(err_handler)?,
                 })
             }).collect::<Result<_>>()?
         })
@@ -104,8 +104,49 @@ mod tests {
     #[test]
     fn view_stats_display() {
         let dv1: DataView = sample_emp_table().into();
-        println!("{}", dv1.view_stats().unwrap());
+        let vs1 = dv1.view_stats().unwrap();
+
+        assert_eq!(vs1.nrows, 7);
+        assert_eq!(vs1.fields.len(), 3);
+        assert_eq!(vs1.fields[0].ty, FieldType::Unsigned);
+        assert_eq!(vs1.fields[1].ty, FieldType::Unsigned);
+        assert_eq!(vs1.fields[2].ty, FieldType::Text);
+
+        assert_eq!(vs1.fields[0].min, Some(DtValue::Unsigned(0))); // EmpId min
+        assert_eq!(vs1.fields[0].max, Some(DtValue::Unsigned(10))); // EmpId max
+        assert_eq!(vs1.fields[0].sum, Some(DtValue::Unsigned(40))); // EmpId sum
+        assert!((vs1.fields[0].mean.unwrap() - 5.714286).abs() < 1e-6); // EmpId mean
+        assert!((vs1.fields[0].stdev.unwrap() - 3.683942).abs() < 1e-6); // EmpId stdev
+
+        assert_eq!(vs1.fields[2].min, Some(DtValue::Unsigned(3))); // EmpName shortest len
+        assert_eq!(vs1.fields[2].max, Some(DtValue::Unsigned(6))); // EmpName longest len
+        assert_eq!(vs1.fields[2].sum, None); // EmpName sum is NA
+        assert_eq!(vs1.fields[2].mean, None); // EmpName mean is NA
+        assert_eq!(vs1.fields[2].stdev, None); // EmpName stdev is NA
+
+        println!("{}", vs1);
+
+
         let dv2: DataView = sample_emp_table_extra().into();
-        println!("{}", dv2.view_stats().unwrap());
+        let vs2 = dv2.view_stats().unwrap();
+
+        assert_eq!(vs2.nrows, 7);
+        assert_eq!(vs2.fields.len(), 2);
+        assert_eq!(vs2.fields[0].ty, FieldType::Boolean);
+        assert_eq!(vs2.fields[1].ty, FieldType::Float);
+
+        assert_eq!(vs2.fields[0].min, Some(DtValue::Boolean(false))); // DidTraining min
+        assert_eq!(vs2.fields[0].max, Some(DtValue::Boolean(true))); // DidTraining max
+        assert_eq!(vs2.fields[0].sum, Some(DtValue::Unsigned(4))); // DidTraining sum (# of true)
+        assert!((vs2.fields[0].mean.unwrap() - 0.571429).abs() < 1e-6); // DidTraining mean
+        assert!((vs2.fields[0].stdev.unwrap() - 0.534522).abs() < 1e-6); // DidTraining stdev
+
+        assert_eq!(vs2.fields[1].min, Some(DtValue::Float(-1.2))); // VacationHrs min
+        assert_eq!(vs2.fields[1].max, Some(DtValue::Float(98.3))); // VacationHrs max
+        assert_eq!(vs2.fields[1].sum, Some(DtValue::Float(238.6))); // VacationHrs sum
+        assert!((vs2.fields[1].mean.unwrap() - 34.0857143).abs() < 1e-6); // VacationHrs mean
+        assert!((vs2.fields[1].stdev.unwrap() -  35.070948).abs() < 1e-6); // VacationHrs stdev
+
+        println!("{}", vs2);
     }
 }
