@@ -20,75 +20,75 @@ pub struct Join {
     pub kind: JoinKind,
     /// Join predicate: equijoin, inequality join
     pub predicate: Predicate,
-    pub(crate) left_field: FieldIdent,
-    pub(crate) right_field: FieldIdent,
+    pub(crate) left_ident: FieldIdent,
+    pub(crate) right_ident: FieldIdent,
 }
 impl Join {
     /// Create a new `Join` over the specified fields.
     pub fn new<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, predicate: Predicate,
-        left_field: L, right_field: R) -> Join
+        left_ident: L, right_ident: R) -> Join
     {
         Join {
             kind,
             predicate,
-            left_field: left_field.into(),
-            right_field: right_field.into()
+            left_ident: left_ident.into(),
+            right_ident: right_ident.into()
         }
     }
 
     /// Helper function to create a new `Join` with an 'Equal' predicate.
-    pub fn equal<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, left_field: L,
-        right_field: R) -> Join
+    pub fn equal<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, left_ident: L,
+        right_ident: R) -> Join
     {
         Join {
             kind,
             predicate: Predicate::Equal,
-            left_field: left_field.into(),
-            right_field: right_field.into(),
+            left_ident: left_ident.into(),
+            right_ident: right_ident.into(),
         }
     }
     /// Helper function to create a new `Join` with an 'Less Than' predicate.
-    pub fn less_than<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, left_field: L,
-        right_field: R) -> Join
+    pub fn less_than<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, left_ident: L,
+        right_ident: R) -> Join
     {
         Join {
             kind,
             predicate: Predicate::LessThan,
-            left_field: left_field.into(),
-            right_field: right_field.into(),
+            left_ident: left_ident.into(),
+            right_ident: right_ident.into(),
         }
     }
     /// Helper function to create a new `Join` with an 'Less Than or Equal' predicate.
-    pub fn less_than_equal<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, left_field: L,
-        right_field: R) -> Join
+    pub fn less_than_equal<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, left_ident: L,
+        right_ident: R) -> Join
     {
         Join {
             kind,
             predicate: Predicate::LessThanEqual,
-            left_field: left_field.into(),
-            right_field: right_field.into(),
+            left_ident: left_ident.into(),
+            right_ident: right_ident.into(),
         }
     }
     /// Helper function to create a new `Join` with an 'Greater Than' predicate.
-    pub fn greater_than<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, left_field: L,
-        right_field: R) -> Join
+    pub fn greater_than<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind, left_ident: L,
+        right_ident: R) -> Join
     {
         Join {
             kind,
             predicate: Predicate::GreaterThan,
-            left_field: left_field.into(),
-            right_field: right_field.into(),
+            left_ident: left_ident.into(),
+            right_ident: right_ident.into(),
         }
     }
     /// Helper function to create a new `Join` with an 'Greater Than or Equal' predicate.
     pub fn greater_than_equal<L: Into<FieldIdent>, R: Into<FieldIdent>>(kind: JoinKind,
-        left_field: L, right_field: R) -> Join
+        left_ident: L, right_ident: R) -> Join
     {
         Join {
             kind,
             predicate: Predicate::GreaterThanEqual,
-            left_field: left_field.into(),
-            right_field: right_field.into(),
+            left_ident: left_ident.into(),
+            right_ident: right_ident.into(),
         }
     }
 
@@ -195,13 +195,13 @@ pub fn hash_join(_left: &DataView, _right: &DataView, join: Join) -> Result<Data
 /// Join two dataviews with specified `Join` using the sort-merge algorithm.
 pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<DataStore> {
     // return early if fields don't exist, don't match types, or if DataViews are empty
-    if !left.has_field(&join.left_field) {
-        return Err(AgnesError::FieldNotFound(join.left_field.clone().into()));
+    if !left.has_field(&join.left_ident) {
+        return Err(AgnesError::FieldNotFound(join.left_ident.clone().into()));
     }
-    if !right.has_field(&join.right_field) {
-        return Err(AgnesError::FieldNotFound(join.right_field.clone().into()));
+    if !right.has_field(&join.right_ident) {
+        return Err(AgnesError::FieldNotFound(join.right_ident.clone().into()));
     }
-    if left.get_field_type(&join.left_field) != right.get_field_type(&join.right_field) {
+    if left.get_field_type(&join.left_ident) != right.get_field_type(&join.right_ident) {
         return Err(AgnesError::TypeMismatch("unable to join on fields of different types".into()));
     }
     if left.is_empty() || right.is_empty() {
@@ -209,8 +209,8 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
     }
     // sort (or rather, get the sorted order for field being merged)
     // we already checks if fields exist in DataViews, so unwraps are safe
-    let left_perm = left.sort_order_by(&join.left_field).unwrap();
-    let right_perm = right.sort_order_by(&join.right_field).unwrap();
+    let left_perm = left.sort_order_by(&join.left_ident).unwrap();
+    let right_perm = right.sort_order_by(&join.right_ident).unwrap();
 
     struct FindMergeIndices {
         left_perm: Vec<usize>,
@@ -251,7 +251,7 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
     }
 
     // find the join indices
-    let merge_indices = vec![left.select(&join.left_field), right.select(&join.right_field)]
+    let merge_indices = vec![left.select(&join.left_ident), right.select(&join.right_ident)]
         .apply_field_reduce(&mut FindMergeIndices {
             left_perm,
             right_perm,
@@ -441,20 +441,20 @@ pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &Da
         if new_fields.contains_key(right_fieldname) {
             // possible collision, see if collision is on join field
             if let Some(join) = join {
-                if join.left_field == join.right_field && &join.left_field == right_fieldname {
+                if join.left_ident == join.right_ident && &join.left_ident == right_fieldname {
                     // collision on the join field, rename both
-                    // unwrap safe, we can only get here if left_field in new_fields
-                    let mut left_key_field = new_fields.get(&join.left_field).unwrap().clone();
-                    let new_left_field_name = format!("{}.0", join.left_field);
-                    left_key_field.rident.rename = Some(new_left_field_name.clone());
-                    new_fields.insert(new_left_field_name.into(), left_key_field);
-                    new_fields.swap_remove(&join.left_field);
+                    // unwrap safe, we can only get here if left_ident in new_fields
+                    let mut left_key_field = new_fields.get(&join.left_ident).unwrap().clone();
+                    let new_left_ident_name = format!("{}.0", join.left_ident);
+                    left_key_field.rident.rename = Some(new_left_ident_name.clone());
+                    new_fields.insert(new_left_ident_name.into(), left_key_field);
+                    new_fields.swap_remove(&join.left_ident);
 
-                    let new_right_field_name = format!("{}.1", join.right_field);
-                    new_fields.insert(new_right_field_name.clone().into(), ViewField {
+                    let new_right_ident_name = format!("{}.1", join.right_ident);
+                    new_fields.insert(new_right_ident_name.clone().into(), ViewField {
                         rident: RFieldIdent {
                             ident: right_field.rident.ident.clone(),
-                            rename: Some(new_right_field_name),
+                            rename: Some(new_right_ident_name),
                         },
                         frame_idx: right_frame_mapping[right_field.frame_idx]
                     });
