@@ -158,7 +158,6 @@ pub(crate) fn assert_dv_sorted_eq<'a, R>(left: &DataView, ident: &'a FieldIdent,
           R: Into<$dtype>
 {
     let left_order = left.sort_order_by(ident).unwrap();
-    println!("{:?}", left_order);
     let mut right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
     right.sort();
 
