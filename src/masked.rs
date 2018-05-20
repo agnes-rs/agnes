@@ -1,5 +1,7 @@
 //! Missing value handling structs.
 
+use std::fmt;
+
 use serde::ser::{Serialize, Serializer, SerializeSeq};
 
 use field::DataType;
@@ -14,14 +16,6 @@ pub enum MaybeNa<T: DataType> {
     Na,
     /// Indicates an existing value.
     Exists(T)
-}
-impl<T: ToString + DataType> ToString for MaybeNa<T> {
-    fn to_string(&self) -> String {
-        match *self {
-            MaybeNa::Na => "NA".into(),
-            MaybeNa::Exists(ref t) => t.to_string()
-        }
-    }
 }
 impl<T: DataType> MaybeNa<T> {
     /// Unwrap a `MaybeNa`, revealing the data contained within. Panics if called on an `Na` value.
@@ -66,6 +60,14 @@ impl<'a, T: DataType + Clone> MaybeNa<&'a T> {
         match self {
             MaybeNa::Exists(t) => MaybeNa::Exists(t.clone()),
             MaybeNa::Na => MaybeNa::Na
+        }
+    }
+}
+impl<T: DataType> fmt::Display for MaybeNa<T> where T: fmt::Display {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            MaybeNa::Exists(ref t) => write!(f, "{}", t),
+            MaybeNa::Na        => write!(f, "NA")
         }
     }
 }
