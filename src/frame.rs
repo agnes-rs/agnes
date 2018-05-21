@@ -127,7 +127,7 @@ impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, DataFrame> {
     {
         self.data.store.select(self.ident)
             .apply_field_reduce(&mut FrameFieldReduceFn {
-                frame: &self.data,
+                frames: vec![&self.data],
                 reduce_fn: f,
             })
     }
@@ -136,9 +136,13 @@ impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, DataFrame>> {
     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
         -> error::Result<F::Output>
     {
+        let frames = self.iter().map(|selection| selection.data).collect::<Vec<_>>();
         self.iter().map(|selection| {
             selection.data.store.select(selection.ident)
-        }).collect::<Vec<_>>().apply_field_reduce(f)
+        }).collect::<Vec<_>>().apply_field_reduce(&mut FrameFieldReduceFn {
+            frames: frames,
+            reduce_fn: f,
+        })
     }
 }
 
@@ -197,31 +201,31 @@ impl<'a, 'b, F: 'b + FieldMapFn> FieldMapFn for FrameFieldMapFn<'a, 'b, F> {
 }
 
 struct FrameFieldReduceFn<'a, 'b, F: 'b + FieldReduceFn<'a>> {
-    frame: &'a DataFrame,
+    frames: Vec<&'a DataFrame>,
     reduce_fn: &'b mut F,
 }
 impl<'a, 'b, F: FieldReduceFn<'a>> FieldReduceFn<'a> for FrameFieldReduceFn<'a, 'b, F>
 {
     type Output = F::Output;
     fn reduce(&mut self, mut fields: Vec<ReduceDataIndex<'a>>) -> F::Output {
-        let data_vec = fields.drain(..).map(|field| {
+        let data_vec = fields.drain(..).zip(self.frames.iter()).map(|(field, frame)| {
             let field: ReduceDataIndex<'a> = field;
             match field {
                 ReduceDataIndex::Unsigned(field) =>
                     ReduceDataIndex::Unsigned(OwnedOrRef::Owned(Box::new(
-                        Framed::new(self.frame, field)))),
+                        Framed::new(frame, field)))),
                 ReduceDataIndex::Signed(field) =>
                     ReduceDataIndex::Signed(OwnedOrRef::Owned(Box::new(
-                        Framed::new(self.frame, field)))),
+                        Framed::new(frame, field)))),
                 ReduceDataIndex::Text(field) =>
                     ReduceDataIndex::Text(OwnedOrRef::Owned(Box::new(
-                        Framed::new(self.frame, field)))),
+                        Framed::new(frame, field)))),
                 ReduceDataIndex::Boolean(field) =>
                     ReduceDataIndex::Boolean(OwnedOrRef::Owned(Box::new(
-                        Framed::new(self.frame, field)))),
+                        Framed::new(frame, field)))),
                 ReduceDataIndex::Float(field) =>
                     ReduceDataIndex::Float(OwnedOrRef::Owned(Box::new(
-                        Framed::new(self.frame, field)))),
+                        Framed::new(frame, field)))),
             }
         }
         ).collect::<Vec<ReduceDataIndex<'a>>>();

@@ -482,6 +482,7 @@ pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &Da
 mod tests {
     use super::*;
     use masked::{MaybeNa, MaskedData};
+    use frame::Filter;
     use test_utils::*;
 
     #[test]
@@ -673,6 +674,35 @@ mod tests {
         text::assert_dv_sorted_eq(&joined_dv, &"DeptName".into(),
             vec!["Marketing", "Sales", "Marketing", "Manufacturing", "R&D", "R&D"]
         );
+    }
+
+    #[test]
+    fn filter_inner_equi_join() {
+        // should have same results as first test in inner_equi_join_missing_dept_id
+        let ds1 = sample_emp_table();
+        let ds2 = sample_dept_table();
+
+        let (dv1, mut dv2): (DataView, DataView) = (ds1.into(), ds2.into());
+        dv2.filter(&"DeptId".into(), |val: &u64| *val != 1u64).unwrap();
+
+        let joined_dv: DataView = dv1.join(&dv2, Join::equal(
+            JoinKind::Inner,
+            "DeptId",
+            "DeptId"
+        )).expect("join failure").into();
+        println!("{}", joined_dv);
+        assert_eq!(joined_dv.nrows(), 4);
+        assert_eq!(joined_dv.nfields(), 5);
+        unsigned::assert_dv_sorted_eq(&joined_dv, &"EmpId".into(),
+            vec![2u64, 8, 9, 10]);
+        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId.0".into(),
+            vec![2u64, 3, 4, 4]);
+        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId.1".into(),
+            vec![2u64, 3, 4, 4]);
+        text::assert_dv_sorted_eq(&joined_dv, &"EmpName".into(),
+            vec!["Jamie", "Louis", "Louise", "Ann"]);
+        text::assert_dv_sorted_eq(&joined_dv, &"DeptName".into(),
+            vec!["Sales", "Manufacturing", "R&D", "R&D"]);
     }
 
     #[test]
