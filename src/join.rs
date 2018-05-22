@@ -2,9 +2,6 @@
 `DataView` join structs and implementations.
 */
 
-
-use indexmap::IndexMap;
-
 use frame::{DataFrame};
 use field::{RFieldIdent, DataType, FieldIdent, TypedFieldIdent};
 use masked::MaybeNa;
@@ -261,13 +258,14 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
     // compute merged frame list and field list for the new dataframe
     // compute the field list for the new dataframe
     let (new_frames, other_frame_indices) = compute_merged_frames(left, right);
-    let new_fields = compute_merged_field_list(left, right, &other_frame_indices, &join)?;
+    let (right_idents, mut new_fields) =
+        compute_merged_field_list(left, right, &other_frame_indices, &join)?;
+    let new_fields = new_fields.drain(..).map(|(_, vf)| vf).collect::<Vec<_>>();
 
     // create new datastore with fields of both left and right
     let mut new_field_idents = vec![];
     let mut ds = DataStore::with_fields(
-        new_fields.values()
-        .map(|&ref view_field| {
+        new_fields.iter().map(|&ref view_field| {
             let new_ident = view_field.rident.to_renamed_field_ident();
             new_field_idents.push(new_ident.clone());
             let field_type = new_frames[view_field.frame_idx]
@@ -278,18 +276,20 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
                 ty: field_type,
             }
         })
-        .collect::<Vec<_>>());
+        .collect::<Vec<_>>()
+    );
 
     for (left_idx, right_idx) in merge_indices {
         let mut field_idx = 0;
         for left_ident in left.fields.keys() {
             left.apply_to_elem(
                 &mut AddToDsFn { ds: &mut ds, ident: new_field_idents[field_idx].clone() },
-                &left_ident, left_idx
+                &left_ident,
+                left_idx
             )?;
             field_idx += 1;
         }
-        for right_ident in right.fields.keys() {
+        for right_ident in &right_idents {
             right.apply_to_elem(
                 &mut AddToDsFn { ds: &mut ds, ident: new_field_idents[field_idx].clone() },
                 &right_ident,
@@ -430,51 +430,59 @@ pub(crate) fn compute_merged_frames(left: &DataView, right: &DataView)
 
 pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &DataView,
     right: &DataView, right_frame_mapping: &Vec<usize>, join: T)
-    -> Result<IndexMap<FieldIdent, ViewField>>
+    -> Result<(Vec<FieldIdent>, Vec<(FieldIdent, ViewField)>)>
 {
     // build new fields vector, updating the frame indices in the ViewFields copied
     // from the 'right' fields list
     let mut new_fields = left.fields.clone();
-    let mut field_coll = vec![];
+    let mut right_idents = vec![];
+    let mut field_collisions = vec![];
     let join = join.into();
     for (right_fieldname, right_field) in &right.fields {
         if new_fields.contains_key(right_fieldname) {
             // possible collision, see if collision is on join field
             if let Some(join) = join {
                 if join.left_ident == join.right_ident && &join.left_ident == right_fieldname {
-                    // collision on the join field, rename both
-                    // unwrap safe, we can only get here if left_ident in new_fields
-                    let mut left_key_field = new_fields.get(&join.left_ident).unwrap().clone();
-                    let new_left_ident_name = format!("{}.0", join.left_ident);
-                    left_key_field.rident.rename = Some(new_left_ident_name.clone());
-                    new_fields.insert(new_left_ident_name.into(), left_key_field);
-                    new_fields.swap_remove(&join.left_ident);
+                    // collision on the join field
+                    // * for equijoins, we only need one of the two (since they're the same), so we
+                    // don't have to do anything
+                    // * for non-equijoins, we rename both
+                    if join.predicate != Predicate::Equal {
+                        // unwrap safe, we can only get here if left_ident in new_fields
+                        let mut left_key_field = new_fields.get(&join.left_ident).unwrap().clone();
+                        let new_left_ident_name = format!("{}.0", join.left_ident);
+                        left_key_field.rident.rename = Some(new_left_ident_name.clone());
+                        new_fields.insert(new_left_ident_name.into(), left_key_field);
+                        new_fields.swap_remove(&join.left_ident);
 
-                    let new_right_ident_name = format!("{}.1", join.right_ident);
-                    new_fields.insert(new_right_ident_name.clone().into(), ViewField {
-                        rident: RFieldIdent {
-                            ident: right_field.rident.ident.clone(),
-                            rename: Some(new_right_ident_name),
-                        },
-                        frame_idx: right_frame_mapping[right_field.frame_idx]
-                    });
+                        let new_right_ident_name = format!("{}.1", join.right_ident);
+                        right_idents.push(right_fieldname.clone());
+                        new_fields.insert(new_right_ident_name.clone().into(), ViewField {
+                            rident: RFieldIdent {
+                                ident: right_field.rident.ident.clone(),
+                                rename: Some(new_right_ident_name),
+                            },
+                            frame_idx: right_frame_mapping[right_field.frame_idx]
+                        });
+                    }
                 } else {
-                    field_coll.push(right_fieldname.clone());
+                    field_collisions.push(right_fieldname.clone());
                 }
             } else {
-                field_coll.push(right_fieldname.clone());
+                field_collisions.push(right_fieldname.clone());
             }
             continue;
         }
+        right_idents.push(right_fieldname.clone());
         new_fields.insert(right_fieldname.clone(), ViewField {
             rident: right_field.rident.clone(),
             frame_idx: right_frame_mapping[right_field.frame_idx],
         });
     }
-    if field_coll.is_empty() {
-        Ok(new_fields)
+    if field_collisions.is_empty() {
+        Ok((right_idents, new_fields.drain(..).collect::<Vec<_>>()))
     } else {
-        Err(AgnesError::FieldCollision(field_coll))
+        Err(AgnesError::FieldCollision(field_collisions))
     }
 }
 
@@ -564,12 +572,10 @@ mod tests {
         )).expect("join failure").into();
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 7);
-        assert_eq!(joined_dv.nfields(), 5);
+        assert_eq!(joined_dv.nfields(), 4);
         unsigned::assert_dv_sorted_eq(&joined_dv, &"EmpId".into(),
             vec![0u64, 2, 5, 6, 8, 9, 10]);
-        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId.0".into(),
-            vec![1u64, 2, 1, 1, 3, 4, 4]);
-        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId.1".into(),
+        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId".into(),
             vec![1u64, 2, 1, 1, 3, 4, 4]);
         text::assert_dv_sorted_eq(&joined_dv, &"EmpName".into(),
             vec!["Sally", "Jamie", "Bob", "Louis", "Louise", "Cara", "Ann"]
@@ -608,12 +614,10 @@ mod tests {
         )).expect("join failure").into();
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 4);
-        assert_eq!(joined_dv.nfields(), 5);
+        assert_eq!(joined_dv.nfields(), 4);
         unsigned::assert_dv_sorted_eq(&joined_dv, &"EmpId".into(),
             vec![2u64, 8, 9, 10]);
-        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId.0".into(),
-            vec![2u64, 3, 4, 4]);
-        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId.1".into(),
+        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId".into(),
             vec![2u64, 3, 4, 4]);
         text::assert_dv_sorted_eq(&joined_dv, &"EmpName".into(),
             vec!["Jamie", "Louis", "Louise", "Ann"]);
@@ -661,12 +665,10 @@ mod tests {
         )).expect("join failure").into();
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 6);
-        assert_eq!(joined_dv.nfields(), 5);
+        assert_eq!(joined_dv.nfields(), 4);
         unsigned::assert_dv_sorted_eq(&joined_dv, &"EmpId".into(),
             vec![0u64, 2, 6, 8, 9, 10]);
-        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId.0".into(),
-            vec![1u64, 2, 1, 3, 4, 4]);
-        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId.1".into(),
+        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId".into(),
             vec![1u64, 2, 1, 3, 4, 4]);
         text::assert_dv_sorted_eq(&joined_dv, &"EmpName".into(),
             vec!["Sally", "Jamie", "Louis", "Louise", "Cara", "Ann"]
@@ -692,12 +694,10 @@ mod tests {
         )).expect("join failure").into();
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 4);
-        assert_eq!(joined_dv.nfields(), 5);
+        assert_eq!(joined_dv.nfields(), 4);
         unsigned::assert_dv_sorted_eq(&joined_dv, &"EmpId".into(),
             vec![2u64, 8, 9, 10]);
-        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId.0".into(),
-            vec![2u64, 3, 4, 4]);
-        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId.1".into(),
+        unsigned::assert_dv_sorted_eq(&joined_dv, &"DeptId".into(),
             vec![2u64, 3, 4, 4]);
         text::assert_dv_sorted_eq(&joined_dv, &"EmpName".into(),
             vec!["Jamie", "Louis", "Louise", "Ann"]);

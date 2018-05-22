@@ -14,6 +14,7 @@ parameters.
 
 */
 use std::fmt::{self, Display, Formatter};
+use std::iter::FromIterator;
 
 use indexmap::IndexMap;
 use indexmap::map::Keys;
@@ -151,8 +152,9 @@ impl DataView {
         let (new_frames, other_store_indices) = compute_merged_frames(self, other);
 
         // compute merged field list
-        let new_fields = compute_merged_field_list(self, other, &other_store_indices, None)?;
-
+        let (_, mut new_fields) =
+            compute_merged_field_list(self, other, &other_store_indices, None)?;
+        let new_fields = IndexMap::from_iter(new_fields.drain(..));
         Ok(DataView {
             frames: new_frames,
             fields: new_fields
