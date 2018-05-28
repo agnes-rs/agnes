@@ -10,7 +10,7 @@ use apply::*;
 use error;
 
 /// Missing value container.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum MaybeNa<T: DataType> {
     /// Indicates a missing (NA) value.
     Na,

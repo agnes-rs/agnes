@@ -32,3 +32,6 @@ pub use self::stats::*;
 
 mod convert;
 pub use self::convert::*;
+
+mod unique;
+pub use self::unique::*;

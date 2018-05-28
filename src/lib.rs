@@ -30,6 +30,7 @@ pub use view::{SerializeAsVec, DataView};
 pub mod join;
 pub use join::{Join, JoinKind};
 pub mod frame;
+pub use frame::Filter;
 pub mod masked;
 pub use masked::MaybeNa;
 pub mod apply;

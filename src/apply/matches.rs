@@ -152,8 +152,7 @@ map_fn![
 /// Helper trait / implementations for finding an index set of values in a field that match a
 /// predicate. Returns a vector of indices of all elements in the field that pass the predicate.
 pub trait GetFilter<T> {
-    /// Returns vector of indices of all elements in the field specified with the `Selector` that
-    /// pass the predicate.
+    /// Returns vector of indices of all elements in the field specified that pass the predicate.
     fn get_filter<F: Fn(&T) -> bool>(&self, pred: F, ident: &FieldIdent) -> Result<Vec<usize>>;
 }
 
@@ -183,8 +182,7 @@ impl_dataframe_get_filter!(f64,    FilterFnFloat);
 /// Helper trait / implementations for matching a predicate to a field. Returns `true` if the
 /// provided predicate returns true for all elements in the field.
 pub trait MatchesAll<T> {
-    /// Returns `true` if the all elements in the field specified with the `Selector` pass the
-    /// predicate.
+    /// Returns `true` if the all elements in the field specified pass the predicate.
     fn matches_all<F: Fn(&T) -> bool>(&self, pred: F, field: &FieldIdent) -> Result<bool>;
 }
 

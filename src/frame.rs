@@ -234,30 +234,37 @@ impl<'a, 'b, F: FieldReduceFn<'a>> FieldReduceFn<'a> for FrameFieldReduceFn<'a, 
 }
 
 pub(crate) struct SerializedField<'a> {
-    pub(crate) ident: FieldIdent,
-    pub(crate) frame: &'a DataFrame
+    ident: FieldIdent,
+    frame: &'a DataFrame
+}
+impl<'a> SerializedField<'a> {
+    pub fn new(ident: FieldIdent, frame: &'a DataFrame) -> SerializedField<'a> {
+        SerializedField {
+            ident,
+            frame
+        }
+    }
 }
 
-struct SerializeFn<'b, S: Serializer> {
+struct SerializeFn<S: Serializer> {
     serializer: Option<S>,
-    frame: &'b DataFrame
 }
 macro_rules! sresult { ($s:tt) => (Result<$s::Ok, $s::Error>) }
 fn do_serialize<'a, 'b, T: DataType + Serialize, S: 'a + Serializer>(
-        sfn: &mut SerializeFn<'b, S>, field: &DataIndex<T>
+        sfn: &mut SerializeFn<S>, field: &DataIndex<T>
     ) -> sresult![S]
 {
     let serializer = sfn.serializer.take().unwrap();
     let mut seq = serializer.serialize_seq(Some(field.len()))?;
     for idx in 0..field.len() {
-        match field.get_data(sfn.frame.map_index(idx)).unwrap() {
+        match field.get_data(idx).unwrap() {
             MaybeNa::Exists(&ref val) =>  seq.serialize_element(val)?,
             MaybeNa::Na =>  seq.serialize_element("null")?
         }
     }
     seq.end()
 }
-impl<'b, Ser: Serializer> FieldMapFn for SerializeFn<'b, Ser> {
+impl<Ser: Serializer> FieldMapFn for SerializeFn<Ser> {
     type Output = sresult![Ser];
     fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &T) -> sresult![Ser] {
         do_serialize(self, field)
@@ -280,7 +287,7 @@ impl<'b, Ser: Serializer> FieldMapFn for SerializeFn<'b, Ser> {
 impl<'b> Serialize for SerializedField<'b> {
     fn serialize<S>(&self, serializer: S) -> sresult![S] where S: Serializer {
         self.frame.field_apply_to(
-            &mut SerializeFn { serializer: Some(serializer), frame: &self.frame },
+            &mut SerializeFn { serializer: Some(serializer) },
             &self.ident
         ).unwrap_or(
             Err(ser::Error::custom(format!("missing field: {}", self.ident.to_string())))

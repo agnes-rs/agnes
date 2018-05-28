@@ -29,8 +29,8 @@ impl<T> SortOrder for T where T: FieldApply {
 }
 
 field_map_fn![
-    /// `FieldFn` function struct for retrieving the sort permutation order for a field.
-    SortOrderFn { type Output = Vec<usize>; }
+    /// `FieldMapFn` function struct for retrieving the sort permutation order for a field.
+    pub SortOrderFn { type Output = Vec<usize>; }
     fn [unsigned, signed, text, boolean](self, field) {
         // ordering is (arbitrarily) going to be:
         // NA values, followed by everything else ascending

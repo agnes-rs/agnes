@@ -389,10 +389,10 @@ impl Serialize for DataView {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let mut map = serializer.serialize_map(Some(self.fields.len()))?;
         for field in self.fields.values() {
-            map.serialize_entry(&field.rident.to_string(), &SerializedField {
-                ident: field.rident.ident.clone(),
-                frame: &self.frames[field.frame_idx]
-            })?;
+            map.serialize_entry(&field.rident.to_string(), &SerializedField::new(
+                field.rident.ident.clone(),
+                &self.frames[field.frame_idx]
+            ))?;
         }
         map.end()
     }
@@ -414,10 +414,10 @@ impl Serialize for FieldView {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
             where S: Serializer {
         if self.frame.has_field(&self.field.ident) {
-            SerializedField {
-                ident: self.field.to_renamed_field_ident(),
-                frame: &self.frame
-            }.serialize(serializer)
+            SerializedField::new(
+                self.field.to_renamed_field_ident(),
+                &self.frame
+            ).serialize(serializer)
         } else {
             Err(ser::Error::custom(format!("missing field: {}", self.field.to_string())))
         }
@@ -452,6 +452,16 @@ pub trait IntoFieldList {
     fn into_field_list(self) -> Vec<FieldIdent>;
 }
 
+impl IntoFieldList for FieldIdent {
+    fn into_field_list(self) -> Vec<FieldIdent> {
+        vec![self]
+    }
+}
+impl<'a> IntoFieldList for &'a FieldIdent {
+    fn into_field_list(self) -> Vec<FieldIdent> {
+        vec![self.clone()]
+    }
+}
 impl IntoFieldList for Vec<FieldIdent> {
     fn into_field_list(self) -> Vec<FieldIdent> {
         self

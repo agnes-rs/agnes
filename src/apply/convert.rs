@@ -165,6 +165,6 @@ map_fn![
 impl<T> ConvertFn<T> {
     /// Create a new conversion `MapFn`.
     pub fn new() -> ConvertFn<T> {
-    ConvertFn { phantom: PhantomData }
+        ConvertFn { phantom: PhantomData }
     }
 }
