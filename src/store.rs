@@ -1,6 +1,6 @@
 //! Data storage struct and implentation.
 
-use std::rc::Rc;
+use std::sync::Arc;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -296,7 +296,7 @@ impl FieldApplyTo for DataStore {
             })
     }
 }
-impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, Rc<DataStore>> {
+impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, Arc<DataStore>> {
     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
         -> Result<F::Output>
     {
@@ -306,7 +306,7 @@ impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, Rc<DataStore>> {
     }
 
 }
-impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, Rc<DataStore>>> {
+impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, Arc<DataStore>>> {
     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
         -> Result<F::Output>
     {

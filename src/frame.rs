@@ -2,7 +2,7 @@
 Structs and implementation for Frame-level data structure. A `DataFrame` is a reference to an
 underlying data store, along with record-based filtering and sorting details.
 */
-use std::rc::Rc;
+use std::sync::Arc;
 use std::marker::PhantomData;
 use serde::{Serialize, Serializer};
 use serde::ser::{self, SerializeSeq};
@@ -17,7 +17,7 @@ use masked::MaybeNa;
 #[derive(Debug, Clone)]
 pub struct DataFrame {
     permutation: Option<Vec<usize>>,
-    store: Rc<DataStore>,
+    store: Arc<DataStore>,
 }
 impl DataFrame {
     /// Number of rows that pass the filter in this frame.
@@ -29,14 +29,14 @@ impl DataFrame {
     }
     #[cfg(test)]
     pub(crate) fn store_ref_count(&self) -> usize {
-        Rc::strong_count(&self.store)
+        Arc::strong_count(&self.store)
     }
     /// Get the field type of a particular field in the underlying `DataStore`.
     pub fn get_field_type(&self, ident: &FieldIdent) -> Option<FieldType> {
         self.store.get_field_type(ident)
     }
     pub(crate) fn has_same_store(&self, other: &DataFrame) -> bool {
-        Rc::ptr_eq(&self.store, &other.store)
+        Arc::ptr_eq(&self.store, &other.store)
     }
     fn map_index(&self, requested: usize) -> usize {
         match self.permutation {
@@ -150,7 +150,7 @@ impl From<DataStore> for DataFrame {
     fn from(store: DataStore) -> DataFrame {
         DataFrame {
             permutation: None,
-            store: Rc::new(store),
+            store: Arc::new(store),
         }
     }
 }
