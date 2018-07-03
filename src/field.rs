@@ -57,6 +57,11 @@ impl From<String> for FieldIdent {
         FieldIdent::Name(src)
     }
 }
+impl<'a, T> From<&'a T> for FieldIdent where FieldIdent: From<T>, T: Clone {
+    fn from(src: &'a T) -> FieldIdent {
+        FieldIdent::from(src.clone())
+    }
+}
 
 /// Valid field types
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
