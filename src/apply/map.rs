@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use masked::{MaybeNa, IntoMaybeNa};
 use error::*;
 use field::{DataType, FieldIdent};
@@ -392,6 +394,133 @@ macro_rules! map_fn_impl {
         map_fn_impl!($($rest)*);
     );
     () => ()
+}
+
+
+macro_rules! tpanic {
+    ($actual_ty_str:expr, $expected_ty_str:expr) => {
+        panic!("type error: type-specific map function expecting type '{}' applied to data \
+            of type '{}'", $actual_ty_str, $expected_ty_str);
+    }
+}
+
+/// Trait for applying an arbitrary function (implementing the trait `Fn`) to every data element
+/// in a data structure.
+pub trait ApplyUnchecked<T: DataType> {
+    /// Apply the provided function to each data element in this data structure. Panics if applied
+    /// to a data element of a type the function is not expecting.
+    fn apply_unchecked<F, S, Output>(&self, state: S, f: F) -> Result<Vec<Output>>
+        where F: Fn(MaybeNa<&T>, &mut S) -> Output, Output: IntoMaybeNa;
+}
+impl<U> ApplyUnchecked<u64> for U where U: Apply {
+    fn apply_unchecked<F, S, Output>(&self, state: S, f: F) -> Result<Vec<Output>>
+        where F: Fn(MaybeNa<&u64>, &mut S) -> Output, Output: IntoMaybeNa
+    {
+        map_fn![
+            UncheckedUnsignedFn<(F, S, Output)>
+                where (F: Fn(MaybeNa<&u64>, &mut S) -> Output, Output: IntoMaybeNa)
+            {
+                type Output = Output;
+                f: F,
+                state: S,
+                phantom: PhantomData<Output>
+            }
+            fn unsigned(self, value) { (self.f)(value, &mut self.state) }
+            fn signed(self, _) { tpanic!["signed", "unsigned"]; }
+            fn text(self, _) { tpanic!["text", "unsigned"]; }
+            fn boolean(self, _) { tpanic!["boolean", "unsigned"]; }
+            fn float(self, _) { tpanic!["float", "unsigned"]; }
+        ];
+        self.apply(&mut UncheckedUnsignedFn { f, state, phantom: PhantomData })
+    }
+}
+impl<U> ApplyUnchecked<i64> for U where U: Apply {
+    fn apply_unchecked<F, S, Output>(&self, state: S, f: F) -> Result<Vec<Output>>
+        where F: Fn(MaybeNa<&i64>, &mut S) -> Output, Output: IntoMaybeNa
+    {
+        map_fn![
+            UncheckedSignedFn<(F, S, Output)>
+                where (F: Fn(MaybeNa<&i64>, &mut S) -> Output, Output: IntoMaybeNa)
+            {
+                type Output = Output;
+                f: F,
+                state: S,
+                phantom: PhantomData<Output>
+            }
+            fn unsigned(self, _) { tpanic!["unsigned", "signed"]; }
+            fn signed(self, value) { (self.f)(value, &mut self.state) }
+            fn text(self, _) { tpanic!["text", "signed"]; }
+            fn boolean(self, _) { tpanic!["boolean", "signed"]; }
+            fn float(self, _) { tpanic!["float", "signed"]; }
+        ];
+        self.apply(&mut UncheckedSignedFn { f, state, phantom: PhantomData })
+    }
+}
+impl<U> ApplyUnchecked<String> for U where U: Apply {
+    fn apply_unchecked<F, S, Output>(&self, state: S, f: F) -> Result<Vec<Output>>
+        where F: Fn(MaybeNa<&String>, &mut S) -> Output, Output: IntoMaybeNa
+    {
+        map_fn![
+            UncheckedTextFn<(F, S, Output)>
+                where (F: Fn(MaybeNa<&String>, &mut S) -> Output, Output: IntoMaybeNa)
+            {
+                type Output = Output;
+                f: F,
+                state: S,
+                phantom: PhantomData<Output>
+            }
+            fn unsigned(self, _) { tpanic!["unsigned", "text"]; }
+            fn signed(self, _) { tpanic!["signed", "text"] }
+            fn text(self, value) { (self.f)(value, &mut self.state) }
+            fn boolean(self, _) { tpanic!["boolean", "text"]; }
+            fn float(self, _) { tpanic!["float", "text"]; }
+        ];
+        self.apply(&mut UncheckedTextFn { f, state, phantom: PhantomData })
+    }
+}
+impl<U> ApplyUnchecked<bool> for U where U: Apply {
+    fn apply_unchecked<F, S, Output>(&self, state: S, f: F) -> Result<Vec<Output>>
+        where F: Fn(MaybeNa<&bool>, &mut S) -> Output, Output: IntoMaybeNa
+    {
+        map_fn![
+            UncheckedBoolFn<(F, S, Output)>
+                where (F: Fn(MaybeNa<&bool>, &mut S) -> Output, Output: IntoMaybeNa)
+            {
+                type Output = Output;
+                f: F,
+                state: S,
+                phantom: PhantomData<Output>
+            }
+            fn unsigned(self, _) { tpanic!["unsigned", "boolean"]; }
+            fn signed(self, _) { tpanic!["signed", "boolean"] }
+            fn text(self, _) { tpanic!["text", "boolean"]; }
+            fn boolean(self, value) { (self.f)(value, &mut self.state) }
+            fn float(self, _) { tpanic!["float", "boolean"]; }
+        ];
+        self.apply(&mut UncheckedBoolFn { f, state, phantom: PhantomData })
+    }
+}
+impl<U> ApplyUnchecked<f64> for U where U: Apply {
+    fn apply_unchecked<F, S, Output>(&self, state: S, f: F) -> Result<Vec<Output>>
+        where F: Fn(MaybeNa<&f64>, &mut S) -> Output, Output: IntoMaybeNa
+    {
+        map_fn![
+            UncheckedFloatFn<(F, S, Output)>
+                where (F: Fn(MaybeNa<&f64>, &mut S) -> Output, Output: IntoMaybeNa)
+            {
+                type Output = Output;
+                f: F,
+                state: S,
+                phantom: PhantomData<Output>
+            }
+            fn unsigned(self, _) { tpanic!["unsigned", "float"]; }
+            fn signed(self, _) { tpanic!["signed", "float"] }
+            fn text(self, _) { tpanic!["text", "float"]; }
+            fn boolean(self, _) { tpanic!["boolean", "float"]; }
+            fn float(self, value) { (self.f)(value, &mut self.state) }
+        ];
+        self.apply(&mut UncheckedFloatFn { f, state, phantom: PhantomData })
+    }
 }
 
 /// Trait for structures that can be applied to a single `MaybeNa` value, resulting in a specific
