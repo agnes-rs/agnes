@@ -22,6 +22,8 @@ extern crate bit_vec;
 extern crate csv_sniffer;
 extern crate tempfile;
 
+#[cfg(test)] extern crate rand;
+
 pub mod source;
 #[macro_use] pub mod store;
 pub mod field;
