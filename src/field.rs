@@ -3,6 +3,8 @@
 use std::fmt::{self, Display, Debug};
 use std::hash::{Hash, Hasher};
 
+use num_traits::Float;
+
 use serde::Serialize;
 use csv_sniffer;
 
@@ -101,7 +103,7 @@ impl fmt::Display for FieldType {
 }
 
 /// Marker trait for types supported by Agnes data structures
-pub trait DataType: PartialOrd + Serialize + Display + Debug {}
+pub trait DataType: PartialOrd + Serialize + Display + Debug + DataTypeHash {}
 impl DataType for u64 {}
 impl DataType for i64 {}
 impl DataType for String {}
@@ -109,6 +111,28 @@ impl DataType for bool {}
 impl DataType for f64 {}
 
 impl<'a, T> DataType for &'a T where T: DataType {}
+
+/// Trait to provide comon hashing ability for all `DataType`s. Hashes floating point by
+/// decoding into mantissa, exponent, sign integers and hashing those.
+pub trait DataTypeHash {
+    /// Hash type into `Hasher`. Should function similarly to function in `std::hash::Hash` trait.
+    fn dt_hash<H: Hasher>(&self, state: &mut H);
+}
+impl DataTypeHash for u64 { fn dt_hash<H: Hasher>(&self, state: &mut H) { self.hash(state); } }
+impl DataTypeHash for i64 { fn dt_hash<H: Hasher>(&self, state: &mut H) { self.hash(state); } }
+impl DataTypeHash for String { fn dt_hash<H: Hasher>(&self, state: &mut H) { self.hash(state); } }
+impl DataTypeHash for bool { fn dt_hash<H: Hasher>(&self, state: &mut H) { self.hash(state); } }
+//TODO: handle Eq-Hash inequalities (0.0 / -0.0 should be equal and hash to same)
+impl DataTypeHash for f64 {
+    fn dt_hash<H: Hasher>(&self, state: &mut H) {
+        self.integer_decode().hash(state);
+    }
+}
+impl<'a, T> DataTypeHash for &'a T where T: DataTypeHash {
+    fn dt_hash<H: Hasher>(&self, state: &mut H) {
+        (*self).dt_hash(state);
+    }
+}
 
 
 /// Common enum for a single value of any of the valid Agnes data types.

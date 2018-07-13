@@ -1,3 +1,5 @@
+use std::hash::{Hash, Hasher};
+
 use field::FieldIdent;
 use apply::{Map, Apply, ApplyTo, MapFn};
 use error::*;
@@ -82,6 +84,80 @@ pub enum ReduceDataIndex<'a> {
     Boolean(OwnedOrRef<'a, bool>),
     /// An floating-point data structure implementing `DataIndex`.
     Float(OwnedOrRef<'a, f64>),
+}
+impl<'a> ReduceDataIndex<'a> {
+    /// Returns the length of this indexable data structure.
+    pub fn len(&self) -> usize {
+        match *self {
+            ReduceDataIndex::Unsigned(ref di) => di.len(),
+            ReduceDataIndex::Signed(ref di) => di.len(),
+            ReduceDataIndex::Text(ref di) => di.len(),
+            ReduceDataIndex::Boolean(ref di) => di.len(),
+            ReduceDataIndex::Float(ref di) => di.len(),
+        }
+    }
+    /// Returns a structure that refers to a specific element in this indexable data structure.
+    pub fn get_datum(&'a self, idx: usize) -> ReduceDatum<'a> {
+        ReduceDatum {
+            rdi: self,
+            idx,
+        }
+    }
+}
+
+/// Structure that refers to a specific element within a `ReduceDataIndex` data structure.
+pub struct ReduceDatum<'a> {
+    rdi: &'a ReduceDataIndex<'a>,
+    idx: usize
+}
+impl<'a> PartialEq for ReduceDatum<'a> {
+    fn eq(&self, other: &ReduceDatum) -> bool {
+        match (self.rdi, other.rdi) {
+            (&ReduceDataIndex::Unsigned(ref di1), &ReduceDataIndex::Unsigned(ref di2)) => {
+                di1.get_data(self.idx).expect("invalid idx")
+                    .eq(&di2.get_data(self.idx).expect("invalid idx"))
+            },
+            (&ReduceDataIndex::Signed(ref di1), &ReduceDataIndex::Signed(ref di2)) => {
+                di1.get_data(self.idx).expect("invalid idx")
+                    .eq(&di2.get_data(self.idx).expect("invalid idx"))
+            },
+            (&ReduceDataIndex::Text(ref di1), &ReduceDataIndex::Text(ref di2)) => {
+                di1.get_data(self.idx).expect("invalid idx")
+                    .eq(&di2.get_data(self.idx).expect("invalid idx"))
+            },
+            (&ReduceDataIndex::Boolean(ref di1), &ReduceDataIndex::Boolean(ref di2)) => {
+                di1.get_data(self.idx).expect("invalid idx")
+                    .eq(&di2.get_data(self.idx).expect("invalid idx"))
+            },
+            (&ReduceDataIndex::Float(ref di1), &ReduceDataIndex::Float(ref di2)) => {
+                di1.get_data(self.idx).expect("invalid idx")
+                    .eq(&di2.get_data(self.idx).expect("invalid idx"))
+            },
+            _ => false // non-matching types
+        }
+    }
+}
+impl<'a> Eq for ReduceDatum<'a> {}
+impl<'a> Hash for ReduceDatum<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match *self.rdi {
+            ReduceDataIndex::Unsigned(ref di) => {
+                di.get_data(self.idx).expect("invalid idx").hash(state)
+            },
+            ReduceDataIndex::Signed(ref di) => {
+                di.get_data(self.idx).expect("invalid idx").hash(state)
+            },
+            ReduceDataIndex::Text(ref di) => {
+                di.get_data(self.idx).expect("invalid idx").hash(state)
+            },
+            ReduceDataIndex::Boolean(ref di) => {
+                di.get_data(self.idx).expect("invalid idx").hash(state)
+            },
+            ReduceDataIndex::Float(ref di) => {
+                di.get_data(self.idx).expect("invalid idx").hash(state)
+            },
+        }
+    }
 }
 
 /// Type for accessing a specified field (identified by a `FieldIdent`) for an underlying data

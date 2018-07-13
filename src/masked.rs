@@ -1,5 +1,7 @@
 //! Missing value handling structs.
 
+use std::mem;
+use std::hash::{Hash, Hasher};
 use std::fmt;
 
 use serde::ser::{Serialize, Serializer, SerializeSeq};
@@ -10,7 +12,7 @@ use apply::*;
 use error;
 
 /// Missing value container.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MaybeNa<T: DataType> {
     /// Indicates a missing (NA) value.
     Na,
@@ -68,6 +70,14 @@ impl<T: DataType> fmt::Display for MaybeNa<T> where T: fmt::Display {
         match *self {
             MaybeNa::Exists(ref t) => write!(f, "{}", t),
             MaybeNa::Na        => write!(f, "NA")
+        }
+    }
+}
+impl<'a, T: DataType> Hash for MaybeNa<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        mem::discriminant(self).hash(state);
+        if let MaybeNa::Exists(ref t) = *self {
+            t.dt_hash(state);
         }
     }
 }

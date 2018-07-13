@@ -7,6 +7,7 @@ and viewing.
 
 extern crate serde;
 #[macro_use] extern crate serde_derive;
+extern crate num_traits;
 extern crate futures;
 extern crate hyper;
 extern crate tokio_core;
