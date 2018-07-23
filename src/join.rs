@@ -7,7 +7,9 @@ use field::{RFieldIdent, DataType, FieldIdent, TypedFieldIdent};
 use masked::MaybeNa;
 use view::{DataView, ViewField};
 use store::{DataStore};
-use apply::*;
+use apply::mapfn::*;
+use apply::{Select, AddToDsFn, SortOrderBy};
+use access::{FieldData, DataIndex};
 use error::*;
 
 /// Join information used to describe the type of join being used.
@@ -217,26 +219,26 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
     impl<'a> FieldReduceFn<'a> for FindMergeIndices {
         type Output = Vec<(usize, usize)>;
 
-        fn reduce(&mut self, fields: Vec<ReduceDataIndex<'a>>) -> Vec<(usize, usize)> {
+        fn reduce(&mut self, fields: Vec<FieldData<'a>>) -> Vec<(usize, usize)> {
             debug_assert_eq!(fields.len(), 2);
             match (&fields[0], &fields[1]) {
-                (&ReduceDataIndex::Unsigned(ref left), &ReduceDataIndex::Unsigned(ref right)) => {
+                (&FieldData::Unsigned(ref left), &FieldData::Unsigned(ref right)) => {
                     merge_masked_data(&self.left_perm, &self.right_perm, left,
                         right, self.predicate)
                 },
-                (&ReduceDataIndex::Signed(ref left), &ReduceDataIndex::Signed(ref right)) => {
+                (&FieldData::Signed(ref left), &FieldData::Signed(ref right)) => {
                     merge_masked_data(&self.left_perm, &self.right_perm, left,
                         right, self.predicate)
                 },
-                (&ReduceDataIndex::Text(ref left), &ReduceDataIndex::Text(ref right)) => {
+                (&FieldData::Text(ref left), &FieldData::Text(ref right)) => {
                     merge_masked_data(&self.left_perm, &self.right_perm, left,
                         right, self.predicate)
                 },
-                (&ReduceDataIndex::Boolean(ref left), &ReduceDataIndex::Boolean(ref right)) => {
+                (&FieldData::Boolean(ref left), &FieldData::Boolean(ref right)) => {
                     merge_masked_data(&self.left_perm, &self.right_perm, left,
                         right, self.predicate)
                 },
-                (&ReduceDataIndex::Float(ref left), &ReduceDataIndex::Float(ref right)) => {
+                (&FieldData::Float(ref left), &FieldData::Float(ref right)) => {
                     merge_masked_data(&self.left_perm, &self.right_perm, left,
                         right, self.predicate)
                 },
@@ -248,7 +250,7 @@ pub fn sort_merge_join(left: &DataView, right: &DataView, join: Join) -> Result<
     }
 
     // find the join indices
-    let merge_indices = vec![left.select(&join.left_ident), right.select(&join.right_ident)]
+    let merge_indices = vec![left.select_one(&join.left_ident), right.select_one(&join.right_ident)]
         .apply_field_reduce(&mut FindMergeIndices {
             left_perm,
             right_perm,
@@ -490,6 +492,7 @@ pub(crate) fn compute_merged_field_list<'a, T: Into<Option<&'a Join>>>(left: &Da
 mod tests {
     use super::*;
     use masked::{MaybeNa, MaskedData};
+    use apply::SortOrder;
     use frame::Filter;
     use test_utils::*;
 

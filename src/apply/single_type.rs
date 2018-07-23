@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 use masked::{MaybeNa};
-use apply::MapFn;
+use apply::mapfn::MapFn;
 use field::DataType;
 
 /// `MapFn` containing a predicate that acts upon a specific data type `T`. Will panic if used with

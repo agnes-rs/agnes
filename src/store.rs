@@ -9,12 +9,16 @@ use field::{FieldIdent, DataType, TypedFieldIdent, DsField, FieldType};
 use masked::{MaskedData};
 use error::*;
 use MaybeNa;
-use apply::*;
+use access::{DataIterator, FieldData, OwnedOrRef};
+use apply::mapfn::*;
+use apply::Selection;
 
 type TypeData<T> = HashMap<FieldIdent, MaskedData<T>>;
 
 /// Data storage underlying a dataframe. Data is retrievable both by index (of the fields vector)
 /// and by field name.
+///
+/// DataStores are growable (through `AddData` and `AddDataVec`), but existing data is immutable.
 #[derive(Debug, Clone)]
 pub struct DataStore {
     /// List of fields within the data store
@@ -178,19 +182,19 @@ impl DataStore {
             .and_then(|&index| self.fields.get(index).map(|&ref dsfield| dsfield.ty_ident.ty))
     }
 
-    fn get_reduce_data_index(&self, ident: &FieldIdent) -> Option<ReduceDataIndex> {
+    pub(crate) fn get_field_data(&self, ident: &FieldIdent) -> Option<FieldData> {
         self.field_map.get(ident).and_then(|&field_idx| {
             match self.fields[field_idx].ty_ident.ty {
                 FieldType::Unsigned => self.get_unsigned_field(ident)
-                    .map(|data| ReduceDataIndex::Unsigned(OwnedOrRef::Ref(data))),
+                    .map(|data| FieldData::Unsigned(OwnedOrRef::Ref(data))),
                 FieldType::Signed => self.get_signed_field(ident)
-                    .map(|data| ReduceDataIndex::Signed(OwnedOrRef::Ref(data))),
+                    .map(|data| FieldData::Signed(OwnedOrRef::Ref(data))),
                 FieldType::Text => self.get_text_field(ident)
-                    .map(|data| ReduceDataIndex::Text(OwnedOrRef::Ref(data))),
+                    .map(|data| FieldData::Text(OwnedOrRef::Ref(data))),
                 FieldType::Boolean => self.get_boolean_field(ident)
-                    .map(|data| ReduceDataIndex::Boolean(OwnedOrRef::Ref(data))),
+                    .map(|data| FieldData::Boolean(OwnedOrRef::Ref(data))),
                 FieldType::Float => self.get_float_field(ident)
-                    .map(|data| ReduceDataIndex::Float(OwnedOrRef::Ref(data))),
+                    .map(|data| FieldData::Float(OwnedOrRef::Ref(data))),
             }
         })
     }
@@ -296,22 +300,22 @@ impl FieldApplyTo for DataStore {
             })
     }
 }
-impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, Arc<DataStore>> {
+impl<'a> ApplyFieldReduce<'a> for Selection<'a, Arc<DataStore>> {
     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
         -> Result<F::Output>
     {
-        self.data.get_reduce_data_index(&self.ident)
+        self.data.get_field_data(&self.ident)
             .ok_or(AgnesError::FieldNotFound(self.ident.clone()))
             .map(|data| f.reduce(vec![data]))
     }
 
 }
-impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, Arc<DataStore>>> {
+impl<'a> ApplyFieldReduce<'a> for Vec<Selection<'a, Arc<DataStore>>> {
     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
         -> Result<F::Output>
     {
         self.iter().map(|selection| {
-            selection.data.get_reduce_data_index(&selection.ident)
+            selection.data.get_field_data(&selection.ident)
                 .ok_or(AgnesError::FieldNotFound(selection.ident.clone()))
         }).collect::<Result<Vec<_>>>()
             .map(|data_vec| f.reduce(data_vec))
@@ -327,6 +331,12 @@ pub trait AddData<T: DataType> {
 pub trait AddDataVec<T: DataType> {
     /// Add a vector of data values to the specified field.
     fn add_data_vec(&mut self, ident: FieldIdent, data: Vec<MaybeNa<T>>);
+}
+/// Trait for adding data to a data structure (e.g. `DataStore`) from an iterator.
+pub trait AddDataFromIter<T: DataType> {
+    /// Add data to `self` with provided field identifier from an iterator over items of type
+    /// `MaybeNa<T>`.
+    fn add_data_from_iter<I: Iterator<Item=MaybeNa<T>>>(&mut self, ident: FieldIdent, iter: I);
 }
 
 macro_rules! impl_add_data {
@@ -345,6 +355,25 @@ impl AddDataVec<$dtype> for DataStore {
         }
     }
 }
+impl AddDataFromIter<$dtype> for DataStore {
+    fn add_data_from_iter<I: Iterator<Item=MaybeNa<$dtype>>>(&mut self, ident: FieldIdent, iter: I)
+    {
+        self.add_field(TypedFieldIdent { ident: ident.clone(), ty: $fty });
+        for datum in iter {
+            insert_value(&mut self.$hm, ident.clone(), datum);
+        }
+    }
+}
+impl<'a> AddDataFromIter<&'a $dtype> for DataStore {
+    fn add_data_from_iter<I: Iterator<Item=MaybeNa<&'a $dtype>>>(&mut self, ident: FieldIdent,
+        iter: I)
+    {
+        self.add_field(TypedFieldIdent { ident: ident.clone(), ty: $fty });
+        for datum in iter {
+            insert_value(&mut self.$hm, ident.clone(), datum.cloned());
+        }
+    }
+}
 
     )*}
 }
@@ -355,6 +384,32 @@ impl_add_data!(
     bool,   FieldType::Boolean,  boolean;
     f64,    FieldType::Float,    float
 );
+
+/// Trait for creating an object from a field identifier and a data structure with that field's
+/// data.
+pub trait FromData<D> {
+    /// Create a new `Self` from this data, using the specified field identifier.
+    fn from_data<I: Into<FieldIdent>>(ident: I, data: D) -> Self;
+}
+impl<'a> FromData<FieldData<'a>> for DataStore {
+    fn from_data<I: Into<FieldIdent>>(ident: I, data: FieldData<'a>) -> DataStore {
+        let mut store = DataStore::empty();
+        let ident = ident.into();
+        match data {
+            FieldData::Unsigned(ref data) =>
+                store.add_data_from_iter(ident, DataIterator::new(data)),
+            FieldData::Signed(ref data) =>
+                store.add_data_from_iter(ident, DataIterator::new(data)),
+            FieldData::Text(ref data) =>
+                store.add_data_from_iter(ident, DataIterator::new(data)),
+            FieldData::Boolean(ref data) =>
+                store.add_data_from_iter(ident, DataIterator::new(data)),
+            FieldData::Float(ref data) =>
+                store.add_data_from_iter(ident, DataIterator::new(data)),
+        }
+        store
+    }
+}
 
 fn max_len<K, T: DataType>(h: &HashMap<K, MaskedData<T>>) -> usize where K: Eq + Hash {
     h.values().fold(0, |acc, v| max(acc, v.len()))

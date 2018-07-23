@@ -2,7 +2,8 @@ use std::cmp::Ordering;
 
 use error::Result;
 use field::FieldIdent;
-use apply::{FieldMapFn, FieldApply, FieldApplyTo, DataIndex};
+use access::DataIndex;
+use apply::mapfn::*;
 
 /// Helper trait retrieving the sort permutation for a field.
 pub trait SortOrderBy {

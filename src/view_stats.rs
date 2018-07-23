@@ -6,9 +6,8 @@ use view::DataView;
 use field::DtValue;
 use field::FieldIdent;
 use field::FieldType;
+use apply::Select;
 use error::*;
-use apply::{Sum, Mean, Min, Max, StDev};
-
 
 /// Structure containing general statistics of a `DataView`.
 #[derive(Debug, Clone)]
@@ -45,11 +44,12 @@ impl DataView {
                 Ok(FieldStats {
                     ident: ident.clone(),
                     ty: self.get_field_type(ident).unwrap(),
-                    min: self.min(ident).map(|val| Some(val)).or_else(err_handler)?,
-                    max: self.max(ident).map(|val| Some(val)).or_else(err_handler)?,
-                    sum: self.sum(ident).map(|val| Some(val)).or_else(err_handler)?,
-                    mean: self.mean(ident).map(|val| Some(val)).or_else(err_handler)?,
-                    stdev: self.stdev(ident).map(|val| Some(val)).or_else(err_handler)?,
+                    min: self.select_one(ident).min().map(|val| Some(val)).or_else(err_handler)?,
+                    max: self.select_one(ident).max().map(|val| Some(val)).or_else(err_handler)?,
+                    sum: self.select_one(ident).sum().map(|val| Some(val)).or_else(err_handler)?,
+                    mean: self.select_one(ident).mean().map(|val| Some(val)).or_else(err_handler)?,
+                    stdev: self.select_one(ident).stdev()
+                        .map(|val| Some(val)).or_else(err_handler)?,
                 })
             }).collect::<Result<_>>()?
         })
@@ -129,24 +129,31 @@ mod tests {
 
         let dv2: DataView = sample_emp_table_extra().into();
         let vs2 = dv2.view_stats().unwrap();
+        println!("{}", vs2);
 
         assert_eq!(vs2.nrows, 7);
-        assert_eq!(vs2.fields.len(), 2);
-        assert_eq!(vs2.fields[0].ty, FieldType::Boolean);
-        assert_eq!(vs2.fields[1].ty, FieldType::Float);
+        assert_eq!(vs2.fields.len(), 3);
+        assert_eq!(vs2.fields[0].ty, FieldType::Signed);
+        assert_eq!(vs2.fields[1].ty, FieldType::Boolean);
+        assert_eq!(vs2.fields[2].ty, FieldType::Float);
 
-        assert_eq!(vs2.fields[0].min, Some(DtValue::Boolean(false))); // DidTraining min
-        assert_eq!(vs2.fields[0].max, Some(DtValue::Boolean(true))); // DidTraining max
-        assert_eq!(vs2.fields[0].sum, Some(DtValue::Unsigned(4))); // DidTraining sum (# of true)
-        assert!((vs2.fields[0].mean.unwrap() - 0.571429).abs() < 1e-6); // DidTraining mean
-        assert!((vs2.fields[0].stdev.unwrap() - 0.534522).abs() < 1e-6); // DidTraining stdev
+        assert_eq!(vs2.fields[0].min, Some(DtValue::Signed(-33))); // SalaryOffset min
+        assert_eq!(vs2.fields[0].max, Some(DtValue::Signed(12))); // SalaryOffset max
+        assert_eq!(vs2.fields[0].sum, Some(DtValue::Signed(-13))); // SalaryOffset sum (# of true)
+        assert!((vs2.fields[0].mean.unwrap() - -1.857143).abs() < 1e-6); // SalaryOffset mean
+        assert!((vs2.fields[0].stdev.unwrap() - 15.004761).abs() < 1e-6); // SalaryOffset stdev
 
-        assert_eq!(vs2.fields[1].min, Some(DtValue::Float(-1.2))); // VacationHrs min
-        assert_eq!(vs2.fields[1].max, Some(DtValue::Float(98.3))); // VacationHrs max
-        assert_eq!(vs2.fields[1].sum, Some(DtValue::Float(238.6))); // VacationHrs sum
-        assert!((vs2.fields[1].mean.unwrap() - 34.0857143).abs() < 1e-6); // VacationHrs mean
-        assert!((vs2.fields[1].stdev.unwrap() -  35.070948).abs() < 1e-6); // VacationHrs stdev
+        assert_eq!(vs2.fields[1].min, Some(DtValue::Boolean(false))); // DidTraining min
+        assert_eq!(vs2.fields[1].max, Some(DtValue::Boolean(true))); // DidTraining max
+        assert_eq!(vs2.fields[1].sum, Some(DtValue::Unsigned(4))); // DidTraining sum (# of true)
+        assert!((vs2.fields[1].mean.unwrap() - 0.571429).abs() < 1e-6); // DidTraining mean
+        assert!((vs2.fields[1].stdev.unwrap() - 0.534522).abs() < 1e-6); // DidTraining stdev
 
-        println!("{}", vs2);
+        assert_eq!(vs2.fields[2].min, Some(DtValue::Float(-1.2))); // VacationHrs min
+        assert_eq!(vs2.fields[2].max, Some(DtValue::Float(98.3))); // VacationHrs max
+        assert_eq!(vs2.fields[2].sum, Some(DtValue::Float(238.6))); // VacationHrs sum
+        assert!((vs2.fields[2].mean.unwrap() - 34.0857143).abs() < 1e-6); // VacationHrs mean
+        assert!((vs2.fields[2].stdev.unwrap() -  35.070948).abs() < 1e-6); // VacationHrs stdev
+
     }
 }

@@ -1,207 +1,195 @@
-use std::hash::{Hash, Hasher};
+use std::slice::Iter;
+use std::sync::Arc;
+use std::iter::FromIterator;
 
+use store::DataStore;
 use field::FieldIdent;
-use apply::{Map, Apply, ApplyTo, MapFn};
+use frame::{DataFrame, Framed};
+use view::{IntoFieldList, DataView, ViewField};
+use access::{FieldData, OwnedOrRef};
 use error::*;
-use field::DataType;
-use masked::MaybeNa;
 
-/// Trait implemented by data structures that represent a single column / vector / field of data.
-pub trait DataIndex<T: DataType> {
-    /// Returns the data (possibly NA) at the specified index, if it exists.
-    fn get_data(&self, idx: usize) -> Result<MaybeNa<&T>>;
-    /// Returns the length of this data field.
-    fn len(&self) -> usize;
-}
-
-impl<'a, T: DataType> DataIndex<T> for Vec<MaybeNa<&'a T>> {
-    fn get_data(&self, idx: usize) -> Result<MaybeNa<&T>> {
-        Ok(self[idx].clone())
-    }
-    fn len(&self) -> usize {
-        self.len()
+/// Trait for types that can have one or more fields selected (for applying functions).
+pub trait Select {
+    /// Select the specified fields.
+    fn select<'a, L: IntoFieldList>(&'a self, fields: L) -> SelectionList<'a, Self>;
+    /// Select one field. Useful shothand for using `select` with only one field.
+    fn select_one<'a, I: Into<FieldIdent>>(&'a self, ident: I) -> Selection<'a, Self> {
+        self.select(vec![ident.into()]).first().unwrap()
     }
 }
-impl<T: DataType> DataIndex<T> for Vec<MaybeNa<T>> {
-    fn get_data(&self, idx: usize) -> Result<MaybeNa<&T>> {
-        Ok(self[idx].as_ref())
-    }
-    fn len(&self) -> usize {
-        self.len()
-    }
-}
-impl<T: DataType> DataIndex<T> for Vec<T> {
-    fn get_data(&self, idx: usize) -> Result<MaybeNa<&T>> {
-        Ok(MaybeNa::Exists(&self[idx]))
-    }
-    fn len(&self) -> usize {
-        self.len()
-    }
-}
-
-/// Either an owned data structure or reference to a data structure that implements `DataIndex`.
-pub enum OwnedOrRef<'a, T: 'a + DataType> {
-    /// A boxed data structure that implemented `DataIndex`.
-    Owned(Box<DataIndex<T> + 'a>),
-    /// A reference to a data structure that implements `DataIndex`.
-    Ref(&'a DataIndex<T>)
-}
-impl<'a, T: 'a + DataType> OwnedOrRef<'a, T> {
-    /// Returns a reference to the underlying `DataIndex`, whether this `OwnedOrRef` owns the data
-    /// or simply possesses a reference to it.
-    pub fn as_ref(&'a self) -> &'a DataIndex<T> {
-        match *self {
-            OwnedOrRef::Owned(ref data) => data.as_ref(),
-            OwnedOrRef::Ref(data) => data,
-        }
-    }
-}
-impl<'a, T: 'a + DataType> DataIndex<T> for OwnedOrRef<'a, T> {
-    fn get_data(&self, idx: usize) -> Result<MaybeNa<&T>> {
-        match *self {
-            OwnedOrRef::Owned(ref data) => data.get_data(idx),
-            OwnedOrRef::Ref(ref data) => data.get_data(idx),
-        }
-    }
-    fn len(&self) -> usize {
-        match *self {
-            OwnedOrRef::Owned(ref data) => data.len(),
-            OwnedOrRef::Ref(ref data) => data.len(),
-        }
-    }
-}
-
-/// A generic structure to hold either an owned or reference structure which implements `DataIndex`,
-/// of any of the accepted agnes types.
-pub enum ReduceDataIndex<'a> {
-    /// An unsigned data structure implementing `DataIndex`.
-    Unsigned(OwnedOrRef<'a, u64>),
-    /// An signed data structure implementing `DataIndex`.
-    Signed(OwnedOrRef<'a, i64>),
-    /// An text data structure implementing `DataIndex`.
-    Text(OwnedOrRef<'a, String>),
-    /// An boolean data structure implementing `DataIndex`.
-    Boolean(OwnedOrRef<'a, bool>),
-    /// An floating-point data structure implementing `DataIndex`.
-    Float(OwnedOrRef<'a, f64>),
-}
-impl<'a> ReduceDataIndex<'a> {
-    /// Returns the length of this indexable data structure.
-    pub fn len(&self) -> usize {
-        match *self {
-            ReduceDataIndex::Unsigned(ref di) => di.len(),
-            ReduceDataIndex::Signed(ref di) => di.len(),
-            ReduceDataIndex::Text(ref di) => di.len(),
-            ReduceDataIndex::Boolean(ref di) => di.len(),
-            ReduceDataIndex::Float(ref di) => di.len(),
-        }
-    }
-    /// Returns a structure that refers to a specific element in this indexable data structure.
-    pub fn get_datum(&'a self, idx: usize) -> ReduceDatum<'a> {
-        ReduceDatum {
-            rdi: self,
-            idx,
-        }
-    }
-}
-
-/// Structure that refers to a specific element within a `ReduceDataIndex` data structure.
-pub struct ReduceDatum<'a> {
-    rdi: &'a ReduceDataIndex<'a>,
-    idx: usize
-}
-impl<'a> PartialEq for ReduceDatum<'a> {
-    fn eq(&self, other: &ReduceDatum) -> bool {
-        match (self.rdi, other.rdi) {
-            (&ReduceDataIndex::Unsigned(ref di1), &ReduceDataIndex::Unsigned(ref di2)) => {
-                di1.get_data(self.idx).expect("invalid idx")
-                    .eq(&di2.get_data(self.idx).expect("invalid idx"))
-            },
-            (&ReduceDataIndex::Signed(ref di1), &ReduceDataIndex::Signed(ref di2)) => {
-                di1.get_data(self.idx).expect("invalid idx")
-                    .eq(&di2.get_data(self.idx).expect("invalid idx"))
-            },
-            (&ReduceDataIndex::Text(ref di1), &ReduceDataIndex::Text(ref di2)) => {
-                di1.get_data(self.idx).expect("invalid idx")
-                    .eq(&di2.get_data(self.idx).expect("invalid idx"))
-            },
-            (&ReduceDataIndex::Boolean(ref di1), &ReduceDataIndex::Boolean(ref di2)) => {
-                di1.get_data(self.idx).expect("invalid idx")
-                    .eq(&di2.get_data(self.idx).expect("invalid idx"))
-            },
-            (&ReduceDataIndex::Float(ref di1), &ReduceDataIndex::Float(ref di2)) => {
-                di1.get_data(self.idx).expect("invalid idx")
-                    .eq(&di2.get_data(self.idx).expect("invalid idx"))
-            },
-            _ => false // non-matching types
-        }
-    }
-}
-impl<'a> Eq for ReduceDatum<'a> {}
-impl<'a> Hash for ReduceDatum<'a> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match *self.rdi {
-            ReduceDataIndex::Unsigned(ref di) => {
-                di.get_data(self.idx).expect("invalid idx").hash(state)
-            },
-            ReduceDataIndex::Signed(ref di) => {
-                di.get_data(self.idx).expect("invalid idx").hash(state)
-            },
-            ReduceDataIndex::Text(ref di) => {
-                di.get_data(self.idx).expect("invalid idx").hash(state)
-            },
-            ReduceDataIndex::Boolean(ref di) => {
-                di.get_data(self.idx).expect("invalid idx").hash(state)
-            },
-            ReduceDataIndex::Float(ref di) => {
-                di.get_data(self.idx).expect("invalid idx").hash(state)
-            },
-        }
+impl<D> Select for D {
+    fn select<'a, L: IntoFieldList>(&'a self, fields: L) -> SelectionList<'a, Self> {
+        let mut fields = fields.into_field_list();
+        let list = fields.drain(..).map(|ident| Selection::new(self, ident))
+            .collect::<SelectionList<D>>();
+        list
     }
 }
 
 /// Type for accessing a specified field (identified by a `FieldIdent`) for an underlying data
 /// structure.
 #[derive(Debug, Clone)]
-pub struct Selection<'a, 'b, D: 'a + ?Sized> {
+pub struct Selection<'a, D: 'a + ?Sized> {
     /// Underlying data structure for this selection. Contains the field identified by `ident`.
     pub data: &'a D,
     /// Identifier of the field within the `data` structure.
-    pub ident: &'b FieldIdent,
+    pub ident: FieldIdent,
 }
-
-impl<'a, 'b, D: 'a + ApplyTo> Apply for Selection<'a, 'b, D> {
-    fn apply<F: MapFn>(&self, f: &mut F) -> Result<Vec<F::Output>> {
-        self.data.apply_to(f, &self.ident)
-    }
-}
-
-impl<'a, 'b, D> Selection<'a, 'b, D> {
+impl<'a, D> Selection<'a, D> {
     /// Create a new `Selection` object from specified data and identifier.
-    pub fn new(data: &'a D, ident: &'b FieldIdent) -> Selection<'a, 'b, D> {
+    pub fn new(data: &'a D, ident: FieldIdent) -> Selection<'a, D> {
         Selection {
             data,
-            ident: ident
+            ident
         }
     }
 }
-impl<'a, 'b, D: ApplyTo> Selection<'a, 'b, D> {
-    /// Apply a `MapFn` to this selection (to be lazy evaluated).
-    pub fn map<F: MapFn>(&self, f: F) -> Map<Self, F> {
-        Map::new(self, f, None)
+
+/// Utility trait for directly accessing field data for the specified field from a data structure.
+pub trait Field<'a> {
+    /// Get the `FieldData` structure for the specified field of this data structue.
+    fn field<I: Into<FieldIdent>>(&'a self, ident: I) -> Result<FieldData<'a>>;
+}
+
+impl<'a, D> Field<'a> for D where D: 'a, Selection<'a, D>: GetFieldData<'a> {
+    fn field<I: Into<FieldIdent>>(&'a self, ident: I) -> Result<FieldData<'a>> {
+        self.select_one(ident).get_field_data()
     }
 }
 
-/// Trait for types that can have a specific field selected (for applying `MapFn`s).
-pub trait Select {
-    /// Select the specified field.
-    fn select<'a, 'b>(&'a self, ident: &'b FieldIdent) -> Selection<'a, 'b, Self>;
+/// Trait for retrieving a `FieldData` struct (containing the data for a single field) from a data
+/// structure. Used with `Selection` objects (which select the specified field to retrieve).
+pub trait GetFieldData<'a> {
+    /// Get a `FieldData` oject from this data structure.
+    fn get_field_data(&self) -> Result<FieldData<'a>>;
+}
+impl<'a> GetFieldData<'a> for Selection<'a, DataView> {
+    fn get_field_data(&self) -> Result<FieldData<'a>> {
+        self.data.fields.get(&self.ident)
+            .ok_or(AgnesError::FieldNotFound(self.ident.clone()))
+            .and_then(|view_field: &ViewField| {
+                self.data.frames[view_field.frame_idx]
+                    .select_one(view_field.rident.ident.clone())
+                    .get_field_data()
+            }
+        )
+    }
+}
+impl<'a> GetFieldData<'a> for Selection<'a, DataFrame> {
+    fn get_field_data(&self) -> Result<FieldData<'a>> {
+        self.data.store
+            .select_one(self.ident.clone())
+            .get_field_data()
+            .map(|field_data| {
+                match field_data {
+                    FieldData::Unsigned(data) =>
+                        FieldData::Unsigned(OwnedOrRef::Owned(Box::new(
+                            Framed::new(&self.data, data)
+                        ))),
+                    FieldData::Signed(data) =>
+                        FieldData::Signed(OwnedOrRef::Owned(Box::new(
+                            Framed::new(&self.data, data)
+                        ))),
+                    FieldData::Text(data) =>
+                        FieldData::Text(OwnedOrRef::Owned(Box::new(
+                            Framed::new(&self.data, data)
+                        ))),
+                    FieldData::Boolean(data) =>
+                        FieldData::Boolean(OwnedOrRef::Owned(Box::new(
+                            Framed::new(&self.data, data)
+                        ))),
+                    FieldData::Float(data) =>
+                        FieldData::Float(OwnedOrRef::Owned(Box::new(
+                            Framed::new(&self.data, data)
+                        ))),
+                }
+            })
+    }
+}
+impl<'a> GetFieldData<'a> for Selection<'a, Arc<DataStore>> {
+    fn get_field_data(&self) -> Result<FieldData<'a>> {
+        self.data.get_field_data(&self.ident)
+            .ok_or(AgnesError::FieldNotFound(self.ident.clone()))
+    }
 }
 
-impl<T> Select for T {
-    fn select<'a, 'b>(&'a self, ident: &'b FieldIdent)
-        -> Selection<'a, 'b, Self>
-    {
-        Selection::new(self, ident)
+/// Set of selections (output of a `select` call).
+pub struct SelectionList<'a, D: 'a + ?Sized> {
+    data: Vec<Selection<'a, D>>
+}
+impl<'a, D> SelectionList<'a, D> where D: 'a + ?Sized, Selection<'a, D>: GetFieldData<'a>
+{
+    /// Provides a `Vec` of `FieldData` structs containing data for the fields in this
+    /// `SelectionList`.
+    pub fn field_data(&'a self) -> Result<Vec<FieldData<'a>>> {
+        self.data.iter()
+            .map(|selection| selection.get_field_data())
+            .collect::<Result<Vec<_>>>()
+    }
+    /// Provides an iterator over the `FieldData` structs for the fields in this `SelectionList`.
+    pub fn field_iter(&'a self) -> FieldIter<'a, D> {
+        FieldIter { inner: self.data.iter() }
+    }
+}
+impl<'a, D> SelectionList<'a, D> where D: 'a + ?Sized {
+    fn first(&self) -> Option<Selection<'a, D>> {
+        self.data.get(0).map(|&ref selection| {
+            Selection {
+                data: selection.data,
+                ident: selection.ident.clone()
+            }
+        })
+    }
+}
+
+/// Iterator over fields reference in a `SelectionList` object.
+pub struct FieldIter<'a, D: 'a + ?Sized> where Selection<'a, D>: GetFieldData<'a> {
+    inner: Iter<'a, Selection<'a, D>>,
+}
+impl<'a, D: 'a + ?Sized> Iterator for FieldIter<'a, D>
+    where Selection<'a, D>: GetFieldData<'a>
+{
+    type Item = Result<FieldData<'a>>;
+
+    fn next(&mut self) -> Option<Result<FieldData<'a>>> {
+        self.inner.next().map(|selection| selection.get_field_data())
+    }
+}
+
+impl<'a, D> FromIterator<Selection<'a, D>> for SelectionList<'a, D>
+    where D: 'a + ?Sized
+{
+    fn from_iter<I: IntoIterator<Item=Selection<'a, D>>>(iter: I) -> Self {
+        let mut v = vec![];
+
+        for i in iter {
+            v.push(i);
+        }
+
+        SelectionList { data: v }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Field;
+
+    use masked::MaybeNa;
+    use test_utils::*;
+
+    #[test]
+    fn select() {
+        let dv = sample_merged_emp_table();
+        println!("{}", dv);
+        // let result = dv.select_one("EmpId").get_field_data().unwrap()
+        //     .map(|datum: MaybeNa<&u64>| if datum.exists() { 1i64 } else { 0 }).unwrap();
+        // for datum in result.data_iter::<i64>() {
+        //     assert_eq!(datum.unwrap(), &1i64);
+        // }
+        let result = dv.field("EmpId").unwrap().data_iter()
+            .map(|datum: MaybeNa<&u64>| if datum.exists() { 1i64 } else { 0 })
+            .collect::<Vec<_>>();
+        assert_eq!(result, vec![1, 1, 1, 1, 1, 1, 1]);
     }
 }

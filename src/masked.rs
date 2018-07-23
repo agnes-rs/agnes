@@ -8,7 +8,8 @@ use serde::ser::{Serialize, Serializer, SerializeSeq};
 
 use field::DataType;
 use bit_vec::BitVec;
-use apply::*;
+use apply::mapfn::*;
+use access::DataIndex;
 use error;
 
 /// Missing value container.

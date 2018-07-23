@@ -5,7 +5,8 @@ use view::{DataView};
 use store::{DataStore, AddData};
 use error::*;
 use masked::{MaybeNa};
-use apply::{DataIndex, FieldApplyTo, FieldMapFn};
+use access::DataIndex;
+use apply::mapfn::{FieldMapFn, FieldApplyTo};
 use ops::infer::*;
 
 macro_rules! impl_op_fn {

@@ -115,7 +115,7 @@ impl Error for AgnesError {
         }
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self {
             AgnesError::Io(ref err) => Some(err),
             AgnesError::Net(ref err) => Some(err),
@@ -176,7 +176,7 @@ impl Error for NetError {
         }
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self {
             NetError::UnsupportedUriScheme(_) => None,
             NetError::Tls(ref err) => Some(err),
@@ -214,7 +214,7 @@ impl Error for ParseError {
         }
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self {
             ParseError::Int(ref err) => Some(err),
             ParseError::Bool(ref err) => Some(err),

@@ -1,210 +1,142 @@
-use masked::MaybeNa;
-use apply::{ApplyToElem, ApplyTo, MapFn};
-use error::Result;
-use field::FieldIdent;
-use view::DataView;
-use frame::DataFrame;
+use apply::{Selection, GetFieldData};
+use access::{FieldData, DataIndex, DIter};
+use masked::{MaybeNa};
+use error::*;
 use field::DataType;
 
-map_fn![
-    /// `MapFn` function for matching unsigned integer values.
-    pub MatchesFnUnsigned<('a)> {
-        type Output = bool;
-        value: MaybeNa<&'a u64>
-    }
-    fn unsigned(self, value) { self.value == value }
-    fn [signed, text, boolean, float](self, _) { false }
-];
-
-map_fn![
-    /// `MapFn` function for matching signed integer values.
-    pub MatchesFnSigned<('a)> {
-        type Output = bool;
-        value: MaybeNa<&'a i64>
-    }
-    fn signed(self, value) { self.value == value }
-    fn [unsigned, text, boolean, float](self, _) { false }
-];
-
-map_fn![
-    /// `MapFn` function for matching text values.
-    pub MatchesFnText<('a)> {
-        type Output = bool;
-        value: MaybeNa<&'a String>
-    }
-    fn text(self, value) { self.value == value }
-    fn [signed, unsigned, boolean, float](self, _) { false }
-];
-
-map_fn![
-    /// `MapFn` function for matching boolean values.
-    pub MatchesFnBoolean<('a)> {
-        type Output = bool;
-        value: MaybeNa<&'a bool>
-    }
-    fn boolean(self, value) { self.value == value }
-    fn [unsigned, signed, text, float](self, _) { false }
-];
-
-map_fn![
-    /// `MapFn` function for matching floating-point values.
-    pub MatchesFnFloat<('a)> {
-        type Output = bool;
-        value: MaybeNa<&'a f64>
-    }
-    fn float(self, value) { self.value == value }
-    fn [unsigned, signed, text, boolean](self, _) { false }
-];
-
-/// Helper trait / implementations for matching a value. Returns `true` if the selected element
+/// Provides a utility for matching a specific value. Returns `true` if the chosen element
 /// matches the provided target value.
 pub trait Matches<T> {
-    /// Returns `true` if the element specified with the `Selector` matches the provided target
-    /// value.
-    fn matches(&self, target: T, ident: &FieldIdent, idx: usize) -> Result<bool>;
+    /// Returns `true` if the element at the specified index matches the target value.
+    fn matches(&self, idx: usize, target: T) -> Result<bool>;
 }
 
-macro_rules! impl_dataview_matches {
-    ($($dtype:ty, $match_fn:ident),*) => {$(
+macro_rules! impl_matches {
+    ($t:ty, $($variant:tt)*) => {
 
-impl Matches<$dtype> for DataView {
-    fn matches(&self, target: $dtype, ident: &FieldIdent, idx: usize) -> Result<bool> {
-        self.apply_to_elem(
-            &mut $match_fn { value: MaybeNa::Exists(&target) },
-            ident,
-            idx
-        )
+impl<'a, 'b> Matches<$t> for FieldData<'a> {
+    fn matches(&self, idx: usize, target: $t) -> Result<bool> {
+        Ok(match *self {
+            $($variant)*(ref datum) => {
+                match datum.get_data(idx)? {
+                    MaybeNa::Exists(datum) => datum == target,
+                    MaybeNa::Na => false
+                }
+            },
+            _ => false
+        })
     }
 }
-
-    )*}
-}
-
-impl_dataview_matches!(
-    u64,    MatchesFnUnsigned,
-    i64,    MatchesFnSigned,
-    String, MatchesFnText,
-    bool,   MatchesFnBoolean,
-    f64,    MatchesFnFloat
-);
-
-fn test_pred<T: DataType, F: Fn(&T) -> bool>(value: MaybeNa<&T>, f: &mut F) -> bool {
-    match value {
-        MaybeNa::Exists(&ref val) => (f)(val),
-        MaybeNa::Na => false,
+impl<'a, 'b> Matches<MaybeNa<$t>> for FieldData<'a> {
+    fn matches(&self, idx: usize, target: MaybeNa<$t>) -> Result<bool> {
+        Ok(match *self {
+            $($variant)*(ref data) => data.get_data(idx)? == target,
+            _ => false
+        })
     }
 }
 
-map_fn![
-    /// `MapFn` function for finding an index set of unsigned integer values of a field that match
-    /// a predicate.
-    pub FilterFnUnsigned<(F)> where (F: Fn(&u64) -> bool) {
-        type Output = bool;
-        f: F
-    }
-    fn unsigned(self, value) { test_pred(value, &mut self.f) }
-    fn [signed, text, boolean, float](self, _) { false }
-];
-
-map_fn![
-    /// `MapFn` function for finding an index set of signed integer values of a field that match
-    /// a predicate.
-    pub FilterFnSigned<(F)> where (F: Fn(&i64) -> bool) {
-        type Output = bool;
-        f: F
-    }
-    fn signed(self, value) { test_pred(value, &mut self.f) }
-    fn [unsigned, text, boolean, float](self, _) { false }
-];
-
-map_fn![
-    /// `MapFn` function for finding an index set of text values of a field that match a predicate.
-    pub FilterFnText<(F)> where (F: Fn(&String) -> bool) {
-        type Output = bool;
-        f: F
-    }
-    fn text(self, value) { test_pred(value, &mut self.f) }
-    fn [unsigned, signed, boolean, float](self, _) { false }
-];
-
-map_fn![
-    /// `MapFn function for finding an index set of boolean values of a field that match
-    /// a predicate.
-    pub FilterFnBoolean<(F)> where (F: Fn(&bool) -> bool) {
-        type Output = bool;
-        f: F
-    }
-    fn boolean(self, value) { test_pred(value, &mut self.f) }
-    fn [unsigned, signed, text, float](self, _) { false }
-];
-
-map_fn![
-    /// `MapFn` function for finding an index set of floating-point values of a field that match
-    /// a predicate.
-    pub FilterFnFloat<(F)> where (F: Fn(&f64) -> bool) {
-        type Output = bool;
-        f: F
-    }
-    fn float(self, value) { test_pred(value, &mut self.f) }
-    fn [unsigned, signed, text, boolean](self, _) { false }
-];
-
-/// Helper trait / implementations for finding an index set of values in a field that match a
-/// predicate. Returns a vector of indices of all elements in the field that pass the predicate.
-pub trait GetFilter<T> {
-    /// Returns vector of indices of all elements in the field specified that pass the predicate.
-    fn get_filter<F: Fn(&T) -> bool>(&self, pred: F, ident: &FieldIdent) -> Result<Vec<usize>>;
-}
-
-macro_rules! impl_dataframe_get_filter {
-    ($dtype:ty, $filter_fn:ident) => {
-
-impl GetFilter<$dtype> for DataFrame {
-    fn get_filter<F: Fn(&$dtype) -> bool>(&self, pred: F, ident: &FieldIdent)
-        -> Result<Vec<usize>>
-    {
-        Ok(self.apply_to(
-            &mut $filter_fn { f: pred },
-            ident
-        )?.iter().enumerate()
-          .filter_map(|(idx, &b)| if b { Some(idx) } else { None }).collect())
-    }
-}
-
-    }
-}
-impl_dataframe_get_filter!(u64,    FilterFnUnsigned);
-impl_dataframe_get_filter!(i64,    FilterFnSigned);
-impl_dataframe_get_filter!(String, FilterFnText);
-impl_dataframe_get_filter!(bool,   FilterFnBoolean);
-impl_dataframe_get_filter!(f64,    FilterFnFloat);
-
-/// Helper trait / implementations for matching a predicate to a field. Returns `true` if the
-/// provided predicate returns true for all elements in the field.
-pub trait MatchesAll<T> {
-    /// Returns `true` if the all elements in the field specified pass the predicate.
-    fn matches_all<F: Fn(&T) -> bool>(&self, pred: F, field: &FieldIdent) -> Result<bool>;
-}
-
-macro_rules! impl_dataview_matches_all {
-    ($dtype:ty, $filter_fn:ident) => {
-
-impl MatchesAll<$dtype> for DataView
+impl<'a, 'b, D> Matches<$t> for Selection<'a, D>
+    where Selection<'a, D>: GetFieldData<'a>
 {
-    fn matches_all<F: Fn(&$dtype) -> bool>(&self, pred: F, ident: &FieldIdent)
-        -> Result<bool>
-    {
-        Ok(self.apply_to(
-            &mut $filter_fn { f: pred },
-            ident
-        )?.iter().all(|&b| b))
+    fn matches(&self, idx: usize, target: $t) -> Result<bool> {
+        self.get_field_data().and_then(|fd| fd.matches(idx, target))
+    }
+}
+impl<'a, 'b, D> Matches<MaybeNa<$t>> for Selection<'a, D>
+    where Selection<'a, D>: GetFieldData<'a>
+{
+    fn matches(&self, idx: usize, target: MaybeNa<$t>) -> Result<bool> {
+        self.get_field_data().and_then(|fd| fd.matches(idx, target))
     }
 }
 
     }
 }
-impl_dataview_matches_all!(u64,    FilterFnUnsigned);
-impl_dataview_matches_all!(i64,    FilterFnSigned);
-impl_dataview_matches_all!(String, FilterFnText);
-impl_dataview_matches_all!(bool,   FilterFnBoolean);
-impl_dataview_matches_all!(f64,    FilterFnFloat);
+
+impl_matches![&'b u64, FieldData::Unsigned];
+impl_matches![&'b i64, FieldData::Signed];
+impl_matches![&'b String, FieldData::Text];
+impl_matches![&'b bool, FieldData::Boolean];
+impl_matches![&'b f64, FieldData::Float];
+
+
+/// Trait for finding an index set of values in a field that match a predicate. Returns a vector of
+// indices of all elements in the field that pass the predicate.
+pub trait DataFilter<'a, T> {
+    /// Returns vector of indices of all elements in this data structure specified that pass the
+    /// predicate.
+    fn data_filter<F: Fn(&T) -> bool>(&'a self, f: F) -> Vec<usize>;
+}
+
+impl<'a, T: 'a + DataType> DataFilter<'a, T> for FieldData<'a> where FieldData<'a>: DIter<'a, T> {
+    fn data_filter<F: Fn(&T) -> bool>(&'a self, f: F) -> Vec<usize> {
+        let mut result = vec![];
+        for (idx, datum) in self.data_iter().enumerate() {
+            if let MaybeNa::Exists(ref val) = datum {
+                if (f)(val) {
+                    result.push(idx)
+                }
+            }
+        }
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use view::DataView;
+    use super::*;
+    use test_utils::*;
+    use apply::{Select, Field};
+    use field::FieldIdent;
+
+    #[test]
+    fn matches() {
+        let view: DataView = sample_merged_emp_table().into();
+
+        for x in view.field("EmpId").unwrap().data_iter::<u64>() {
+            println!("{:?}", x);
+        }
+
+        assert_eq!(view.select_one("EmpId").matches(1, &2u64).unwrap(), true);
+        assert_eq!(view.field("EmpId").unwrap().matches(1, &2u64).unwrap(), true);
+        assert_eq!(view.select_one("EmpId").matches(1, &3u64).unwrap(), false);
+        assert_eq!(view.field("EmpId").unwrap().matches(1, &3u64).unwrap(), false);
+
+        match view.select_one("EmpId").matches(9, &2u64).unwrap_err() {
+            AgnesError::IndexError { index, len } => {
+                assert_eq!(index, 9);
+                assert_eq!(len, view.nrows());
+            },
+            e => panic!("expected IndexError, received {:?}", e)
+        }
+
+        match view.select_one("Foo").matches(9, &2u64).unwrap_err() {
+            AgnesError::FieldNotFound(ident) => {
+                assert_eq!(ident, FieldIdent::Name("Foo".to_string()));
+            },
+            e => panic!("expected FieldNotFound, received {:?}", e)
+        }
+
+        assert_eq!(view.select_one("SalaryOffset").matches(1, &4i64).unwrap(), true);
+        assert_eq!(view.field("SalaryOffset").unwrap().matches(1, &4i64).unwrap(), true);
+        assert_eq!(view.select_one("SalaryOffset").matches(1, &-3i64).unwrap(), false);
+        assert_eq!(view.field("SalaryOffset").unwrap().matches(1, &-3i64).unwrap(), false);
+
+        assert_eq!(view.select_one("EmpName").matches(1, &"Jamie".to_string()).unwrap(), true);
+        assert_eq!(view.field("EmpName").unwrap().matches(1, &"Jamie".to_string()).unwrap(), true);
+        assert_eq!(view.select_one("EmpName").matches(1, &"Sally".to_string()).unwrap(), false);
+        assert_eq!(view.field("EmpName").unwrap().matches(1, &"Sally".to_string()).unwrap(), false);
+
+        assert_eq!(view.select_one("DidTraining").matches(1, &false).unwrap(), true);
+        assert_eq!(view.field("DidTraining").unwrap().matches(1, &false).unwrap(), true);
+        assert_eq!(view.select_one("DidTraining").matches(1, &true).unwrap(), false);
+        assert_eq!(view.field("DidTraining").unwrap().matches(1, &true).unwrap(), false);
+
+        assert_eq!(view.select_one("VacationHrs").matches(1, &54.1).unwrap(), true);
+        assert_eq!(view.field("VacationHrs").unwrap().matches(1, &54.1).unwrap(), true);
+        assert_eq!(view.select_one("VacationHrs").matches(1, &47.3).unwrap(), false);
+        assert_eq!(view.field("VacationHrs").unwrap().matches(1, &47.3).unwrap(), false);
+    }
+}

@@ -9,15 +9,17 @@ use serde::ser::{self, SerializeSeq};
 
 use store::DataStore;
 use field::{DataType, FieldIdent, FieldType};
-use apply::*;
+use access::{FieldData, OwnedOrRef, DataIndex};
+use apply::{Select, Field, Selection, SortOrderBy, DataFilter};
+use apply::mapfn::*;
 use error;
 use masked::MaybeNa;
 
 /// A data frame. A `DataStore` reference along with record-based filtering and sorting details.
 #[derive(Debug, Clone)]
 pub struct DataFrame {
-    permutation: Option<Vec<usize>>,
-    store: Arc<DataStore>,
+    pub(crate) permutation: Option<Vec<usize>>,
+    pub(crate) store: Arc<DataStore>,
 }
 impl DataFrame {
     /// Number of rows that pass the filter in this frame.
@@ -74,7 +76,7 @@ impl Filter<$dtype> for DataFrame {
     fn filter<F: Fn(&$dtype) -> bool>(&mut self, ident: &FieldIdent, pred: F)
         -> error::Result<Vec<usize>>
     {
-        let filter = self.get_filter(pred, ident)?;
+        let filter = self.field(ident)?.data_filter(pred);
         self.update_permutation(&filter);
         Ok(filter)
     }
@@ -121,24 +123,24 @@ impl FieldApplyTo for DataFrame {
     }
 }
 
-impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, DataFrame> {
+impl<'a> ApplyFieldReduce<'a> for Selection<'a, DataFrame> {
     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
         -> error::Result<F::Output>
     {
-        self.data.store.select(self.ident)
+        self.data.store.select_one(&self.ident)
             .apply_field_reduce(&mut FrameFieldReduceFn {
                 frames: vec![&self.data],
                 reduce_fn: f,
             })
     }
 }
-impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, DataFrame>> {
+impl<'a> ApplyFieldReduce<'a> for Vec<Selection<'a, DataFrame>> {
     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
         -> error::Result<F::Output>
     {
         let frames = self.iter().map(|selection| selection.data).collect::<Vec<_>>();
         self.iter().map(|selection| {
-            selection.data.store.select(selection.ident)
+            selection.data.store.select_one(&selection.ident)
         }).collect::<Vec<_>>().apply_field_reduce(&mut FrameFieldReduceFn {
             frames: frames,
             reduce_fn: f,
@@ -155,15 +157,17 @@ impl From<DataStore> for DataFrame {
     }
 }
 
-// Structure to hold references to a data structure (e.g. DataStore) and a frame used to view
-// that structure. Provides DataIndex for the underlying data structure, as view through the frame.
-struct Framed<'a, 'b, T: 'b + DataType> {
+/// Structure to hold references to a data structure (e.g. DataStore) and a frame used to view
+/// that structure. Provides DataIndex for the underlying data structure, as viewed through the
+/// frame.
+pub struct Framed<'a, 'b, T: 'b + DataType> {
     frame: &'a DataFrame,
     data: OwnedOrRef<'b, T>,
     dtype: PhantomData<T>,
 }
 impl<'a, 'b, T: DataType> Framed<'a, 'b, T> {
-    fn new(frame: &'a DataFrame, data: OwnedOrRef<'b, T>) -> Framed<'a, 'b, T> {
+    /// Create a new framed view of some data, as view through a particular `DataFrame`.
+    pub fn new(frame: &'a DataFrame, data: OwnedOrRef<'b, T>) -> Framed<'a, 'b, T> {
         Framed { frame, data, dtype: PhantomData }
     }
 }
@@ -207,28 +211,28 @@ struct FrameFieldReduceFn<'a, 'b, F: 'b + FieldReduceFn<'a>> {
 impl<'a, 'b, F: FieldReduceFn<'a>> FieldReduceFn<'a> for FrameFieldReduceFn<'a, 'b, F>
 {
     type Output = F::Output;
-    fn reduce(&mut self, mut fields: Vec<ReduceDataIndex<'a>>) -> F::Output {
+    fn reduce(&mut self, mut fields: Vec<FieldData<'a>>) -> F::Output {
         let data_vec = fields.drain(..).zip(self.frames.iter()).map(|(field, frame)| {
-            let field: ReduceDataIndex<'a> = field;
+            let field: FieldData<'a> = field;
             match field {
-                ReduceDataIndex::Unsigned(field) =>
-                    ReduceDataIndex::Unsigned(OwnedOrRef::Owned(Box::new(
+                FieldData::Unsigned(field) =>
+                    FieldData::Unsigned(OwnedOrRef::Owned(Box::new(
                         Framed::new(frame, field)))),
-                ReduceDataIndex::Signed(field) =>
-                    ReduceDataIndex::Signed(OwnedOrRef::Owned(Box::new(
+                FieldData::Signed(field) =>
+                    FieldData::Signed(OwnedOrRef::Owned(Box::new(
                         Framed::new(frame, field)))),
-                ReduceDataIndex::Text(field) =>
-                    ReduceDataIndex::Text(OwnedOrRef::Owned(Box::new(
+                FieldData::Text(field) =>
+                    FieldData::Text(OwnedOrRef::Owned(Box::new(
                         Framed::new(frame, field)))),
-                ReduceDataIndex::Boolean(field) =>
-                    ReduceDataIndex::Boolean(OwnedOrRef::Owned(Box::new(
+                FieldData::Boolean(field) =>
+                    FieldData::Boolean(OwnedOrRef::Owned(Box::new(
                         Framed::new(frame, field)))),
-                ReduceDataIndex::Float(field) =>
-                    ReduceDataIndex::Float(OwnedOrRef::Owned(Box::new(
+                FieldData::Float(field) =>
+                    FieldData::Float(OwnedOrRef::Owned(Box::new(
                         Framed::new(frame, field)))),
             }
         }
-        ).collect::<Vec<ReduceDataIndex<'a>>>();
+        ).collect::<Vec<FieldData<'a>>>();
         self.reduce_fn.reduce(data_vec)
     }
 }
@@ -251,7 +255,7 @@ struct SerializeFn<S: Serializer> {
 }
 macro_rules! sresult { ($s:tt) => (Result<$s::Ok, $s::Error>) }
 fn do_serialize<'a, 'b, T: DataType + Serialize, S: 'a + Serializer>(
-        sfn: &mut SerializeFn<S>, field: &DataIndex<T>
+        sfn: &mut SerializeFn<S>, field: &dyn DataIndex<T>
     ) -> sresult![S]
 {
     let serializer = sfn.serializer.take().unwrap();

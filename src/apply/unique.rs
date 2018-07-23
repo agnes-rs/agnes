@@ -2,8 +2,9 @@ use std::collections::HashSet;
 
 use masked::MaybeNa;
 use field::FieldIdent;
-use apply::{FieldApplyTo, Select, FieldReduceFn, ReduceDataIndex, FieldMapFn, DataIndex,
-    ApplyFieldReduce};
+use apply::mapfn::*;
+use access::{FieldData, DataIndex};
+use apply::Select;
 use apply::sort_order::SortOrderFn;
 use view::{DataView, IntoFieldList};
 use error::*;
@@ -68,7 +69,7 @@ impl Unique for DataView {
 pub struct CompositeUniqueFn {}
 impl<'a> FieldReduceFn<'a> for CompositeUniqueFn {
     type Output = Vec<usize>;
-    fn reduce(&mut self, fields: Vec<ReduceDataIndex<'a>>) -> Vec<usize> {
+    fn reduce(&mut self, fields: Vec<FieldData<'a>>) -> Vec<usize> {
         let mut set = HashSet::new();
         let mut indices = vec![];
         if fields.len() == 0 {
@@ -97,7 +98,7 @@ impl CompositeUnique for DataView {
     fn composite_unique<L: IntoFieldList>(&self, fields: L) -> Result<DataView> {
         let fields = fields.into_field_list();
         let permutation = fields
-            .iter().map(|ident| self.select(ident)).collect::<Vec<_>>()
+            .iter().map(|ident| self.select_one(ident)).collect::<Vec<_>>()
             .apply_field_reduce(&mut CompositeUniqueFn {})?;
         let mut subview = self.v(fields.clone());
         // debug_assert_eq!(subview.frames.len(), fields.len());

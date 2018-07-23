@@ -2,45 +2,46 @@ use std::ops::{Add, Sub, Mul, Div, Neg};
 
 use error::*;
 use field::{TypedFieldIdent, DataType, FieldType, FieldIdent};
-use apply::{DataIndex, ReduceDataIndex, ApplyFieldReduce, FieldReduceFn, Select, OwnedOrRef,
-    AddToDsFn, ConvertFn, SingleTypeFn};
+use access::{DataIndex, FieldData, OwnedOrRef};
+use apply::mapfn::*;
+use apply::{Select, AddToDsFn, ConvertFn, SingleTypeFn};
 use ops::{BinOpTypes, utb, itb, btu, bti, btf, ftb};
 use store::{DataStore, AddData};
 use masked::MaybeNa;
 use view::DataView;
 
-impl<'a> ReduceDataIndex<'a> {
-    fn convert(&self, conversion: Option<FieldType>) -> Option<ReduceDataIndex<'a>> {
+impl<'a> FieldData<'a> {
+    fn convert(&self, conversion: Option<FieldType>) -> Option<FieldData<'a>> {
         match (self, conversion) {
             // unsigned -> ?? conversions
-            (&ReduceDataIndex::Unsigned(_), Some(FieldType::Unsigned))
-                | (&ReduceDataIndex::Unsigned(_), None) =>
+            (&FieldData::Unsigned(_), Some(FieldType::Unsigned))
+                | (&FieldData::Unsigned(_), None) =>
             {
                 None
             },
-            (&ReduceDataIndex::Unsigned(ref data), Some(FieldType::Signed)) => {
-                Some(ReduceDataIndex::Signed(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Unsigned(ref data), Some(FieldType::Signed)) => {
+                Some(FieldData::Signed(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| x as i64)
                     }).collect::<Vec<_>>()
                 ))))
             },
-            (&ReduceDataIndex::Unsigned(ref data), Some(FieldType::Text)) => {
-                Some(ReduceDataIndex::Text(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Unsigned(ref data), Some(FieldType::Text)) => {
+                Some(FieldData::Text(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| format!("{}", x))
                     }).collect::<Vec<_>>()
                 ))))
             },
-            (&ReduceDataIndex::Unsigned(ref data), Some(FieldType::Boolean)) => {
-                Some(ReduceDataIndex::Boolean(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Unsigned(ref data), Some(FieldType::Boolean)) => {
+                Some(FieldData::Boolean(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| utb(x))
                     }).collect::<Vec<_>>()
                 ))))
             },
-            (&ReduceDataIndex::Unsigned(ref data), Some(FieldType::Float)) => {
-                Some(ReduceDataIndex::Float(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Unsigned(ref data), Some(FieldType::Float)) => {
+                Some(FieldData::Float(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| x as f64)
                     }).collect::<Vec<_>>()
@@ -48,34 +49,34 @@ impl<'a> ReduceDataIndex<'a> {
             },
 
             // signed -> ?? conversions
-            (&ReduceDataIndex::Signed(_), Some(FieldType::Signed))
-                | (&ReduceDataIndex::Signed(_), None) =>
+            (&FieldData::Signed(_), Some(FieldType::Signed))
+                | (&FieldData::Signed(_), None) =>
             {
                 None
             },
-            (&ReduceDataIndex::Signed(ref data), Some(FieldType::Unsigned)) => {
-                Some(ReduceDataIndex::Unsigned(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Signed(ref data), Some(FieldType::Unsigned)) => {
+                Some(FieldData::Unsigned(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| if x > 0 { x as u64 } else { 0 })
                     }).collect::<Vec<_>>()
                 ))))
             },
-            (&ReduceDataIndex::Signed(ref data), Some(FieldType::Text)) => {
-                Some(ReduceDataIndex::Text(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Signed(ref data), Some(FieldType::Text)) => {
+                Some(FieldData::Text(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| format!("{}", x))
                     }).collect::<Vec<_>>()
                 ))))
             },
-            (&ReduceDataIndex::Signed(ref data), Some(FieldType::Boolean)) => {
-                Some(ReduceDataIndex::Boolean(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Signed(ref data), Some(FieldType::Boolean)) => {
+                Some(FieldData::Boolean(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| itb(x))
                     }).collect::<Vec<_>>()
                 ))))
             },
-            (&ReduceDataIndex::Signed(ref data), Some(FieldType::Float)) => {
-                Some(ReduceDataIndex::Float(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Signed(ref data), Some(FieldType::Float)) => {
+                Some(FieldData::Float(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| x as f64)
                     }).collect::<Vec<_>>()
@@ -83,37 +84,37 @@ impl<'a> ReduceDataIndex<'a> {
             },
 
             // no text -> ?? operations
-            (&ReduceDataIndex::Text(_), _) => { unreachable![] },
+            (&FieldData::Text(_), _) => { unreachable![] },
 
             // bool -> ?? conversions
-            (&ReduceDataIndex::Boolean(_), Some(FieldType::Boolean))
-                | (&ReduceDataIndex::Boolean(_), None) =>
+            (&FieldData::Boolean(_), Some(FieldType::Boolean))
+                | (&FieldData::Boolean(_), None) =>
             {
                 None
             },
-            (&ReduceDataIndex::Boolean(ref data), Some(FieldType::Unsigned)) => {
-                Some(ReduceDataIndex::Unsigned(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Boolean(ref data), Some(FieldType::Unsigned)) => {
+                Some(FieldData::Unsigned(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| btu(x))
                     }).collect::<Vec<_>>()
                 ))))
             },
-            (&ReduceDataIndex::Boolean(ref data), Some(FieldType::Signed)) => {
-                Some(ReduceDataIndex::Signed(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Boolean(ref data), Some(FieldType::Signed)) => {
+                Some(FieldData::Signed(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| bti(x))
                     }).collect::<Vec<_>>()
                 ))))
             },
-            (&ReduceDataIndex::Boolean(ref data), Some(FieldType::Text)) => {
-                Some(ReduceDataIndex::Text(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Boolean(ref data), Some(FieldType::Text)) => {
+                Some(FieldData::Text(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| format!("{}", x))
                     }).collect::<Vec<_>>()
                 ))))
             },
-            (&ReduceDataIndex::Boolean(ref data), Some(FieldType::Float)) => {
-                Some(ReduceDataIndex::Float(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Boolean(ref data), Some(FieldType::Float)) => {
+                Some(FieldData::Float(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| btf(x))
                     }).collect::<Vec<_>>()
@@ -121,34 +122,34 @@ impl<'a> ReduceDataIndex<'a> {
             },
 
             // float -> ?? conversions
-            (&ReduceDataIndex::Float(_), Some(FieldType::Float))
-                | (&ReduceDataIndex::Float(_), None) =>
+            (&FieldData::Float(_), Some(FieldType::Float))
+                | (&FieldData::Float(_), None) =>
             {
                 None
             },
-            (&ReduceDataIndex::Float(ref data), Some(FieldType::Unsigned)) => {
-                Some(ReduceDataIndex::Unsigned(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Float(ref data), Some(FieldType::Unsigned)) => {
+                Some(FieldData::Unsigned(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| if x < 0.0 { 0 } else { x as u64 })
                     }).collect::<Vec<_>>()
                 ))))
             },
-            (&ReduceDataIndex::Float(ref data), Some(FieldType::Signed)) => {
-                Some(ReduceDataIndex::Signed(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Float(ref data), Some(FieldType::Signed)) => {
+                Some(FieldData::Signed(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| x as i64)
                     }).collect::<Vec<_>>()
                 ))))
             },
-            (&ReduceDataIndex::Float(ref data), Some(FieldType::Text)) => {
-                Some(ReduceDataIndex::Text(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Float(ref data), Some(FieldType::Text)) => {
+                Some(FieldData::Text(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| format!("{}", x))
                     }).collect::<Vec<_>>()
                 ))))
             },
-            (&ReduceDataIndex::Float(ref data), Some(FieldType::Boolean)) => {
-                Some(ReduceDataIndex::Boolean(OwnedOrRef::Owned(Box::new(
+            (&FieldData::Float(ref data), Some(FieldType::Boolean)) => {
+                Some(FieldData::Boolean(OwnedOrRef::Owned(Box::new(
                     (0..data.len()).map(|idx| {
                         data.get_data(idx).unwrap().map(|&x| ftb(x))
                     }).collect::<Vec<_>>()
@@ -175,14 +176,14 @@ impl<'a, 'b> $reducefn_name<'a, 'b> {
 }
 impl<'a, 'b, 'c> FieldReduceFn<'c> for $reducefn_name<'a, 'b> {
     type Output = ();
-    fn reduce(&mut self, fields: Vec<ReduceDataIndex<'c>>) -> () {
+    fn reduce(&mut self, fields: Vec<FieldData<'c>>) -> () {
         debug_assert_eq!(fields.len(), 2);
         let left_converted = fields[0].convert(self.left_convert);
         let right_converted = fields[1].convert(self.right_convert);
         let left = left_converted.as_ref().unwrap_or(&fields[0]);
         let right = right_converted.as_ref().unwrap_or(&fields[1]);
         match (left, right) {
-            (&ReduceDataIndex::Unsigned(ref left), &ReduceDataIndex::Unsigned(ref right)) => {
+            (&FieldData::Unsigned(ref left), &FieldData::Unsigned(ref right)) => {
                 debug_assert_eq!(left.len(), right.len());
                 for i in 0..left.len() {
                     let new_value = match (left.get_data(i).unwrap(),
@@ -195,7 +196,7 @@ impl<'a, 'b, 'c> FieldReduceFn<'c> for $reducefn_name<'a, 'b> {
                     self.add_to_ds(new_value);
                 }
             },
-            (&ReduceDataIndex::Signed(ref left), &ReduceDataIndex::Signed(ref right)) => {
+            (&FieldData::Signed(ref left), &FieldData::Signed(ref right)) => {
                 debug_assert_eq!(left.len(), right.len());
                 for i in 0..left.len() {
                     let new_value = match (left.get_data(i).unwrap(),
@@ -208,10 +209,10 @@ impl<'a, 'b, 'c> FieldReduceFn<'c> for $reducefn_name<'a, 'b> {
                     self.add_to_ds(new_value);
                 }
             },
-            (&ReduceDataIndex::Text(_), &ReduceDataIndex::Text(_)) => {
+            (&FieldData::Text(_), &FieldData::Text(_)) => {
                 unreachable![]
             },
-            (&ReduceDataIndex::Boolean(ref left), &ReduceDataIndex::Boolean(ref right)) => {
+            (&FieldData::Boolean(ref left), &FieldData::Boolean(ref right)) => {
                 debug_assert_eq!(left.len(), right.len());
                 for i in 0..left.len() {
                     let new_value = match (left.get_data(i).unwrap(),
@@ -224,7 +225,7 @@ impl<'a, 'b, 'c> FieldReduceFn<'c> for $reducefn_name<'a, 'b> {
                     self.add_to_ds(new_value);
                 }
             },
-            (&ReduceDataIndex::Float(ref left), &ReduceDataIndex::Float(ref right)) => {
+            (&FieldData::Float(ref left), &FieldData::Float(ref right)) => {
                 debug_assert_eq!(left.len(), right.len());
                 for i in 0..left.len() {
                     let new_value = match (left.get_data(i).unwrap(),
@@ -314,8 +315,8 @@ impl<'a, 'b> $opname<&'b DataView> for &'a DataView {
         let mut store = DataStore::with_field_iter(fields.iter().map(|f| f.target_field.clone()));
         for FieldInfo { target_field, left_ident, rght_ident, bin_op_types } in fields {
             vec![
-                self.select(&left_ident),
-                rhs.select(&rght_ident),
+                self.select_one(&left_ident),
+                rhs.select_one(&rght_ident),
             ].apply_field_reduce(
                 &mut $reducefn_name {
                     target_ds: &mut store,
@@ -390,7 +391,7 @@ impl<'a> Neg for &'a DataView {
             });
             match output_ty {
                 FieldType::Signed => {
-                    self.select(ident)
+                    self.select_one(ident)
                         .map(ConvertFn::<i64>::new())
                         .map(SingleTypeFn::new(|&x: &i64| -> i64 { -x }))
                         .map(AddToDsFn {
@@ -399,7 +400,7 @@ impl<'a> Neg for &'a DataView {
                         }).collect::<Vec<_>>()?;
                 },
                 FieldType::Float  => {
-                    self.select(ident)
+                    self.select_one(ident)
                         .map(ConvertFn::<f64>::new())
                         .map(SingleTypeFn::new(|&x: &f64| -> f64 { -x }))
                         .map(AddToDsFn {

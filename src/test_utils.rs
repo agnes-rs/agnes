@@ -42,7 +42,9 @@ pub(crate) fn emp_table_from_masked(empids: MaskedData<u64>, deptids: MaskedData
 pub(crate) fn sample_emp_table_extra() -> DataStore {
     DataStore::with_data(
         None,
-        None,
+        vec![
+            ("SalaryOffset", vec![-5, 4, 12, -33, 10, 0, -1].into())
+        ],
         None,
         vec![
             ("DidTraining", vec![false, false, true, true, true, false, true].into())
@@ -132,7 +134,8 @@ macro_rules! impl_assert_vec_eq_and_pred {
     ($dtype:ty) => {
 
 use view::DataView;
-use apply::{Matches, MatchesAll};
+use apply::{Field, Matches};
+use masked::MaybeNa;
 
 #[allow(dead_code)]
 pub(crate) fn assert_dv_eq_vec<'a, R>(left: &DataView, ident: &'a FieldIdent, mut right: Vec<R>)
@@ -141,15 +144,20 @@ pub(crate) fn assert_dv_eq_vec<'a, R>(left: &DataView, ident: &'a FieldIdent, mu
 {
     let right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
     for (i, rval) in (0..right.len()).zip(right) {
-        assert!(left.matches(rval.clone(), ident, i).unwrap());
+        assert!(left.field(ident).unwrap().matches(i, &rval).unwrap());
     }
 }
 
 #[allow(dead_code)]
-pub(crate) fn assert_dv_pred<'a, F>(left: &DataView, ident: &'a FieldIdent, f: F)
-    where F: Fn(&$dtype) -> bool
+pub(crate) fn assert_dv_pred<'a, F>(left: &DataView, ident: &'a FieldIdent, mut f: F)
+    where F: FnMut(&$dtype) -> bool
 {
-    assert!(left.matches_all(f, ident).unwrap());
+    assert!(left.field(ident).unwrap().data_iter::<$dtype>().all(|val| {
+        match val {
+            MaybeNa::Exists(val) => f(val),
+            MaybeNa::Na => false
+        }
+    }));
 }
 
     }
@@ -170,7 +178,7 @@ pub(crate) fn assert_dv_sorted_eq<'a, R>(left: &DataView, ident: &'a FieldIdent,
     right.sort();
 
     for (lidx, rval) in left_order.iter().zip(right.iter()) {
-        assert!(left.matches(rval.clone(), ident, *lidx).unwrap());
+        assert!(left.field(ident).unwrap().matches(*lidx, rval).unwrap());
     }
 }
 
@@ -205,15 +213,14 @@ pub(crate) mod float {
     #[allow(dead_code)]
     pub(crate) fn assert_dv_sorted_eq<'a, R>(left: &DataView, ident: &'a FieldIdent,
         mut right: Vec<R>)
-        where //T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, f64>,
-              R: Into<f64>
+        where R: Into<f64>
     {
         let left_order = left.sort_order_by(ident).unwrap();
         let mut right: Vec<f64> = right.drain(..).map(|r| r.into()).collect();
         right.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
         for (lidx, rval) in left_order.iter().zip(right.iter()) {
-            assert!(left.matches(rval.clone(), ident, *lidx).unwrap());
+            assert!(left.field(ident).unwrap().matches(*lidx, rval).unwrap());
         }
     }
 
@@ -349,7 +356,7 @@ impl<'a> From<Vec<&'a str>> for UniformChoice<String> {
     }
 }
 
-pub(crate) struct FieldGenerator(Box<GenerateInto>);
+pub(crate) struct FieldGenerator(Box<dyn GenerateInto>);
 impl GenerateInto for FieldGenerator {
     fn generate_into(&self, store: &mut DataStore, ident: FieldIdent, sz: usize, rng: &mut StdRng)
     {

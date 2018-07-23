@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use field::{DataType};
-use apply::MapFn;
+use apply::mapfn::MapFn;
 use masked::MaybeNa;
 
 /// Conversion trait for converting between datatypes.

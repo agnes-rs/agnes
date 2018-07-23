@@ -4,7 +4,7 @@ and viewing.
 */
 
 #![warn(missing_docs)]
-
+#![deny(bare_trait_objects)]
 extern crate serde;
 #[macro_use] extern crate serde_derive;
 extern crate num_traits;
@@ -36,6 +36,7 @@ pub mod frame;
 pub use frame::Filter;
 pub mod masked;
 pub use masked::MaybeNa;
+pub mod access;
 pub mod apply;
 pub mod ops;
 mod view_stats;

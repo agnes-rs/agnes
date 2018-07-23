@@ -1,11 +1,19 @@
+/*!
+The `MapFn` trait provides a framework for functions that apply to a single element in the data
+structure.
+
+The `FieldMapFn` trait provides a framework for functions that apply to a field (column) of data in
+the data structure.
+*/
 use std::marker::PhantomData;
 
 use masked::{MaybeNa, IntoMaybeNa};
 use error::*;
 use field::{DataType, FieldIdent};
 use view::DataView;
+use apply::Selection;
 use store::{DataStore, AddDataVec};
-use apply::{DataIndex, ReduceDataIndex};
+use access::{DataIndex, FieldData};
 
 /// Trait for applying a `MapFn` (single-element mapping function) to all elements of a data
 /// structure.
@@ -75,6 +83,18 @@ impl<'a, D: 'a + Apply, F: MapFn> Map<'a, D, F> {
         B::from_map(self)
     }
 }
+impl<'a, 'b, D: 'a + ApplyTo> Apply for Selection<'a, D> {
+    fn apply<F: MapFn>(&self, f: &mut F) -> Result<Vec<F::Output>> {
+        self.data.apply_to(f, &self.ident)
+    }
+}
+impl<'a, D: ApplyTo> Selection<'a, D> {
+    /// Apply a `MapFn` to this selection (to be lazy evaluated).
+    pub fn map<F: MapFn>(&self, f: F) -> Map<Self, F> {
+        Map::new(self, f, None)
+    }
+}
+
 /// Trait for conversion from a `Map` structure. Usually called from `map.collect()`.
 pub trait FromMap<A: IntoMaybeNa>: Sized {
     /// Convert a `Map` structure into the resultant data structure.
@@ -762,7 +782,7 @@ pub trait FieldReduceFn<'a> {
 
     /// Reduce a vector of `ReduceDataIndex` structures (which represent any data structure that
     /// implements `DataIndex`) into a single output.
-    fn reduce(&mut self, fields: Vec<ReduceDataIndex<'a>>) -> Self::Output;
+    fn reduce(&mut self, fields: Vec<FieldData<'a>>) -> Self::Output;
 }
 
 /// Trait for data structure which can have a `FieldReduceFn` applied to them.
@@ -792,8 +812,8 @@ mod tests {
             fn boolean(self, value) { value.map(|&val| if val { 1 } else { 0 }) }
             fn float(self, value) { value.map(|&val| if val < 0.0 { 0 } else { val as u64 }) }
         ];
-        let mapped: DataView = dv.select(&"VacationHrs".into()).map(ConvertUnsigned {}).collect()
-            .expect("failed to convert");
+        let mapped: DataView = dv.select_one("VacationHrs")
+            .map(ConvertUnsigned {}).collect().expect("failed to convert");
         println!("{}", mapped);
         unsigned::assert_dv_eq_vec(&mapped, &"Mapped".into(),
             vec![47u64, 54, 98, 12, 0, 5, 22]
@@ -807,7 +827,7 @@ mod tests {
             fn boolean(self, value) { value.map(|&val| if val { 1.0 } else { 0.0 }) }
         ];
         let mapped2: DataView = dv
-            .select(&"VacationHrs".into())
+            .select_one("VacationHrs")
             .map(ConvertUnsigned {})
             .map(ConvertFloat {})
             .name("VacationHrs2")

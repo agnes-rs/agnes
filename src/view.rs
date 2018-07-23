@@ -28,7 +28,8 @@ use error;
 use store::DataStore;
 use join::{Join, sort_merge_join, compute_merged_frames,
     compute_merged_field_list};
-use apply::*;
+use apply::mapfn::*;
+use apply::{Selection, Select};
 
 /// A field in a `DataView`. Contains the (possibly-renamed) field identifier and the store index
 /// with the underlying data.
@@ -204,9 +205,9 @@ impl<'a> Selections<'a> {
     }
 }
 impl<'a> Iterator for Selections<'a> {
-    type Item = Selection<'a, 'a, DataView>;
-    fn next(&mut self) -> Option<Selection<'a, 'a, DataView>> {
-        self.keys.next().map(|ident| Selection::new(self.dv, ident))
+    type Item = Selection<'a, DataView>;
+    fn next(&mut self) -> Option<Selection<'a, DataView>> {
+        self.keys.next().map(|ident| Selection::new(self.dv, ident.clone()))
     }
 }
 
@@ -247,28 +248,28 @@ impl FieldApplyTo for DataView {
     }
 }
 
-impl<'a, 'b> ApplyFieldReduce<'a> for Selection<'a, 'b, DataView> {
+impl<'a> ApplyFieldReduce<'a> for Selection<'a, DataView> {
     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
         -> error::Result<F::Output>
     {
-        self.data.fields.get(self.ident)
+        self.data.fields.get(&self.ident)
             .ok_or(error::AgnesError::FieldNotFound(self.ident.clone()))
             .and_then(|view_field: &ViewField| {
-                self.data.frames[view_field.frame_idx].select(&view_field.rident.ident)
+                self.data.frames[view_field.frame_idx].select_one(&view_field.rident.ident)
                     .apply_field_reduce(f)
             }
         )
     }
 }
-impl<'a, 'b> ApplyFieldReduce<'a> for Vec<Selection<'a, 'b, DataView>> {
+impl<'a> ApplyFieldReduce<'a> for Vec<Selection<'a, DataView>> {
     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
         -> error::Result<F::Output>
     {
         self.iter().map(|selection| {
-            selection.data.fields.get(selection.ident)
+            selection.data.fields.get(&selection.ident)
                 .ok_or(error::AgnesError::FieldNotFound(selection.ident.clone()))
                 .map(|view_field: &ViewField| {
-                    selection.data.frames[view_field.frame_idx].select(&view_field.rident.ident)
+                    selection.data.frames[view_field.frame_idx].select_one(&view_field.rident.ident)
                 })
         }).collect::<error::Result<Vec<_>>>()
             .and_then(|frame_selections| frame_selections.apply_field_reduce(f))
@@ -573,9 +574,9 @@ mod tests {
         let merged_dv: DataView = dv1.merge(&dv2).expect("merge failed");
         println!("{}", merged_dv);
         assert_eq!(merged_dv.nrows(), 7);
-        assert_eq!(merged_dv.nfields(), 5);
+        assert_eq!(merged_dv.nfields(), 6);
         for (left, right) in merged_dv.fieldnames().iter()
-            .zip(vec!["EmpId", "DeptId", "EmpName", "DidTraining", "VacationHrs"]
+            .zip(vec!["EmpId", "DeptId", "EmpName", "SalaryOffset", "DidTraining", "VacationHrs"]
                     .iter().map(|&s| FieldIdent::Name(s.into())))
         {
             assert_eq!(left, &&right);

@@ -1,7 +1,7 @@
 use store::{AddData, DataStore};
 use field::FieldIdent;
 use masked::MaybeNa;
-use apply::MapFn;
+use apply::mapfn::MapFn;
 
 map_fn![
     /// `MapFn` for adding data to an existing `DataStore`.
