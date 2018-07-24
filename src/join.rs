@@ -8,7 +8,8 @@ use masked::MaybeNa;
 use view::{DataView, ViewField};
 use store::{DataStore};
 use apply::mapfn::*;
-use apply::{Select, AddToDsFn, SortOrderBy};
+use apply::{AddToDsFn, SortOrderBy};
+use select::Select;
 use access::{FieldData, DataIndex};
 use error::*;
 

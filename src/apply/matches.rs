@@ -1,4 +1,4 @@
-use apply::{Selection, GetFieldData};
+use select::{Selection, GetFieldData};
 use access::{FieldData, DataIndex, DIter};
 use masked::{MaybeNa};
 use error::*;
@@ -88,7 +88,7 @@ mod tests {
     use view::DataView;
     use super::*;
     use test_utils::*;
-    use apply::{Select, Field};
+    use select::{Select, Field};
     use field::FieldIdent;
 
     #[test]

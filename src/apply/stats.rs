@@ -6,7 +6,7 @@ use std::ops::{Add, Mul};
 
 use num_traits::ToPrimitive;
 
-use apply::{Selection, GetFieldData};
+use select::{Selection, GetFieldData};
 use access::FieldData;
 use field::{FieldType, DtValue};
 use masked::MaybeNa;
@@ -316,7 +316,7 @@ mod tests {
     use view::DataView;
     use store::DataStore;
     use masked::{MaskedData, MaybeNa};
-    use apply::Select;
+    use select::Select;
     use field::DtValue;
 
     #[test]

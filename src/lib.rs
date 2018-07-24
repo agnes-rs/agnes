@@ -39,6 +39,7 @@ pub use masked::MaybeNa;
 pub mod access;
 pub mod apply;
 pub mod ops;
+pub mod select;
 mod view_stats;
 pub use view_stats::ViewStats;
 

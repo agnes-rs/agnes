@@ -4,7 +4,7 @@ use masked::MaybeNa;
 use field::FieldIdent;
 use apply::mapfn::*;
 use access::{FieldData, DataIndex};
-use apply::Select;
+use select::Select;
 use apply::sort_order::SortOrderFn;
 use view::{DataView, IntoFieldList};
 use error::*;

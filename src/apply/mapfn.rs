@@ -11,7 +11,7 @@ use masked::{MaybeNa, IntoMaybeNa};
 use error::*;
 use field::{DataType, FieldIdent};
 use view::DataView;
-use apply::Selection;
+use select::Selection;
 use store::{DataStore, AddDataVec};
 use access::{DataIndex, FieldData};
 
@@ -797,7 +797,7 @@ mod tests {
     use super::*;
     use test_utils::*;
     use view::DataView;
-    use apply::Select;
+    use select::Select;
 
     #[test]
     fn convert() {

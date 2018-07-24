@@ -1,3 +1,6 @@
+/*!
+Traits and structures for selecting a field or fields from a data structure.
+*/
 use std::slice::Iter;
 use std::sync::Arc;
 use std::iter::FromIterator;

@@ -6,7 +6,7 @@ use view::DataView;
 use field::DtValue;
 use field::FieldIdent;
 use field::FieldType;
-use apply::Select;
+use select::Select;
 use error::*;
 
 /// Structure containing general statistics of a `DataView`.

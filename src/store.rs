@@ -11,7 +11,7 @@ use error::*;
 use MaybeNa;
 use access::{DataIterator, FieldData, OwnedOrRef};
 use apply::mapfn::*;
-use apply::Selection;
+use select::Selection;
 
 type TypeData<T> = HashMap<FieldIdent, MaskedData<T>>;
 

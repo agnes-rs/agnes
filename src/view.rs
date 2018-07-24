@@ -29,7 +29,7 @@ use store::DataStore;
 use join::{Join, sort_merge_join, compute_merged_frames,
     compute_merged_field_list};
 use apply::mapfn::*;
-use apply::{Selection, Select};
+use select::{Selection, Select};
 
 /// A field in a `DataView`. Contains the (possibly-renamed) field identifier and the store index
 /// with the underlying data.

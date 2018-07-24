@@ -134,12 +134,12 @@ macro_rules! impl_assert_vec_eq_and_pred {
     ($dtype:ty) => {
 
 use view::DataView;
-use apply::{Field, Matches};
+use select::Field;
+use apply::Matches;
 use masked::MaybeNa;
 
 #[allow(dead_code)]
 pub(crate) fn assert_dv_eq_vec<'a, R>(left: &DataView, ident: &'a FieldIdent, mut right: Vec<R>)
-    // where T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
           where R: Into<$dtype>
 {
     let right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
@@ -170,8 +170,7 @@ use apply::SortOrderBy;
 
 #[allow(dead_code)]
 pub(crate) fn assert_dv_sorted_eq<'a, R>(left: &DataView, ident: &'a FieldIdent, mut right: Vec<R>)
-    where //T: ApplyToField<FieldSelector<'a>> + Matches<FieldIndexSelector<'a>, $dtype>,
-          R: Into<$dtype>
+    where R: Into<$dtype>
 {
     let left_order = left.sort_order_by(ident).unwrap();
     let mut right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
