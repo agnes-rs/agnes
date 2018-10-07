@@ -42,6 +42,7 @@ pub mod apply;
 pub mod select;
 mod view_stats;
 pub use view_stats::ViewStats;
+pub mod filter;
 // pub mod reshape;
 #[macro_use] pub mod unique;
 

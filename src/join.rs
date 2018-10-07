@@ -602,7 +602,7 @@ mod tests {
     use super::{Join, JoinKind};
     use field::{Value, FieldData};
     use apply::sort::sort_order;
-    use frame::Filter;
+    use filter::Filter;
     use test_utils::*;
 
     use data_types::standard::*;

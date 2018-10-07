@@ -24,8 +24,9 @@ use serde::ser::{self, Serialize, Serializer, SerializeMap};
 use prettytable as pt;
 
 use access::DataIndex;
-use frame::{DataFrame, FramedMap, FramedTMap, FramedMapExt, Framed, Filter, FramedFunc,
+use frame::{DataFrame, FramedMap, FramedTMap, FramedMapExt, Framed, FramedFunc,
     SerializedField, Reindexer};
+use filter::Filter;
 use field::{Value};
 use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list};
 use field::{FieldIdent, RFieldIdent};
@@ -833,12 +834,10 @@ mod tests {
     use test_utils::*;
 
     use data_types::HashableFieldCons;
-    use super::FieldIdent;
+    use super::{FieldIdent, Filter};
     use error::*;
     use data_types::standard::*;
     use access::{DataIndex, DataIterator};
-
-    use frame::{Filter};
 
     #[test]
     fn merge() {
