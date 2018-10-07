@@ -14,7 +14,6 @@ pub(crate) fn emp_table(
     empids: Vec<u64>, deptids: Vec<u64>, names: Vec<&str>
 )
     -> dt_std::DataStore
-    // where DTypes: TypeSelector<u64> + TypeSelector<String>
 {
     emp_table_from_field(empids.into(), deptids.into(), names.into())
 }
@@ -24,7 +23,6 @@ pub(crate) fn emp_table_from_field(
     names: FieldData<dt_std::Types, String>
 )
     -> dt_std::DataStore
-    // where DTypes: TypeSelector<u64> + TypeSelector<String>
 {
     dt_std::DataStore::empty()
         .with_cloned_data_from_iter("EmpId", empids.iter()).unwrap()
@@ -32,8 +30,6 @@ pub(crate) fn emp_table_from_field(
         .with_cloned_data_from_iter("EmpName", names.iter()).unwrap()
 }
 pub(crate) fn sample_emp_table_extra() -> dt_std::DataStore
-    // where DTypes: TypeSelector<i64> + TypeSelector<bool> + TypeSelector<f64>
-    // where DTypes: TypeSelectors<DTypes>
 {
     dt_std::DataStore::empty()
         .with_cloned_data_from_iter("SalaryOffset",
@@ -93,7 +89,6 @@ impl MergedWithSample for Vec<f64> {
 }
 
 pub(crate) fn sample_dept_table() -> dt_std::DataStore
-    // where DTypes: TypeSelector<u64> + TypeSelector<String>
 {
     dept_table(vec![1u64, 2, 3, 4], vec!["Marketing", "Sales", "Manufacturing", "R&D"])
 }
@@ -101,7 +96,6 @@ pub(crate) fn dept_table(
     deptids: Vec<u64>, names: Vec<&str>
 )
     -> dt_std::DataStore
-    // where DTypes: TypeSelector<u64> + TypeSelector<String>
 {
     dept_table_from_field(deptids.into(), names.into())
 }
@@ -109,7 +103,6 @@ pub(crate) fn dept_table_from_field(
     deptids: FieldData<dt_std::Types, u64>, names: FieldData<dt_std::Types, String>
 )
     -> dt_std::DataStore
-    // where DTypes: TypeSelector<u64> + TypeSelector<String>
 {
     dt_std::DataStore::empty()
         .with_cloned_data_from_iter("DeptId", deptids.iter()).unwrap()
@@ -120,7 +113,7 @@ macro_rules! impl_assert_vec_eq_and_pred {
     ($dtype:ty) => {
 
 use select::Field;
-use apply::matches::Matches;
+use filter::Matches;
 use field::Value;
 use access::DataIndex;
 use view::DataView;

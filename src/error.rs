@@ -11,7 +11,6 @@ use hyper;
 use csv_sniffer;
 
 use field::FieldIdent;
-use ops::{TypeError, FieldTypeError};
 
 /// General DataFrame error enum.
 #[derive(Debug)]
@@ -50,11 +49,6 @@ pub enum AgnesError {
         expected: String,
         actual: String
     },
-    /// DataView operation type inference error
-    TypeInference(TypeError),
-    /// DataView operation field type inference error
-    FieldTypeInference(FieldTypeError),
-    /// Invalid operation
     InvalidOp(String),
     /// Invalid type for an operation
     InvalidType {
@@ -88,9 +82,6 @@ impl fmt::Display for AgnesError {
                 "Index error: index {} exceeds data length {}", index, len),
             AgnesError::IncompatibleTypes { ref expected, ref actual  } =>
                 write!(f, "Incompatible types: expected {}, found {}", expected, actual),
-            AgnesError::TypeInference(ref err) => write!(f, "Type inference error: {}", err),
-            AgnesError::FieldTypeInference(ref err) => write!(f,
-                "Field type inference error: {}", err),
             AgnesError::InvalidOp(ref s) => write!(f, "Invalid operation: {}", s),
             AgnesError::InvalidType { ref ty, ref operation } =>
                 write!(f, "Invalid type {} for operation: {}", ty, operation),
@@ -114,8 +105,6 @@ impl Error for AgnesError {
             AgnesError::TypeMismatch(ref s) => s,
             AgnesError::IndexError { .. } => "indexing error",
             AgnesError::IncompatibleTypes { .. } => "incompatible types",
-            AgnesError::TypeInference(ref err) => err.description(),
-            AgnesError::FieldTypeInference(ref err) => err.description(),
             AgnesError::InvalidOp(ref s) => s,
             AgnesError::InvalidType { .. } => "invalid type for operation"
         }
@@ -136,8 +125,6 @@ impl Error for AgnesError {
             AgnesError::TypeMismatch(_) => None,
             AgnesError::IndexError { .. }  => None,
             AgnesError::IncompatibleTypes { .. } => None,
-            AgnesError::TypeInference(ref err) => Some(err),
-            AgnesError::FieldTypeInference(ref err) => Some(err),
             AgnesError::InvalidOp(_) => None,
             AgnesError::InvalidType { .. } => None,
         }

@@ -13,10 +13,8 @@ object with all of the records of the two source `DataView`s.
 parameters.
 
 */
-use std::hash::{Hash, Hasher};
 use std::fmt::{self, Display, Formatter};
 use std::iter::FromIterator;
-use std::collections::HashSet;
 
 use indexmap::IndexMap;
 use indexmap::map::Keys;
@@ -24,17 +22,15 @@ use serde::ser::{self, Serialize, Serializer, SerializeMap};
 use prettytable as pt;
 
 use access::DataIndex;
-use frame::{DataFrame, FramedMap, FramedTMap, FramedMapExt, Framed, FramedFunc,
-    SerializedField, Reindexer};
+use frame::{DataFrame, FramedMap, FramedTMap, FramedMapExt, Framed, FramedFunc, SerializedField};
 use filter::Filter;
 use field::{Value};
 use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list};
 use field::{FieldIdent, RFieldIdent};
 use error;
-use store::{DataStore, CopyInto, StoreRecord};
+use store::{DataStore, CopyInto};
 use data_types::*;
 use apply::sort::{DtOrd, SortOrderFunc};
-// use apply::mapfn::*;
 use select::{SelectField, Field};
 
 /// A field in a `DataView`. Contains the (possibly-renamed) field identifier and the store index
@@ -114,16 +110,6 @@ impl<DTypes> DataView<DTypes>
             self.frames[view_field.frame_idx].get_field_type(&view_field.rident.ident)
         })
     }
-    // /// Return the field types (as `TypedFieldIdent` structs) of this DataView
-    // pub fn field_types(&self) -> Vec<TypedFieldIdent> {
-    //     self.fields.iter().map(|(ident, vf)| {
-    //         TypedFieldIdent {
-    //             ident: ident.clone(),
-    //             // since we're iterating over fields we know exist, unwrap is safe
-    //             ty: self.frames[vf.frame_idx].get_field_type(&vf.rident.ident).unwrap()
-    //         }
-    //     }).collect()
-    // }
     /// Returns `true` if this `DataView` contains this field.
     pub fn has_field(&self, s: &FieldIdent) -> bool {
         self.fields.contains_key(s)
@@ -186,13 +172,9 @@ impl<DTypes> DataView<DTypes>
     pub fn join<'b, T>(&'b self, other: &'b DataView<DTypes>, join: Join)
         -> error::Result<DataStore<DTypes>>
         where T: 'static + DataType<DTypes> + DtOrd + PartialEq + Default,
-              // for<'a> Framed<'a, DTypes, T>: SortOrder<T, Framed<'a, DTypes, T>>,
               DTypes: 'b,
               DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T> + CreateStorage
                       + for<'c> FramedMapExt<DTypes, CopyInto<'c, DTypes>, ()>
-
-              // DTypes: 'b + MaxLen<DTypes> + TypeSelector<T, Idx> + AssociatedValue<'a>
-                //+ MapForTypeNum<DTypes, CopyInto<'a, 'b, DTypes>>
     {
         match join.predicate {
             // TODO: implement hash join
@@ -206,23 +188,10 @@ impl<DTypes> DataView<DTypes>
         }
     }
 
-    // /// Returns an iterator over `Selection`s (the result of calling `select` on a DataView) of all
-    // /// the fields in this DataView.
-    // pub fn selections<'a>(&'a self) -> Selections<'a, DTypes> {
-    //     Selections::new(self, self.fields.keys())
-    // }
-
     /// Returns an iterator over the fields (as `FieldIdent`s of this DataView.
-    pub fn fields<'a>(&'a self) -> Keys<'a, FieldIdent, ViewField> {
+    pub fn idents<'a>(&'a self) -> Keys<'a, FieldIdent, ViewField> {
         self.fields.keys()
     }
-
-    // pub fn field<'a, T: 'a + DataType, I: Into<FieldIdent>>(&'a self, ident: I)
-    //     -> error::Result<Framed<'a, T>>
-    //     where Self: Field_<'a, T, Output=Framed<'a, T>>
-    // {
-    //     (self as &dyn Field_<'a, T, Output=Framed<'a, T>>).field(ident.into())
-    // }
 
     pub fn map<F, FOut, I>(&self, ident: I, f: F)
         -> error::Result<FOut>
@@ -276,43 +245,8 @@ impl<DTypes> DataView<DTypes>
                 self.frames[view_field.frame_idx].map_partial(&view_field.rident.ident, f)
             })
     }
-    // pub fn map_opt<'a, F, FOut, Flag>(&'a self, ident: &FieldIdent, f: F)
-    //     -> error::Result<Option<FOut>>
-    //     where DTypes::Storage: MapOpt<FramedFunc<'a, DTypes, F>, FOut, Flag>,
-    // {
-    //     self.fields.get(ident)
-    //         .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-    //         .and_then(|view_field: &ViewField| {
-    //             self.frames[view_field.frame_idx].map_opt(&view_field.rident.ident, f)
-    //         })
-    // }
 
-    // pub fn copy_into(
-    //     &self,
-    //     ident: &FieldIdent,
-    //     idx: usize,
-    //     target_ds: &mut DataStore<DTypes>,
-    //     target_ident: &FieldIdent,
-    // )
-    //     -> error::Result<()>
-    //     where DTypes: TypeNumMapInto<CopyInto, ()> + TypeNumAddVec
-
-    //     // where DTypes: MapForTypeNum<DTypes, CopyInto<'a, 'b, DTypes>>
-    // {
-    //     // println!("from:{} into:{}", ident, target_ident);
-    //     self.fields.get(ident)
-    //         .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-    //         .and_then(move |view_field: &ViewField| {
-    //             self.frames[view_field.frame_idx].copy_into(
-    //                 &view_field.rident.ident, // use original ident
-    //                 idx,
-    //                 target_ds,
-    //                 target_ident
-    //             )
-    //         })
-    // }
-
-    fn sort_by<'a>(&'a mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
+    pub fn sort_by<'a>(&'a mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
         where DTypes::Storage: FramedMap<DTypes, SortOrderFunc, Vec<usize>>,
     {
         match self.fields.get(ident) {
@@ -332,70 +266,6 @@ impl<DTypes> DataView<DTypes>
     }
 }
 
-impl<'a, DTypes> DataView<DTypes>
-    where DTypes: DTypeList + RefAssocTypes<'a>
-{
-    // pub fn record<'a>(&'a self, idx: usize)
-    //     -> Record<'a, DTypes>
-    //     where DTypes: AssocTypes + RefAssocTypes<'a>,
-    //           DTypes::RecordValues: RetrieveValues<'a, DTypes::Storage>,
-    // {
-
-    // }
-    pub fn partial_record<I, Iter, IntoIter>(&'a self, idx: usize, idents: IntoIter)
-       -> error::Result<PartialRecord<'a, DTypes>>
-        where DTypes: AssocTypes + RefAssocTypes<'a>,
-              DTypes::PartialRecordValues: RetrieveValuesPartial<'a, DTypes, DTypes::Storage>,
-              DataFrame<DTypes>: Reindexer<DTypes>,
-              I: Into<FieldIdent>,
-              Iter: Iterator<Item=I> + Clone,
-              IntoIter: IntoIterator<Item=I, IntoIter=Iter>,
-    {
-        let idents_iter = idents.into_iter();
-        let frame_idx_sets = idents_iter.clone()
-                .map(|ident| {
-                    let ident = ident.into();
-                    self.fields.get(&ident).ok_or(error::AgnesError::FieldNotFound(ident))
-                })
-                // intermediate collect to check for missing fields
-                .collect::<error::Result<Vec<_>>>()?.iter()
-                .map(|view_field: &&ViewField| view_field.frame_idx)
-              .collect::<HashSet<_>>();
-        Ok(PartialRecord {
-            store_records: frame_idx_sets
-                .iter()
-                .map(|&frame_idx| self.frames[frame_idx].store_record(idx, idents_iter.clone()))
-                .collect()
-        })
-    }
-}
-
-
-#[derive(Debug, Clone)]
-pub struct PartialRecord<'a, DTypes>
-    where DTypes: DTypeList + RefAssocTypes<'a>
-{
-    store_records: Vec<StoreRecord<'a, DTypes>>,
-}
-// impl<'a, DTypes> Hash for PartialRecord<'a, DTypes>
-//     where DTypes: DTypeList + RefAssocTypes<'a>
-// {
-//     fn hash<H>(&self, state: &mut H) where H: Hasher {
-//         self.store_records.hash(state);
-//     }
-// }
-// impl<'a, DTypes> PartialEq for PartialRecord<'a, DTypes>
-//     where DTypes: DTypeList + RefAssocTypes<'a>
-// {
-//     fn eq(&self, other: &PartialRecord<'a, DTypes>) -> bool {
-//         self.store_records.iter().eq(other.store_records.iter())
-//     }
-// }
-// impl<'a, DTypes> Eq for PartialRecord<'a, DTypes>
-//     where DTypes: DTypeList + RefAssocTypes<'a>
-// {}
-
-
 impl<DTypes> Field<DTypes> for DataView<DTypes>
     where DTypes: DTypeList
 {}
@@ -412,7 +282,6 @@ impl<'a, DTypes, T> SelectField<'a, T, DTypes>
         where DTypes: AssocTypes,
               DTypes::Storage: TypeSelector<DTypes, T>
     {
-        // let ident = ident.into();
         self.fields.get(&ident)
             .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
             .and_then(|view_field: &ViewField| {
@@ -420,99 +289,6 @@ impl<'a, DTypes, T> SelectField<'a, T, DTypes>
             })
     }
 }
-
-// /// An iterator over `Selection`s of fields in a DataView.
-// pub struct Selections<'a, DTypes>
-//     where DTypes: 'a + DTypeList
-// {
-//     dv: &'a DataView<DTypes>,
-//     keys: Keys<'a, FieldIdent, ViewField>
-// }
-// impl<'a, DTypes> Selections<'a, DTypes>
-//     where DTypes: DTypeList
-// {
-//     fn new(dv: &'a DataView<DTypes>, keys: Keys<'a, FieldIdent, ViewField>)
-//         -> Selections<'a, DTypes>
-//     {
-//         Selections {
-//             dv,
-//             keys
-//         }
-//     }
-// }
-// impl<'a, DTypes> Iterator for Selections<'a, DTypes>
-//     where DTypes: DTypeList
-// {
-//     type Item = Selection<DataView<DTypes>>;
-//     fn next(&mut self) -> Option<Selection<DataView<DTypes>>> {
-//         self.keys.next().map(|ident| Selection::new(self.dv, ident.clone()))
-//     }
-// }
-
-// impl ApplyTo for DataView {
-//     fn apply_to<F: MapFn>(&self, f: &mut F, ident: &FieldIdent)
-//         -> error::Result<Vec<F::Output>>
-//     {
-//         self.fields.get(ident)
-//             .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-//             .and_then(|view_field: &ViewField| {
-//                 self.frames[view_field.frame_idx].apply_to(f, &view_field.rident.ident)
-//             }
-//         )
-//     }
-// }
-// impl ApplyToElem for DataView {
-//     fn apply_to_elem<F: MapFn>(&self, f: &mut F, ident: &FieldIdent, idx: usize)
-//         -> error::Result<F::Output>
-//     {
-//         self.fields.get(ident)
-//             .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-//             .and_then(|view_field: &ViewField| {
-//                 self.frames[view_field.frame_idx].apply_to_elem(f, &view_field.rident.ident, idx)
-//             }
-//         )
-//     }
-// }
-// impl FieldApplyTo for DataView {
-//     fn field_apply_to<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent)
-//         -> error::Result<F::Output>
-//     {
-//         self.fields.get(ident)
-//             .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-//             .and_then(|view_field: &ViewField| {
-//                 self.frames[view_field.frame_idx].field_apply_to(f, &view_field.rident.ident)
-//             }
-//         )
-//     }
-// }
-
-// impl<'a> ApplyFieldReduce<'a> for Selection<'a, DataView> {
-//     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
-//         -> error::Result<F::Output>
-//     {
-//         self.data.fields.get(&self.ident)
-//             .ok_or(error::AgnesError::FieldNotFound(self.ident.clone()))
-//             .and_then(|view_field: &ViewField| {
-//                 self.data.frames[view_field.frame_idx].select_one(&view_field.rident.ident)
-//                     .apply_field_reduce(f)
-//             }
-//         )
-//     }
-// }
-// impl<'a> ApplyFieldReduce<'a> for Vec<Selection<'a, DataView>> {
-//     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
-//         -> error::Result<F::Output>
-//     {
-//         self.iter().map(|selection| {
-//             selection.data.fields.get(&selection.ident)
-//                 .ok_or(error::AgnesError::FieldNotFound(selection.ident.clone()))
-//                 .map(|view_field: &ViewField| {
-//                     selection.data.frames[view_field.frame_idx].select_one(&view_field.rident.ident)
-//                 })
-//         }).collect::<error::Result<Vec<_>>>()
-//             .and_then(|frame_selections| frame_selections.apply_field_reduce(f))
-//     }
-// }
 
 impl<DTypes, T> Filter<DTypes, T> for DataView<DTypes>
     where DataFrame<DTypes>: Filter<DTypes, T> + Field<DTypes>,
@@ -567,7 +343,7 @@ const MAX_DISP_ROWS: usize = 1000;
 impl<DTypes> Display for DataView<DTypes>
     where DTypes: DTypeList,
           DTypes::Storage: MaxLen<DTypes>
-                  + for<'a, 'b> Map<DTypes, FramedFunc<'a, DTypes, AddCellToRow<'b>>, ()>
+                  + for<'a, 'b> Map<DTypes, FramedFunc<'a, DTypes, AddCellToRowFunc<'b>>, ()>
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         if self.frames.len() == 0 || self.fields.len() == 0 {
@@ -581,7 +357,7 @@ impl<DTypes> Display for DataView<DTypes>
         for view_field in self.fields.values() {
             match self.frames[view_field.frame_idx].map(
                 &view_field.rident.ident,
-                AddCellToRow {
+                AddCellToRowFunc {
                     rows: &mut rows,
                 },
             ) {
@@ -589,15 +365,6 @@ impl<DTypes> Display for DataView<DTypes>
                 Err(e) => { return write!(f, "view display error: {}", e); },
             }
         }
-        // for field in self.fields.values() {
-        //     // field.ajdfisofj();
-        //     match self.apply_to(&mut AddCellToRow { rows: &mut rows, i: 0 },
-        //         &field.rident.to_renamed_field_ident())
-        //     {
-        //         Ok(_) => {},
-        //         Err(e) => { return write!(f, "view display error: {}", e); },
-        //     };
-        // }
         for row in rows.drain(..) {
             table.add_row(row);
         }
@@ -606,11 +373,10 @@ impl<DTypes> Display for DataView<DTypes>
     }
 }
 
-pub struct AddCellToRow<'a> {
+pub struct AddCellToRowFunc<'a> {
     rows: &'a mut Vec<pt::row::Row>,
-    // i: usize
 }
-impl<'a, DTypes, T> Func<DTypes, T> for AddCellToRow<'a>
+impl<'a, DTypes, T> Func<DTypes, T> for AddCellToRowFunc<'a>
     where DTypes: DTypeList,
           T: 'a + DataType<DTypes>,
           for<'b> Value<&'b T>: ToString
@@ -626,25 +392,6 @@ impl<'a, DTypes, T> Func<DTypes, T> for AddCellToRow<'a>
         }
     }
 }
-
-// macro_rules! impl_apply_cell_to_row {
-//     ($name:tt; $ty:ty) => {
-//         fn $name(&mut self, value: Value<&$ty>) {
-//             //FIXME: this will fail if i is > MAX_ROWS
-//             // need to be able to short-circuit this once we hit MAX_ROWS
-//             self.rows[self.i].add_cell(cell!(value));
-//             self.i += 1;
-//         }
-//     }
-// }
-// impl<'a> MapFn for AddCellToRow<'a> {
-//     type Output = ();
-//     impl_apply_cell_to_row!(apply_unsigned; u64);
-//     impl_apply_cell_to_row!(apply_signed;   i64);
-//     impl_apply_cell_to_row!(apply_text;     String);
-//     impl_apply_cell_to_row!(apply_boolean;  bool);
-//     impl_apply_cell_to_row!(apply_float;    f64);
-// }
 
 impl<DTypes> Serialize for DataView<DTypes>
     where DTypes: DTypeList,
@@ -758,35 +505,16 @@ impl<'a> IntoFieldList for Vec<&'a str> {
     }
 }
 macro_rules! impl_into_field_list_str_arr {
-    ($val:expr) => {
+    ($($val:expr),*) => {$(
         impl<'a> IntoFieldList for [&'a str; $val] {
             fn into_field_list(self) -> Vec<FieldIdent> {
                 self.iter().map(|s| FieldIdent::Name(s.to_string())).collect()
             }
         }
-    }
+    )*}
 }
-impl_into_field_list_str_arr!(1);
-impl_into_field_list_str_arr!(2);
-impl_into_field_list_str_arr!(3);
-impl_into_field_list_str_arr!(4);
-impl_into_field_list_str_arr!(5);
-impl_into_field_list_str_arr!(6);
-impl_into_field_list_str_arr!(7);
-impl_into_field_list_str_arr!(8);
-impl_into_field_list_str_arr!(9);
-impl_into_field_list_str_arr!(10);
-impl_into_field_list_str_arr!(11);
-impl_into_field_list_str_arr!(12);
-impl_into_field_list_str_arr!(13);
-impl_into_field_list_str_arr!(14);
-impl_into_field_list_str_arr!(15);
-impl_into_field_list_str_arr!(16);
-impl_into_field_list_str_arr!(17);
-impl_into_field_list_str_arr!(18);
-impl_into_field_list_str_arr!(19);
-impl_into_field_list_str_arr!(20);
-
+impl_into_field_list_str_arr!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20);
 
 impl IntoFieldList for String {
     fn into_field_list(self) -> Vec<FieldIdent> {
@@ -799,41 +527,22 @@ impl IntoFieldList for Vec<String> {
     }
 }
 macro_rules! impl_into_field_list_string_arr {
-    ($val:expr) => {
+    ($($val:expr),*) => {$(
         impl IntoFieldList for [String; $val] {
             fn into_field_list(self) -> Vec<FieldIdent> {
                 // clone necessary since we're moving to the heap
                 self.iter().map(|s| FieldIdent::Name(s.clone())).collect()
             }
         }
-    }
+    )*}
 }
-impl_into_field_list_string_arr!(1);
-impl_into_field_list_string_arr!(2);
-impl_into_field_list_string_arr!(3);
-impl_into_field_list_string_arr!(4);
-impl_into_field_list_string_arr!(5);
-impl_into_field_list_string_arr!(6);
-impl_into_field_list_string_arr!(7);
-impl_into_field_list_string_arr!(8);
-impl_into_field_list_string_arr!(9);
-impl_into_field_list_string_arr!(10);
-impl_into_field_list_string_arr!(11);
-impl_into_field_list_string_arr!(12);
-impl_into_field_list_string_arr!(13);
-impl_into_field_list_string_arr!(14);
-impl_into_field_list_string_arr!(15);
-impl_into_field_list_string_arr!(16);
-impl_into_field_list_string_arr!(17);
-impl_into_field_list_string_arr!(18);
-impl_into_field_list_string_arr!(19);
-impl_into_field_list_string_arr!(20);
+impl_into_field_list_string_arr!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20);
 
 #[cfg(test)]
 mod tests {
     use test_utils::*;
 
-    use data_types::HashableFieldCons;
     use super::{FieldIdent, Filter};
     use error::*;
     use data_types::standard::*;
@@ -1168,12 +877,5 @@ mod tests {
             Ok(_) => { panic!["expected error when calling tmap() with incorrect type, but \
                                received result"]; }
         }
-    }
-
-    #[test]
-    fn test_fields_macro() {
-        // let orig_dv = sample_merged_emp_table();
-        let field_list = hashable_fields!["EmpName" => String, "EmpId" => u64];
-        println!("{:?}", field_list);
     }
 }

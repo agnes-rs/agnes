@@ -2,9 +2,6 @@
 Mathematical operations for `DataView` objects.
 */
 
-mod op_error;
-pub use self::op_error::*;
-
 #[macro_use] mod scalar_op;
 pub use self::scalar_op::*;
 

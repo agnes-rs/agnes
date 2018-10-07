@@ -9,7 +9,7 @@ use view::DataView;
 use field::FieldIdent;
 
 impl<'a, DTypes> DataView<DTypes>
-    where DTypes: DTypeList + RefAssocTypes<'a>
+    where DTypes: DTypeList
 {
     pub fn unique_indices<T, I>(&self, ident: I) -> Result<Vec<usize>>
         where DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T>,

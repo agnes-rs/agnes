@@ -65,48 +65,21 @@ impl<DTypes: DTypeList> DataView<DTypes>
           DTypes::Storage: MapPartial<DTypes, StringifyFn<SumFn>>,
           DTypes::Storage: MapPartial<DTypes, StringifyFn<MeanFn>>,
           DTypes::Storage: MapPartial<DTypes, StringifyFn<StdevFn>>,
-            // + for<'a> TypeNumMapOpt//<FramedFunc<'a, DTypes, StringifyFn<MinFn>>, String>
-            // + for<'a> TypeNumMapOpt<FramedFunc<'a, DTypes, StringifyFn<MaxFn>>, String>
-            // + for<'a> TypeNumMapOpt<FramedFunc<'a, DTypes, StringifyFn<SumFn>>, String>
-            // + for<'a> TypeNumMapOpt<FramedFunc<'a, DTypes, StringifyFn<MeanFn>>, String>
-            // + for<'a> TypeNumMapOpt<FramedFunc<'a, DTypes, StringifyFn<StdevFn>>, String>
 {
     /// Compute and return general statistics for this `DataView`.
     pub fn view_stats(&self) -> Result<ViewStats<DTypes>>
-        // where DTypes: 'a + TypeNumMapOpt<FramedFunc<'a, DTypes, StringifyFn<MinFn>>, String, Flag>
     {
-        // // error handler to treat InvalidType errors as `None`.
-        // fn err_handler<T>(err: AgnesError) -> Result<Option<T>> {
-        //     match err {
-        //         AgnesError::InvalidType { .. } => Ok(None),
-        //         e => Err(e)
-        //     }
-        // }
         Ok(ViewStats {
             nrows: self.nrows(),
-            fields: self.fields().map(|ident| -> Result<FieldStats<DTypes>> {
+            fields: self.idents().map(|ident| -> Result<FieldStats<DTypes>> {
                 Ok(FieldStats {
                     ident: ident.clone(),
                     ty: self.get_field_type(ident).unwrap(),
-
-                    // min: None,
-                    // max: None,
-                    // sum: None,
-                    // mean: None,
-                    // stdev: None,
-
                     min: self.map_partial(ident, StringifyFn { inner: MinFn })?,
                     max: self.map_partial(ident, StringifyFn { inner: MaxFn })?,
                     sum: self.map_partial(ident, StringifyFn { inner: SumFn })?,
                     mean: self.map_partial(ident, StringifyFn { inner: MeanFn })?,
                     stdev: self.map_partial(ident, StringifyFn { inner: StdevFn })?,
-
-                    // min: self.select_one(ident).min().map(|val| Some(val)).or_else(err_handler)?,
-                    // max: self.select_one(ident).max().map(|val| Some(val)).or_else(err_handler)?,
-                    // sum: self.select_one(ident).sum().map(|val| Some(val)).or_else(err_handler)?,
-                    // mean: self.select_one(ident).mean().map(|val| Some(val)).or_else(err_handler)?,
-                    // stdev: self.select_one(ident).stdev()
-                        // .map(|val| Some(val)).or_else(err_handler)?,
                 })
             }).collect::<Result<_>>()?
         })
@@ -118,7 +91,7 @@ impl<DTypes: DTypeList> fmt::Display for ViewStats<DTypes> {
         writeln!(f, "DataView with {} rows, {} fields", self.nrows, self.fields.len())?;
 
         let mut table = pt::Table::new();
-        table.set_titles(["Field", "Type", "Min", "Max", "Sum", "Mean", "StDev"].iter().into());
+        table.set_titles(["Field", "Type", "Min*", "Max*", "Sum", "Mean", "StDev"].iter().into());
 
         for fstats in &self.fields {
             table.add_row(pt::row::Row::new(vec![
@@ -130,33 +103,14 @@ impl<DTypes: DTypeList> fmt::Display for ViewStats<DTypes> {
                 cell![format!["{}",fstats.mean.clone().unwrap_or("".to_string())]],
                 cell![format!["{}",fstats.stdev.clone().unwrap_or("".to_string())]],
             ]));
-            // if fstats.ty == FieldType::Text { str_exists = true; }
-            // table.add_row(pt::row::Row::new(vec![
-            //     cell![fstats.ident],
-            //     cell![fstats.ty],
-            //     cell![format!("{}{}",
-            //         fstats.min.clone().unwrap_or(DtValue::Text("".into())).to_string(),
-            //         if fstats.ty == FieldType::Text { "*" } else { "" }
-            //     )],
-            //     cell![format!("{}{}",
-            //         fstats.max.clone().unwrap_or(DtValue::Text("".into())).to_string(),
-            //         if fstats.ty == FieldType::Text { "*" } else { "" }
-            //     )],
-            //     cell![fstats.sum.clone().unwrap_or(DtValue::Text("".into()))],
-            //     cell![fstats.mean.map(|val| DtValue::Float(val.clone()))
-            //         .unwrap_or(DtValue::Text("".into()))],
-            //     cell![fstats.stdev.map(|val| DtValue::Float(val.clone()))
-            //         .unwrap_or(DtValue::Text("".into()))],
-            // ]));
         }
 
         table.set_format(*pt::format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
         table.fmt(f)?;
 
-        // // if there's a text field, add descriptive footer
-        // if str_exists {
-        //     writeln!(f, "* For text fields, Min and Max refer to length of contents.")?;
-        // }
+        // TODO: add this footer (and footnore markers on Min and Max) only if text field exists
+        // in DataView
+        writeln!(f, "* For text fields, Min and Max refer to length of contents.")?;
         Ok(())
     }
 }

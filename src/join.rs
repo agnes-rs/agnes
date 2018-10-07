@@ -10,17 +10,11 @@ use field::Value;
 use view::{DataView, ViewField};
 use store::{DataStore};
 use data_types::{MaxLen, CreateStorage, DataType, TypeSelector, AssocTypes, DTypeList};
-// use apply::mapfn::*;
 use apply::sort::{DtOrd, sort_order};
 use select::{Field};
 use access::{DataIndex};
 use store::{CopyInto};
 use error::*;
-
-
-// pub trait Join<T> {
-//     fn join(&self, idx: usize, target: &T) -> Result<DataStore>;
-// }
 
 /// Join information used to describe the type of join being used.
 #[derive(Debug, Clone)]
@@ -152,58 +146,30 @@ impl Predicate {
                     Ordering::Equal => PredResults::Add,
                     Ordering::Greater => PredResults::Advance { left: false, right: true },
                 }
-                // if left == right {
-                //     PredResults::Add
-                // } else if left < right {
-                //     PredResults::Advance { left: true, right: false }
-                // } else {
-                //     // right < left
-                //     PredResults::Advance { left: false, right: true }
-                // }
             },
             Predicate::LessThan => {
                 match left.dt_cmp(right) {
                     Ordering::Less => PredResults::Add,
                     _ => PredResults::Advance { left: false, right: true },
                 }
-                // if left.dt_cmp(right) == Ordering::Less {
-                //     PredResults::Add
-                // } else {
-                //     PredResults::Advance { left: false, right: true }
-                // }
             },
             Predicate::LessThanEqual => {
                 match left.dt_cmp(right) {
                     Ordering::Greater => PredResults::Advance { left: false, right: true },
                     _ => PredResults::Add
                 }
-                // if left <= right {
-                //     PredResults::Add
-                // } else {
-                //     PredResults::Advance { left: false, right: true }
-                // }
             },
             Predicate::GreaterThan => {
                 match left.dt_cmp(right) {
                     Ordering::Greater => PredResults::Add,
                     _ => PredResults::Advance { left: true, right: false }
                 }
-                // if left > right {
-                //     PredResults::Add
-                // } else {
-                //     PredResults::Advance { left: true, right: false }
-                // }
             },
             Predicate::GreaterThanEqual => {
                 match left.dt_cmp(right) {
                     Ordering::Less => PredResults::Advance { left: true, right: false },
                     _ => PredResults::Add
                 }
-                // if left >= right {
-                //     PredResults::Add
-                // } else {
-                //     PredResults::Advance { left: true, right: false }
-                // }
             }
         }
     }
@@ -219,6 +185,8 @@ enum PredResults {
 
 /// Join two dataviews with specified `Join` using hash join algorithm. Only valid for
 /// joins with the 'Equal' predicate.
+//TODO: implement hash_join!
+#[allow(dead_code)]
 pub(crate) fn hash_join<DTypes>(
     _left: &DataView<DTypes>, _right: &DataView<DTypes>, join: Join
 )
@@ -236,16 +204,11 @@ pub(crate) fn sort_merge_join<'b, DTypes, T>(
     left: &'b DataView<DTypes>, right: &'b DataView<DTypes>, join: Join
 )   -> Result<DataStore<DTypes>>
     where T: 'static + DataType<DTypes> + DtOrd + PartialEq + Default,
-          // for<'a> Framed<'a, DTypes, T>: SortOrder<T, Framed<'a, DTypes, T>>,
           DTypes: DTypeList,
           DTypes::Storage: MaxLen<DTypes>
                   + TypeSelector<DTypes, T>
                   + CreateStorage
                   + for<'c> FramedMapExt<DTypes, CopyInto<'c, DTypes>, ()>
-                  // + Map<CopyInto2<'b, DTypes>, ()>
-
-          // DTypes: MaxLen + TypeSelector<T, Idx> + AssociatedValue<'a>
-            //+ MapForTypeNum<DTypes, CopyInto<'a, 'b, DTypes>>
 {
     // return early if fields don't exist, don't match types, or if DataViews are empty
     if !left.has_field(&join.left_ident) {
@@ -273,55 +236,9 @@ pub(crate) fn sort_merge_join<'b, DTypes, T>(
         join.predicate
     );
 
-    // struct FindMergeIndices {
-    //     left_perm: Vec<usize>,
-    //     right_perm: Vec<usize>,
-    //     predicate: Predicate,
-    // }
-    // impl<'a> FieldReduceFn<'a> for FindMergeIndices {
-    //     type Output = Vec<(usize, usize)>;
-
-    //     fn reduce(&mut self, fields: Vec<FieldData<'a>>) -> Vec<(usize, usize)> {
-    //         debug_assert_eq!(fields.len(), 2);
-    //         match (&fields[0], &fields[1]) {
-    //             (&FieldData::Unsigned(ref left), &FieldData::Unsigned(ref right)) => {
-    //                 merge_field_data(&self.left_perm, &self.right_perm, left,
-    //                     right, self.predicate)
-    //             },
-    //             (&FieldData::Signed(ref left), &FieldData::Signed(ref right)) => {
-    //                 merge_field_data(&self.left_perm, &self.right_perm, left,
-    //                     right, self.predicate)
-    //             },
-    //             (&FieldData::Text(ref left), &FieldData::Text(ref right)) => {
-    //                 merge_field_data(&self.left_perm, &self.right_perm, left,
-    //                     right, self.predicate)
-    //             },
-    //             (&FieldData::Boolean(ref left), &FieldData::Boolean(ref right)) => {
-    //                 merge_field_data(&self.left_perm, &self.right_perm, left,
-    //                     right, self.predicate)
-    //             },
-    //             (&FieldData::Float(ref left), &FieldData::Float(ref right)) => {
-    //                 merge_field_data(&self.left_perm, &self.right_perm, left,
-    //                     right, self.predicate)
-    //             },
-    //             (_, _) => {
-    //                 unreachable!("join on fields of different type should alreadychecked");
-    //             }
-    //         }
-    //     }
-    // }
-
-    // find the join indices
-    // let merge_indices = vec![left.select_one(&join.left_ident), right.select_one(&join.right_ident)]
-    //     .apply_field_reduce(&mut FindMergeIndices {
-    //         left_perm,
-    //         right_perm,
-    //         predicate: join.predicate
-    //     })?;
-
     // compute merged frame list and field list for the new dataframe
     // compute the field list for the new dataframe
-    let (new_frames, other_frame_indices) = compute_merged_frames(left, right);
+    let (_, other_frame_indices) = compute_merged_frames(left, right);
     let (right_idents, mut new_fields) =
         compute_merged_field_list(left, right, &other_frame_indices, &join)?;
     let new_fields = new_fields.drain(..).map(|(_, vf)| vf).collect::<Vec<_>>();
@@ -330,24 +247,9 @@ pub(crate) fn sort_merge_join<'b, DTypes, T>(
     let new_field_idents = new_fields.iter()
         .map(|&ref view_field| view_field.rident.to_renamed_field_ident())
         .collect::<Vec<_>>();
-    // let mut ds = DataStore::with_fields(
-    //     new_fields.iter().map(|&ref view_field| {
-    //         let new_ident = view_field.rident.to_renamed_field_ident();
-    //         new_field_idents.push(new_ident.clone());
-    //         let field_type = new_frames[view_field.frame_idx]
-    //             .get_field_type(&view_field.rident.ident)
-    //             .expect("compute_merged_frames/field_list failed");
-    //         TypedFieldIdent {
-    //             ident: new_ident,
-    //             ty: field_type,
-    //         }
-    //     })
-    //     .collect::<Vec<_>>()
-    // );
 
     let mut field_idx = 0;
     for left_ident in left.fields.keys() {
-        // let dt_field = left.dt_field(left_ident);
 
         for (left_idx, _) in &merge_indices {
             left.map_ext(
@@ -358,22 +260,6 @@ pub(crate) fn sort_merge_join<'b, DTypes, T>(
                     target_ds: &mut ds
                 },
             )?;
-            // left.copy_into2(left_ident, *left_idx, &mut ds, &new_field_idents[field_idx])?;
-            // left.copy_into(left_ident, *left_idx, &mut ds, &new_field_idents[field_idx])?;
-
-            // let left_field = left.field(left_ident).unwrap();
-
-            // AddData::<_, DTypes, _>::add(
-            //     &mut ds,
-            //     new_field_idents[field_idx].clone(),
-            //     // left.field::<_, _>(left_ident).unwrap().get_datum(left_idx).unwrap().cloned()
-            //     left_field.get_datum(left_idx).unwrap().cloned()
-            // )?;
-            // left.apply_to_elem(
-            //     &mut AddToDsFn { ds: &mut ds, ident: new_field_idents[field_idx].clone() },
-            //     &left_ident,
-            //     left_idx
-            // )?;
         }
         field_idx += 1;
     }
@@ -387,17 +273,6 @@ pub(crate) fn sort_merge_join<'b, DTypes, T>(
                     target_ds: &mut ds
                 },
             )?;
-            // right.copy_into(right_ident, *right_idx, &mut ds, &new_field_idents[field_idx])?;
-            // AddData::<_, DTypes, _>::add(
-            //     &mut ds,
-            //     new_field_idents[field_idx].clone(),
-            //     right.field(right_ident).unwrap().get_datum(right_idx).unwrap().cloned()
-            // )?;
-            // right.apply_to_elem(
-            //     &mut AddToDsFn { ds: &mut ds, ident: new_field_idents[field_idx].clone() },
-            //     &right_ident,
-            //     right_idx
-            // )?;
         }
         field_idx += 1;
     }

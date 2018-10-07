@@ -7,14 +7,12 @@ use std::sync::Arc;
 use std::marker::PhantomData;
 use serde::{Serialize, Serializer};
 
-use filter::Filter;
-use store::{DataStore, StoreRecord};
+use filter::{Filter, DataFilter};
+use store::DataStore;
 use data_types::*;
 use field::{FieldIdent};
-use access::{OwnedOrRef, DataIndex, DataIndexMut};
+use access::{OwnedOrRef, DataIndex};
 use select::{SelectField, Field};
-// use apply::mapfn::*;
-use apply::matches::DataFilter;
 use apply::sort::SortOrderFunc;
 use error;
 use field::{Value};
@@ -89,25 +87,6 @@ impl<DTypes> DataFrame<DTypes>
     {
         self.store.map_partial(ident, self, f)
     }
-    // pub fn map_opt<'a, F, FOut, Flag>(&'a self, ident: &FieldIdent, f: F)
-    //     -> error::Result<Option<FOut>>
-    //     where DTypes::Storage: TypeNumMapOpt<FramedFunc<'a, DTypes, F>, FOut, Flag>,
-    // {
-    //     self.store.map_opt(ident, FramedFunc::new(self, f))
-    // }
-    // pub fn copy_into(
-    //     &self,
-    //     ident: &FieldIdent,
-    //     idx: usize,
-    //     target_ds: &mut DataStore<DTypes>,
-    //     target_ident: &FieldIdent,
-    // )
-    //     -> error::Result<()>
-    //     where DTypes: TypeNumMapInto<CopyInto, ()> + TypeNumAddVec
-    //     // where DTypes: MapForTypeNum<DTypes, CopyInto<'a, 'b, DTypes>>
-    // {
-    //     self.store.copy_into(ident, self.map_index(idx), target_ds, target_ident)
-    // }
 
     pub fn sort_by<'a>(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
         where DTypes::Storage: FramedMap<DTypes, SortOrderFunc, Vec<usize>>
@@ -121,30 +100,6 @@ impl<DTypes> DataFrame<DTypes>
         where DTypes::Storage: FramedMap<DTypes, SortOrderFunc, Vec<usize>>,
     {
         self.map(ident, SortOrderFunc)
-    }
-}
-
-impl<DTypes> DataFrame<DTypes>
-    where DTypes: DTypeList,
-          Self: Reindexer<DTypes>
-{
-    // pub fn record<'a>(&'a self, idx: usize)
-    //     -> Record<'a, DTypes>
-    //     where DTypes: AssocTypes + RefAssocTypes<'a>,
-    //           DTypes::RecordValues: RetrieveValues<'a, DTypes::Storage>,
-    // {
-    //     self.store.record(self.map_index(idx))
-    // }
-
-    pub fn store_record<'a, I, Iter, IntoIter>(&'a self, idx: usize, idents: IntoIter)
-       -> StoreRecord<'a, DTypes>
-        where DTypes: AssocTypes + RefAssocTypes<'a>,
-              DTypes::PartialRecordValues: RetrieveValuesPartial<'a, DTypes, DTypes::Storage>,
-              I: Into<FieldIdent>,
-              Iter: Iterator<Item=I>,
-              IntoIter: IntoIterator<Item=I, IntoIter=Iter>,
-    {
-        self.store.store_record(self.map_index(idx), idents)
     }
 }
 
@@ -242,14 +197,7 @@ impl<'a, DTypes, T> SelectField<'a, T, DTypes>
         -> error::Result<Framed<'a, DTypes, T>>
         where DTypes::Storage: TypeSelector<DTypes, T>
     {
-        // let ident = ident.into();
         Ok(Framed::new(&self, self.store.select(ident)?))
-        // self.field_map
-        //     .get(&ident)
-        //     .ok_or(AgnesError::FieldNotFound(ident.clone()))
-        //     .map(|&field_idx| self.fields[field_idx])
-        //     .and_then(|ds_field| self.data[&ds_field.ty].get(ds_field.ds_index))
-        //     .map(|field| OwnedOrRef::Ref(field))
     }
 }
 impl<DTypes> Field<DTypes> for DataFrame<DTypes>
@@ -307,15 +255,6 @@ impl<'a, DTypes, T, F> FuncExt<DTypes, T> for FramedFunc<'a, DTypes, F>
     }
 }
 
-// impl<'a, T: 'static + DataType> DIter<'a, T> for Selection<'a, DataFrame> {
-//     type DI = OwnedOrRef<'a, T>;
-//     fn diter(&'a self) -> error::Result<DataIterator<'a, T, OwnedOrRef<'a, T>>> {
-//         Framed::new(&self.data, self.data.store.select_one(self.ident))
-//             .diter()
-//     }
-// }
-
-
 impl<DTypes, T> Filter<DTypes, T> for DataFrame<DTypes>
     where DTypes: DTypeList,
           DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T>,
@@ -330,85 +269,6 @@ impl<DTypes, T> Filter<DTypes, T> for DataFrame<DTypes>
         Ok(filter)
     }
 }
-
-// macro_rules! impl_filter {
-//     ($($dtype:tt)*) => {$(
-
-// impl Filter<$dtype> for DataFrame {
-//     fn filter<F: Fn(&$dtype) -> bool>(&mut self, ident: &FieldIdent, pred: F)
-//         -> error::Result<Vec<usize>>
-//     {
-        // let filter = self.field(ident)?.data_filter(pred);
-        // self.update_permutation(&filter);
-        // Ok(filter)
-//     }
-// }
-
-//     )*}
-// }
-// impl_filter!(u64 i64 String bool f64);
-
-// /// Trait that provides a function for sorting a data structure's contents.
-// pub trait SortBy {
-//     /// Sort the contents of this data structure (ascending) by the specified field.
-//     fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>;
-// }
-// impl SortBy for DataFrame {
-    // fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>> {
-    //     let sort_order = self.sort_order_by(ident)?;
-    //     self.update_permutation(&sort_order);
-    //     Ok(sort_order)
-    // }
-// }
-
-// impl ApplyTo for DataFrame {
-//     fn apply_to<F: MapFn>(&self, f: &mut F, ident: &FieldIdent)
-//         -> error::Result<Vec<F::Output>>
-//     {
-//         (0..self.nrows()).map(|idx| {
-//             self.store.apply_to_elem(f, &ident, self.map_index(idx))
-//         }).collect()
-//     }
-// }
-// impl ApplyToElem for DataFrame {
-//     fn apply_to_elem<F: MapFn>(&self, f: &mut F, ident: &FieldIdent, idx: usize)
-//         -> error::Result<F::Output>
-//     {
-//         self.store.apply_to_elem(f, &ident, self.map_index(idx))
-//     }
-// }
-// impl FieldApplyTo for DataFrame {
-//     fn field_apply_to<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent)
-//         -> error::Result<F::Output>
-//     {
-//         self.store.field_apply_to(&mut FrameFieldMapFn { frame: &self, field_fn: f }, &ident)
-//     }
-// }
-
-// impl<'a> ApplyFieldReduce<'a> for Selection<'a, DataFrame> {
-//     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
-//         -> error::Result<F::Output>
-//     {
-//         self.data.store.select_one(&self.ident)
-//             .apply_field_reduce(&mut FrameFieldReduceFn {
-//                 frames: vec![&self.data],
-//                 reduce_fn: f,
-//             })
-//     }
-// }
-// impl<'a> ApplyFieldReduce<'a> for Vec<Selection<'a, DataFrame>> {
-//     fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
-//         -> error::Result<F::Output>
-//     {
-//         let frames = self.iter().map(|selection| selection.data).collect::<Vec<_>>();
-//         self.iter().map(|selection| {
-//             selection.data.store.select_one(&selection.ident)
-//         }).collect::<Vec<_>>().apply_field_reduce(&mut FrameFieldReduceFn {
-//             frames: frames,
-//             reduce_fn: f,
-//         })
-//     }
-// }
 
 impl<DTypes> From<DataStore<DTypes>> for DataFrame<DTypes>
     where DTypes: DTypeList
@@ -445,10 +305,7 @@ impl<'a, DTypes, T> Framed<'a, DTypes, T>
     }
 }
 
-macro_rules! impl_framed_data_index {
-    ($($t:tt)*) => {$(
-
-impl<'a, DTypes, T> DataIndex<DTypes> for $t<'a, DTypes, T>
+impl<'a, DTypes, T> DataIndex<DTypes> for Framed<'a, DTypes, T>
     where T: DataType<DTypes>,
           DTypes: DTypeList,
           DTypes::Storage: MaxLen<DTypes>
@@ -463,104 +320,6 @@ impl<'a, DTypes, T> DataIndex<DTypes> for $t<'a, DTypes, T>
         self.frame.nrows()
     }
 }
-
-    )*}
-}
-impl_framed_data_index![Framed FramedMut];
-
-#[derive(Debug)]
-pub struct FramedMut<'a, DTypes, T>
-    where T: 'a + DataType<DTypes>,
-          DTypes: 'a + DTypeList
-{
-    frame: &'a mut DataFrame<DTypes>,
-    data: OwnedOrRef<'a, DTypes, T>,
-    dtype: PhantomData<T>
-}
-impl<'a, DTypes, T> FramedMut<'a, DTypes, T>
-    where DTypes: DTypeList,
-          T: DataType<DTypes>,
-{
-    /// Create a new framed view of some data, as view through a particular `DataFrame`.
-    pub fn new(frame: &'a mut DataFrame<DTypes>, data: OwnedOrRef<'a, DTypes, T>)
-        -> FramedMut<'a, DTypes, T>
-    {
-        FramedMut { frame, data, dtype: PhantomData }
-    }
-}
-impl<'a, DTypes, T: DataType<DTypes>> DataIndexMut<DTypes> for FramedMut<'a, DTypes, T>
-    where DTypes: DTypeList,
-          DTypes::Storage: MaxLen<DTypes>
-{
-
-    // fn set_datum(&mut self, idx: usize, value: Value<T>) -> error::Result<()> {
-    //     self.data.set_datum(self.frame.map_index(idx), value)
-    // }
-    fn push(&mut self, value: Value<T>) {
-        let new_idx = self.data.len();
-        self.data.push(value);
-        match self.frame.permutation {
-            Some(ref mut perm) => { perm.push(new_idx); }
-            None => {}
-        }
-    }
-}
-
-// struct FrameFieldMapFn<'a, 'b, F: 'b + FieldMapFn> {
-//     frame: &'a DataFrame,
-//     field_fn: &'b mut F,
-// }
-// impl<'a, 'b, F: 'b + FieldMapFn> FieldMapFn for FrameFieldMapFn<'a, 'b, F> {
-//     type Output = F::Output;
-//     fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &T) -> F::Output {
-//         self.field_fn.apply_unsigned(&Framed::new(self.frame, OwnedOrRef::Ref(field)))
-//     }
-//     fn apply_signed<T: DataIndex<i64>>(&mut self, field: &T) -> F::Output {
-//         self.field_fn.apply_signed(&Framed::new(self.frame, OwnedOrRef::Ref(field)))
-//     }
-//     fn apply_text<T: DataIndex<String>>(&mut self, field: &T) -> F::Output {
-//         self.field_fn.apply_text(&Framed::new(self.frame, OwnedOrRef::Ref(field)))
-//     }
-//     fn apply_boolean<T: DataIndex<bool>>(&mut self, field: &T) -> F::Output {
-//         self.field_fn.apply_boolean(&Framed::new(self.frame, OwnedOrRef::Ref(field)))
-//     }
-//     fn apply_float<T: DataIndex<f64>>(&mut self, field: &T) -> F::Output {
-//         self.field_fn.apply_float(&Framed::new(self.frame, OwnedOrRef::Ref(field)))
-//     }
-// }
-
-// struct FrameFieldReduceFn<'a, 'b, F: 'b + FieldReduceFn<'a>> {
-//     frames: Vec<&'a DataFrame>,
-//     reduce_fn: &'b mut F,
-// }
-// impl<'a, 'b, F: FieldReduceFn<'a>> FieldReduceFn<'a> for FrameFieldReduceFn<'a, 'b, F>
-// {
-//     type Output = F::Output;
-//     fn reduce(&mut self, mut fields: Vec<FieldData<'a>>) -> F::Output {
-//         let data_vec = fields.drain(..).zip(self.frames.iter()).map(|(field, frame)| {
-//             let field: FieldData<'a> = field;
-//             match field {
-//                 FieldData::Unsigned(field) =>
-//                     FieldData::Unsigned(OwnedOrRef::Owned(Box::new(
-//                         Framed::new(frame, field)))),
-//                 FieldData::Signed(field) =>
-//                     FieldData::Signed(OwnedOrRef::Owned(Box::new(
-//                         Framed::new(frame, field)))),
-//                 FieldData::Text(field) =>
-//                     FieldData::Text(OwnedOrRef::Owned(Box::new(
-//                         Framed::new(frame, field)))),
-//                 FieldData::Boolean(field) =>
-//                     FieldData::Boolean(OwnedOrRef::Owned(Box::new(
-//                         Framed::new(frame, field)))),
-//                 FieldData::Float(field) =>
-//                     FieldData::Float(OwnedOrRef::Owned(Box::new(
-//                         Framed::new(frame, field)))),
-//             }
-//         }
-//         ).collect::<Vec<FieldData<'a>>>();
-//         self.reduce_fn.reduce(data_vec)
-//     }
-// }
 
 pub(crate) struct SerializedField<'a, DTypes>
     where DTypes: 'a + DTypeList
@@ -579,69 +338,6 @@ impl<'a, DTypes> SerializedField<'a, DTypes>
     }
 }
 
-// struct SerializeFn<S: Serializer> {
-//     serializer: Option<S>,
-// }
-// macro_rules! SResult { ($s:tt) => (Result<$s::Ok, $s::Error>) }
-// fn do_serialize<'a, 'b, T: DataType + Serialize, S: 'a + Serializer>(
-//         sfunc: &mut SerializeFunc<S>, field: &dyn DataIndex<DType=T>
-//     ) -> Result<S::Ok, S::Error>
-// {
-//     let serializer = sfunc.serializer.take().unwrap();
-//     let mut seq = serializer.serialize_seq(Some(field.len()))?;
-//     for idx in 0..field.len() {
-//         match field.get_datum(idx).unwrap() {
-//             Value::Exists(&ref val) =>  seq.serialize_element(val)?,
-//             Value::Na =>  seq.serialize_element("null")?
-//         }
-//     }
-//     seq.end()
-// }
-// impl<Ser: Serializer> FieldMapFn for SerializeFn<Ser> {
-//     type Output = sresult![Ser];
-//     fn apply_unsigned<T: DataIndex<u64>>(&mut self, field: &T) -> sresult![Ser] {
-//         do_serialize(self, field)
-//     }
-//     fn apply_signed<T: DataIndex<i64>>(&mut self, field: &T) -> sresult![Ser] {
-//         do_serialize(self, field)
-//     }
-//     fn apply_text<T: DataIndex<String>>(&mut self, field: &T) -> sresult![Ser] {
-//         do_serialize(self, field)
-//     }
-//     fn apply_boolean<T: DataIndex<bool>>(&mut self, field: &T) -> sresult![Ser] {
-//         do_serialize(self, field)
-//     }
-//     fn apply_float<T: DataIndex<f64>>(&mut self, field: &T) -> sresult![Ser] {
-//         do_serialize(self, field)
-//     }
-// }
-
-// struct SerializeFunc<S: Serializer> {
-//     serializer: S
-// }
-// impl<T, S> Func<T, ()> for SerializeFunc<S>
-//     where T: DataType + Serialize,
-//           S: Serializer
-// {
-//     fn call(
-//         &mut self,
-//         data: &dyn DataIndex<DType=T>,
-//         _: &DsField,
-//     )
-//         -> ()
-//     {
-//         // let serializer = self.serializer.take().unwrap();
-//         let mut seq = self.serializer.serialize_seq(Some(data.len()))?;
-//         for idx in 0..data.len() {
-//             match data.get_datum(idx).unwrap() {
-//                 Value::Exists(&ref val) =>  seq.serialize_element(val)?,
-//                 Value::Na =>  seq.serialize_element("null")?
-//             }
-//         }
-//         seq.end();
-//     }
-// }
-
 impl<'a, DTypes> Serialize for SerializedField<'a, DTypes>
     where DTypes: DTypeList,
           DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>,
@@ -649,52 +345,5 @@ impl<'a, DTypes> Serialize for SerializedField<'a, DTypes>
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer,
     {
         self.frame.store.serialize_field(&self.ident, self.frame, serializer)
-        // let data = self.frame.field(self.ident)
-        //     .or(Err(ser::Error::custom(format!("missing field: {}",
-        //         self.ident.to_string()))))?;
-        // let mut seq = serializer.serialize_seq(Some(data.len()))?;
-        // for idx in 0..data.len() {
-        //     match data.get_datum(idx).unwrap() {
-        //         Value::Exists(&ref val) =>  seq.serialize_element(val)?,
-        //         Value::Na =>  seq.serialize_element("null")?
-        //     }
-        // }
-        // seq.end()
-
-        // struct SerializeFunc<S: Serializer> {
-        //     serializer: Option<S>
-        // }
-        // impl<T, S: Serializer> Func<T, Result<S::Ok, S::Error>> for SerializeFunc<S>
-        //     where T: DataType + Serialize,
-        // {
-        //     fn call(
-        //         &mut self,
-        //         data: &dyn DataIndex<DType=T>,
-        //         _: &DsField
-        //     )
-        //         -> Result<S::Ok, S::Error>
-        //     {
-        //         let serializer = self.serializer.take().unwrap();
-        //         let mut seq = serializer.serialize_seq(Some(data.len()))?;
-        //         for idx in 0..data.len() {
-        //             match data.get_datum(idx).unwrap() {
-        //                 Value::Exists(&ref val) =>  seq.serialize_element(val)?,
-        //                 Value::Na =>  seq.serialize_element("null")?
-        //             }
-        //         }
-        //         seq.end()
-        //     }
-        // }
-
-        // self.frame.map(&self.ident, SerializeFunc { serializer })
-        //     .unwrap_or(
-        //         Err(ser::Error::custom(format!("missing field: {}", self.ident.to_string())))
-        //     )
-        // self.frame.field_apply_to(
-        //     &mut SerializeFn { serializer: Some(serializer) },
-        //     &self.ident
-        // ).unwrap_or(
-        //     Err(ser::Error::custom(format!("missing field: {}", self.ident.to_string())))
-        // )
     }
 }

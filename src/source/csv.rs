@@ -208,13 +208,6 @@ struct SrcField {
     src_index: usize,
 }
 impl SrcField {
-    /// Create a new `SrcField` object from specified field identifier, type, and source index.
-    fn new(ident: FieldIdent, ty: csv_sniffer::Type, src_index: usize) -> SrcField {
-        SrcField {
-            ty_ident: TypedFieldIdent::new(ident, ty),
-            src_index: src_index
-        }
-    }
     /// Create a new `SrcField` object from specified typed field identifier obejct ans source
     /// index.
     fn from_ty_ident(ty_ident: TypedFieldIdent, src_index: usize) -> SrcField {

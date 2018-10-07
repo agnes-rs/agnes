@@ -1,4 +1,7 @@
-//! Field-level structs.
+/*!
+Data structures and implementations for field information, both identifiers (`FieldIdent`) and
+field storage (`FieldData` and `Value`).
+*/
 
 use std::marker::PhantomData;
 use std::fmt;
@@ -6,15 +9,12 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::mem;
 
-use num_traits::Float;
-
 use serde::ser::{Serialize, Serializer, SerializeSeq};
 
 use data_types::{DTypeList, DataType, TypeSelector, DTypeSelector, CreateStorage};
 use bit_vec::BitVec;
-// use apply::mapfn::*;
 use store::{IntoDataStore, DataStore, WithDataFromIter};
-use access::{DataIterator, DataIndex, DataIndexMut};
+use access::{DataIndex, DataIndexMut};
 use error;
 
 /// (Possibly missing) data value container.
@@ -97,14 +97,6 @@ impl<'a, T: Hash> Hash for Value<T> {
         }
     }
 }
-// impl<'a, T: DataTypeHash> Hash for Value<T> {
-    // fn hash<H: Hasher>(&self, state: &mut H) {
-    //     mem::discriminant(self).hash(state);
-    //     if let Value::Exists(ref t) = *self {
-    //         t.dt_hash(state);
-    //     }
-    // }
-// }
 impl<T> From<T> for Value<T> {
     fn from(orig: T) -> Value<T> { Value::Exists(orig) }
 }
@@ -132,26 +124,6 @@ impl<T> From<Option<T>> for Value<T> {
         }
     }
 }
-// /// Trait for any type that can be convert into a `Value` type.
-// pub trait IntoValue<DTypes> {
-//     /// The `DataType` of the resulting `Value` type,
-//     type DType: DataType<DTypes>;
-//     /// Convert this type into a `Value`.
-//     fn into_Value(self) -> Value<Self::DType>;
-// }
-// impl<DTypes, D: DataType<DTypes>> IntoValue<DTypes> for Value<D> {
-//     type DType = D;
-//     fn into_Value(self) -> Value<D> { self }
-// }
-// //TODO
-// // impl<DTypes> IntoValue<DTypes> for () {
-// //     type DType = bool;
-// //     fn into_Value(self) -> Value<bool> { Value::Na }
-// // }
-// impl<DTypes, D: DataType<DTypes>> IntoValue<DTypes> for D {
-//     type DType = D;
-//     fn into_Value(self) -> Value<D> { Value::Exists(self) }
-// }
 
 /// Data vector containing the data for a single field (column) of an agnes data store.
 ///
@@ -185,22 +157,6 @@ impl<DTypes, T> FieldData<DTypes, T>
             }
         }
     }
-    fn set(&mut self, index: usize, value: Value<T>) -> bool {
-        if index >= self.data.len() {
-            false
-        } else {
-            match value {
-                Value::Exists(value) => {
-                    self.mask.set(index, true);
-                    *self.data.get_mut(index).unwrap() = value;
-                },
-                Value::Na => {
-                    self.mask.set(index, false);
-                }
-            }
-            true
-        }
-    }
     /// Interpret `FieldData` as a `Vec` of `Value` objects.
     pub fn as_vec(&self) -> Vec<Value<&T>>
         where FieldData<DTypes, T>: DataIndex<DTypes, DType=T>
@@ -213,11 +169,6 @@ impl<DTypes, T> FieldData<DTypes, T>
             }
         }).collect()
     }
-
-    // pub fn iter<'a>(&'a self) -> DataIterator<'a, T> where FieldData<DTypes, T>: DataIndex<T>
-    // {
-    //     DataIterator::new(self)
-    // }
 }
 impl<DTypes, T> FieldData<DTypes, T>
     where DTypes: DTypeList,
@@ -245,23 +196,6 @@ impl<DTypes, T> FieldData<DTypes, T>
     where DTypes: DTypeList,
           T: DataType<DTypes> + Default + Clone
 {
-    // /// Create new field data vector with single element.
-    // pub fn new_with_elem(value: Value<T>) -> FieldData<DTypes, T> {
-    //     match value {
-    //         Value::Exists(v) => {
-    //             FieldData {
-    //                 data: vec!(v),
-    //                 mask: BitVec::from_elem(1, true)
-    //             }
-    //         },
-    //         Value::Na => {
-    //             FieldData {
-    //                 data: vec![T::default()],
-    //                 mask: BitVec::from_elem(1, false)
-    //             }
-    //         }
-    //     }
-    // }
     /// Add a new value (or an indication of a missing one) to the data vector
     pub fn push_val(&mut self, value: Value<T>) {
         match value {
@@ -365,60 +299,11 @@ impl<DTypes, T> DataIndexMut<DTypes> for FieldData<DTypes, T>
     where DTypes: DTypeList,
           T: DataType<DTypes> + Default + Clone
 {
-    // fn set_datum(&mut self, idx: usize, value: Value<Self::DType>) -> error::Result<()> {
-    //     if self.set(idx, value) {
-    //         Ok(())
-    //     } else {
-    //         Err(error::AgnesError::IndexError { index: idx, len: self.len() })
-    //     }
-    // }
+
     fn push(&mut self, value: Value<Self::DType>) {
         self.push_val(value)
     }
 }
-// macro_rules! impl_field_data_index {
-//     ($($ty:ty)*) => {$(
-//         impl DataIndex<$ty> for FieldData<$ty> {
-//             fn get_data(&self, idx: usize) -> error::Result<Value<&$ty>> {
-//                 self.get(idx).ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-//             }
-//             fn len(&self) -> usize {
-//                 self.len()
-//             }
-//         }
-//     )*}
-// }
-// impl_field_data_index!(u64 i64 String bool f64);
-
-// impl<T: DataType> FieldData<DTypes, T> {
-//     /// Apply a `MapFn` to this data vector at the specified index.
-//     pub fn apply<F: MapFn>(&self, f: &mut F, idx: usize)
-//         -> error::Result<<F as ApplyToDatum<T>>::Output>
-//         where F: ApplyToDatum<T>
-//     {
-//         self.get(idx).map(|value| f.apply_to_datum(value))
-//             .ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
-//     }
-// }
-
-// macro_rules! impl_field_apply {
-//     ($($apply_fn:tt; $dtype:ty)*) => {$(
-
-// impl FieldApply for FieldData<$dtype> {
-//     fn field_apply<F: FieldMapFn>(&self, f: &mut F) -> error::Result<F::Output> {
-//         Ok(f.$apply_fn(self))
-//     }
-// }
-
-//     )*}
-// }
-// impl_field_apply!(
-//     apply_unsigned; u64
-//     apply_signed;   i64
-//     apply_text;     String
-//     apply_boolean;  bool
-//     apply_float;    f64
-// );
 
 impl<DTypes, T> Serialize for FieldData<DTypes, T>
     where DTypes: DTypeList,
@@ -504,101 +389,6 @@ impl<'a, T> From<&'a T> for FieldIdent where FieldIdent: From<T>, T: Clone {
     }
 }
 
-// /// Marker trait for types supported by Agnes data structures
-// pub trait DataType: Serialize + Display + Debug + Clone {
-//     /// Printable name of this data type (for debugging / printout purposes)
-//     fn name() -> &'static str;
-// }
-// impl DataType for u64 { fn name() -> &'static str { "u64" } }
-// impl DataType for i64 { fn name() -> &'static str { "i64" } }
-// impl DataType for String { fn name() -> &'static str { "String" } }
-// impl DataType for bool { fn name() -> &'static str { "bool" } }
-// impl DataType for f64 { fn name() -> &'static str { "f64" } }
-// impl DataType for u32 { fn name() -> &'static str { "u32" } }
-// impl DataType for i32 { fn name() -> &'static str { "i32" } }
-// impl DataType for f32 { fn name() -> &'static str { "f32" } }
-
-// impl<'a, T> DataType for &'a T where T: DataType {
-//     fn name() -> &'static str {
-//         T::name()
-//     }
-// }
-
-/// Trait to provide common hashing ability for all `DataType`s. Hashes floating point by
-/// decoding into mantissa, exponent, sign integers and hashing those.
-pub trait DataTypeHash {
-    /// Hash type into `Hasher`. Should function similarly to function in `std::hash::Hash` trait.
-    fn dt_hash<H: Hasher>(&self, state: &mut H);
-}
-macro_rules! impl_datatypehash {
-    ($($dtype:ty)*) => {$(
-
-impl DataTypeHash for $dtype { fn dt_hash<H: Hasher>(&self, state: &mut H) { self.hash(state); } }
-
-    )*}
-}
-impl_datatypehash![u64 i64 String bool u32 i32];
-
-//TODO: handle Eq-Hash inequalities (0.0 / -0.0 should be equal and hash to same)
-impl DataTypeHash for f64 {
-    fn dt_hash<H: Hasher>(&self, state: &mut H) {
-        self.integer_decode().hash(state);
-    }
-}
-impl DataTypeHash for f32 {
-    fn dt_hash<H: Hasher>(&self, state: &mut H) {
-        self.integer_decode().hash(state);
-    }
-}
-
-impl<'a, T> DataTypeHash for &'a T where T: DataTypeHash {
-    fn dt_hash<H: Hasher>(&self, state: &mut H) {
-        (*self).dt_hash(state);
-    }
-}
-
-
-// /// Common enum for a single value of any of the valid Agnes data types.
-// #[derive(Debug, Clone, PartialOrd, PartialEq)]
-// pub enum DtValue {
-//     /// Unsigned integer value
-//     Unsigned(u64),
-//     /// Signed integer value
-//     Signed(i64),
-//     /// Text value
-//     Text(String),
-//     /// Boolean value
-//     Boolean(bool),
-//     /// Floating-point value
-//     Float(f64),
-// }
-// impl From<u64> for DtValue {
-//     fn from(orig: u64) -> DtValue { DtValue::Unsigned(orig) }
-// }
-// impl From<i64> for DtValue {
-//     fn from(orig: i64) -> DtValue { DtValue::Signed(orig) }
-// }
-// impl From<String> for DtValue {
-//     fn from(orig: String) -> DtValue { DtValue::Text(orig) }
-// }
-// impl From<bool> for DtValue {
-//     fn from(orig: bool) -> DtValue { DtValue::Boolean(orig) }
-// }
-// impl From<f64> for DtValue {
-//     fn from(orig: f64) -> DtValue { DtValue::Float(orig) }
-// }
-// impl fmt::Display for DtValue {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-//         match *self {
-//             DtValue::Unsigned(u) => write!(f, "{}", u),
-//             DtValue::Signed(i) => write!(f, "{}", i),
-//             DtValue::Text(ref s) => write!(f, "{}", s),
-//             DtValue::Boolean(b) => write!(f, "{}", b),
-//             DtValue::Float(fl) => write!(f, "{}", fl),
-//         }
-//     }
-// }
-
 /// Possibly-renamed field identifier
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RFieldIdent {
@@ -629,7 +419,6 @@ pub struct TFieldIdent<T> {
     /// Field identifier (name or original column number)
     pub ident: FieldIdent,
     /// Field type
-    // pub ty: FieldType
     phantom: PhantomData<T>
 }
 impl<T> TFieldIdent<T> {
@@ -641,16 +430,3 @@ impl<T> TFieldIdent<T> {
         }
     }
 }
-
-// macro_rules! fields {
-//     ($($name:expr => $ty:expr),*) => {{
-//         use $crate::field::TypedFieldIdent;
-
-//         vec![$(
-//             TypedFieldIdent::new(
-//                 FieldIdent::Name($name.to_string()),
-//                 $ty
-//             )
-//         ),*]
-//     }}
-// }
