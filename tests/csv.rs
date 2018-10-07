@@ -1,7 +1,7 @@
 extern crate agnes;
 extern crate csv_sniffer;
 
-use agnes::DataView;
+use agnes::data_types::csv::*;
 
 mod common;
 

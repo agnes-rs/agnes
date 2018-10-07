@@ -5,7 +5,7 @@ extern crate csv_sniffer;
 
 mod common;
 
-use agnes::view::DataView;
+use agnes::data_types::csv::*;
 
 #[test]
 fn subview() {

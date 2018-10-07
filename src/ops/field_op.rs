@@ -1,868 +1,343 @@
-use std::ops::{Add, Sub, Mul, Div, Neg};
+macro_rules! impl_field_op {
+    (
+        $dtypes:ty =>
+        $op:tt
+        $op_fn:tt
+        $op_tt:tt
+        $dtype:ty
+    ) => {
+// START IMPL_FIELD_OP
 
-use error::*;
-use field::{TypedFieldIdent, DataType, FieldType, FieldIdent};
-use access::{DataIndex, FieldData, OwnedOrRef};
-use apply::mapfn::*;
-use select::Select;
-use apply::{AddToDsFn, ConvertFn, SingleTypeFn};
-use ops::{BinOpTypes, utb, itb, btu, bti, btf, ftb};
-use store::{DataStore, AddData};
-use masked::MaybeNa;
-use view::DataView;
+use std::ops::$op;
 
-impl<'a> FieldData<'a> {
-    fn convert(&self, conversion: Option<FieldType>) -> Option<FieldData<'a>> {
-        match (self, conversion) {
-            // unsigned -> ?? conversions
-            (&FieldData::Unsigned(_), Some(FieldType::Unsigned))
-                | (&FieldData::Unsigned(_), None) =>
-            {
-                None
-            },
-            (&FieldData::Unsigned(ref data), Some(FieldType::Signed)) => {
-                Some(FieldData::Signed(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| x as i64)
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-            (&FieldData::Unsigned(ref data), Some(FieldType::Text)) => {
-                Some(FieldData::Text(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| format!("{}", x))
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-            (&FieldData::Unsigned(ref data), Some(FieldType::Boolean)) => {
-                Some(FieldData::Boolean(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| utb(x))
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-            (&FieldData::Unsigned(ref data), Some(FieldType::Float)) => {
-                Some(FieldData::Float(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| x as f64)
-                    }).collect::<Vec<_>>()
-                ))))
-            },
+use $crate::field::Value;
+use $crate::access::{DataIndex, DataIterator};
+use $crate::select::Selection;
+use $crate::view::DataView;
+use $crate::store::{DataStore, WithDataFromIter};
+use $crate::error::*;
 
-            // signed -> ?? conversions
-            (&FieldData::Signed(_), Some(FieldType::Signed))
-                | (&FieldData::Signed(_), None) =>
-            {
-                None
-            },
-            (&FieldData::Signed(ref data), Some(FieldType::Unsigned)) => {
-                Some(FieldData::Unsigned(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| if x > 0 { x as u64 } else { 0 })
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-            (&FieldData::Signed(ref data), Some(FieldType::Text)) => {
-                Some(FieldData::Text(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| format!("{}", x))
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-            (&FieldData::Signed(ref data), Some(FieldType::Boolean)) => {
-                Some(FieldData::Boolean(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| itb(x))
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-            (&FieldData::Signed(ref data), Some(FieldType::Float)) => {
-                Some(FieldData::Float(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| x as f64)
-                    }).collect::<Vec<_>>()
-                ))))
-            },
+// &left <op> &right
+impl<'a, 'b, DI> $op<&'b Selection<$dtypes, DI, $dtype>> for &'a Selection<$dtypes, DI, $dtype>
+    where DI: DataIndex<$dtypes, DType=$dtype>,
+{
+    type Output = Result<DataView<$dtypes>>;
 
-            // no text -> ?? operations
-            (&FieldData::Text(_), _) => { unreachable![] },
-
-            // bool -> ?? conversions
-            (&FieldData::Boolean(_), Some(FieldType::Boolean))
-                | (&FieldData::Boolean(_), None) =>
-            {
-                None
-            },
-            (&FieldData::Boolean(ref data), Some(FieldType::Unsigned)) => {
-                Some(FieldData::Unsigned(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| btu(x))
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-            (&FieldData::Boolean(ref data), Some(FieldType::Signed)) => {
-                Some(FieldData::Signed(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| bti(x))
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-            (&FieldData::Boolean(ref data), Some(FieldType::Text)) => {
-                Some(FieldData::Text(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| format!("{}", x))
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-            (&FieldData::Boolean(ref data), Some(FieldType::Float)) => {
-                Some(FieldData::Float(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| btf(x))
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-
-            // float -> ?? conversions
-            (&FieldData::Float(_), Some(FieldType::Float))
-                | (&FieldData::Float(_), None) =>
-            {
-                None
-            },
-            (&FieldData::Float(ref data), Some(FieldType::Unsigned)) => {
-                Some(FieldData::Unsigned(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| if x < 0.0 { 0 } else { x as u64 })
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-            (&FieldData::Float(ref data), Some(FieldType::Signed)) => {
-                Some(FieldData::Signed(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| x as i64)
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-            (&FieldData::Float(ref data), Some(FieldType::Text)) => {
-                Some(FieldData::Text(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| format!("{}", x))
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-            (&FieldData::Float(ref data), Some(FieldType::Boolean)) => {
-                Some(FieldData::Boolean(OwnedOrRef::Owned(Box::new(
-                    (0..data.len()).map(|idx| {
-                        data.get_data(idx).unwrap().map(|&x| ftb(x))
-                    }).collect::<Vec<_>>()
-                ))))
-            },
-        }
-    }
-}
-
-macro_rules! impl_dv_dv_op {
-    ($reducefn_name:ident, $opname:ident, $opfn:ident, $opstr:expr, $nonbool_fn:ident,
-        $bool_fn:ident, $infer_fn:ident) => {
-
-struct $reducefn_name<'a, 'b> {
-    target_ds: &'a mut DataStore,
-    target_ident: &'b FieldIdent,
-    left_convert: Option<FieldType>,
-    right_convert: Option<FieldType>
-}
-impl<'a, 'b> $reducefn_name<'a, 'b> {
-    fn add_to_ds<O: DataType>(&mut self, value: MaybeNa<O>) where DataStore: AddData<O> {
-        self.target_ds.add(self.target_ident.clone(), value);
-    }
-}
-impl<'a, 'b, 'c> FieldReduceFn<'c> for $reducefn_name<'a, 'b> {
-    type Output = ();
-    fn reduce(&mut self, fields: Vec<FieldData<'c>>) -> () {
-        debug_assert_eq!(fields.len(), 2);
-        let left_converted = fields[0].convert(self.left_convert);
-        let right_converted = fields[1].convert(self.right_convert);
-        let left = left_converted.as_ref().unwrap_or(&fields[0]);
-        let right = right_converted.as_ref().unwrap_or(&fields[1]);
-        match (left, right) {
-            (&FieldData::Unsigned(ref left), &FieldData::Unsigned(ref right)) => {
-                debug_assert_eq!(left.len(), right.len());
-                for i in 0..left.len() {
-                    let new_value = match (left.get_data(i).unwrap(),
-                                           right.get_data(i).unwrap())
-                    {
-                        (MaybeNa::Exists(l), MaybeNa::Exists(r)) =>
-                            MaybeNa::Exists($nonbool_fn(l, r)),
-                        _ => MaybeNa::Na
-                    };
-                    self.add_to_ds(new_value);
-                }
-            },
-            (&FieldData::Signed(ref left), &FieldData::Signed(ref right)) => {
-                debug_assert_eq!(left.len(), right.len());
-                for i in 0..left.len() {
-                    let new_value = match (left.get_data(i).unwrap(),
-                                           right.get_data(i).unwrap())
-                    {
-                        (MaybeNa::Exists(l), MaybeNa::Exists(r)) =>
-                            MaybeNa::Exists($nonbool_fn(l, r)),
-                        _ => MaybeNa::Na
-                    };
-                    self.add_to_ds(new_value);
-                }
-            },
-            (&FieldData::Text(_), &FieldData::Text(_)) => {
-                unreachable![]
-            },
-            (&FieldData::Boolean(ref left), &FieldData::Boolean(ref right)) => {
-                debug_assert_eq!(left.len(), right.len());
-                for i in 0..left.len() {
-                    let new_value = match (left.get_data(i).unwrap(),
-                                           right.get_data(i).unwrap())
-                    {
-                        (MaybeNa::Exists(l), MaybeNa::Exists(r)) =>
-                            MaybeNa::Exists($bool_fn(l, r)),
-                        _ => MaybeNa::Na
-                    };
-                    self.add_to_ds(new_value);
-                }
-            },
-            (&FieldData::Float(ref left), &FieldData::Float(ref right)) => {
-                debug_assert_eq!(left.len(), right.len());
-                for i in 0..left.len() {
-                    let new_value = match (left.get_data(i).unwrap(),
-                                           right.get_data(i).unwrap())
-                    {
-                        (MaybeNa::Exists(l), MaybeNa::Exists(r)) =>
-                            MaybeNa::Exists($nonbool_fn(l, r)),
-                        _ => MaybeNa::Na
-                    };
-                    self.add_to_ds(new_value);
-                }
-            },
-            (_, _) => { unreachable![] }
-        }
-    }
-}
-impl<'a, 'b> $opname<&'b DataView> for &'a DataView {
-    type Output = Result<DataView>;
-    fn $opfn(self, rhs: &'b DataView) -> Result<DataView> {
+    fn $op_fn(self, rhs: &'b Selection<$dtypes, DI, $dtype>) -> Result<DataView<$dtypes>> {
         // check dimensions
-        if self.nrows() != rhs.nrows() {
+        if self.len() != rhs.len() {
             return Err(AgnesError::DimensionMismatch(
-                "unable to apply arithmetic operation between dataviews of different number \
-                of records".into()
+                "unable to apply arithmetic operation between different-length selections".into()
             ));
         }
-        if self.nfields() == 0 || rhs.nfields() == 0 {
-            return Err(AgnesError::DimensionMismatch(
-                "unable to apply arithmetic operation to an empty dataview".into()
-            ));
-        }
-        if self.nfields() > 1 && rhs.nfields() > 1 && self.nfields() != rhs.nfields() {
-            return Err(AgnesError::DimensionMismatch(
-                "unable to apply arithmetic operation between non-single-field dataviews unless \
-                each has the same number of fields".into()
-            ));
-        }
-        let opstr = $opstr;
 
-        struct FieldInfo {
-            target_field: TypedFieldIdent,
-            left_ident: FieldIdent,
-            rght_ident: FieldIdent,
-            bin_op_types: BinOpTypes,
-        }
-        let mut fields: Vec<FieldInfo> = vec![];
-        if self.nfields() > 1 && self.nfields() == rhs.nfields() {
-            // n x n
-            for ((left_ident, left_vf), (rght_ident, rght_vf))
-                in self.fields.iter().zip(rhs.fields.iter())
-            {
-                // idents exist by construction, unwrap is safe
-                let left_ty = self.frames[left_vf.frame_idx].get_field_type(&left_vf.rident.ident)
-                    .unwrap();
-                let rght_ty = self.frames[rght_vf.frame_idx].get_field_type(&rght_vf.rident.ident)
-                    .unwrap();
-                let bin_op_types = rght_ty.$infer_fn(left_ty)?;
-                fields.push(FieldInfo {
-                    target_field: TypedFieldIdent {
-                        ident: FieldIdent::Name(format!("{} {} {}", left_ident.clone(), opstr,
-                            rght_ident.clone())),
-                        ty: bin_op_types.output
-                    },
-                    left_ident: left_ident.clone(),
-                    rght_ident: rght_ident.clone(),
-                    bin_op_types
+        // with_data_from_iter only fails on field collisions, so unwrap is safe.
+        Ok(WithDataFromIter::<$dtype, $dtypes>::with_data_from_iter(
+            DataStore::empty(),
+            format!("{} {} {}", self.ident, stringify![$op_tt], rhs.ident),
+            DataIterator::new(self).zip(DataIterator::new(rhs))
+                .map(|(left_maybe_na, right_maybe_na)| {
+                    match (left_maybe_na, right_maybe_na) {
+                        (Value::Exists(l), Value::Exists(r)) =>
+                            Value::Exists($op::$op_fn(l, r)),
+                        (Value::Exists(l), Value::Na) => Value::Exists(*l),
+                        (Value::Na, Value::Exists(r)) => Value::Exists(*r),
+                        _ => Value::Na
+                    }
                 })
+        ).unwrap().into())
+
+    }
+}
+
+// left <op> right
+impl<DI> $op<Selection<$dtypes, DI, $dtype>> for Selection<$dtypes, DI, $dtype>
+    where DI: DataIndex<$dtypes, DType=$dtype>,
+{
+    type Output = Result<DataView<$dtypes>>;
+
+    fn $op_fn(self, rhs: Selection<$dtypes, DI, $dtype>) -> Result<DataView<$dtypes>> {
+        (&self).$op_fn(&rhs)
+    }
+}
+
+// &left <op> right
+impl<'a, DI> $op<Selection<$dtypes, DI, $dtype>> for &'a Selection<$dtypes, DI, $dtype>
+    where DI: DataIndex<$dtypes, DType=$dtype>,
+{
+    type Output = Result<DataView<$dtypes>>;
+
+    fn $op_fn(self, rhs: Selection<$dtypes, DI, $dtype>) -> Result<DataView<$dtypes>> {
+        self.$op_fn(&rhs)
+    }
+}
+
+// left <op> &right
+impl<'b, DI> $op<&'b Selection<$dtypes, DI, $dtype>> for Selection<$dtypes, DI, $dtype>
+    where DI: DataIndex<$dtypes, DType=$dtype>,
+{
+    type Output = Result<DataView<$dtypes>>;
+
+    fn $op_fn(self, rhs: &'b Selection<$dtypes, DI, $dtype>) -> Result<DataView<$dtypes>> {
+        (&self).$op_fn(rhs)
+    }
+}
+
+// END IMPL_FIELD_OP
+    }
+}
+
+#[macro_export]
+macro_rules! field_addition {
+    // handle end-comma elision
+    ($dtypes:ident => $($dtype:tt,)*) => {
+        field_addition![$dtypes => $($dtype),*]
+    };
+    ($dtypes:ident => $($dtype:tt),*) => {
+        pub mod field_addition {$(
+            #[allow(non_snake_case)]
+            pub mod $dtype {
+                use super::super::$dtypes as $dtypes;
+                impl_field_op![
+                    $dtypes =>
+                    Add
+                    add
+                    +
+                    $dtype
+                ];
             }
-        } else {
-            // due to above dimension checking, this is either n x 1, 1 x n, or 1 x 1
-            for TypedFieldIdent { ident: left_ident, ty: left_ty } in self.field_types() {
-                for TypedFieldIdent { ident: rght_ident, ty: rght_ty } in rhs.field_types() {
-                    let bin_op_types = rght_ty.$infer_fn(left_ty)?;
-                    fields.push(FieldInfo {
-                        target_field: TypedFieldIdent {
-                            ident: FieldIdent::Name(format!("{} {} {}", left_ident.clone(), opstr,
-                                rght_ident.clone())),
-                            ty: bin_op_types.output
-                        },
-                        left_ident: left_ident.clone(),
-                        rght_ident,
-                        bin_op_types
-                    })
-                }
+        )*}
+    }
+}
+
+#[macro_export]
+macro_rules! field_subtraction {
+    // handle end-comma elision
+    ($dtypes:ident => $($dtype:tt,)*) => {
+        field_subtraction![$dtypes => $($dtype),*]
+    };
+    ($dtypes:ident => $($dtype:tt),*) => {
+        pub mod field_subtraction {$(
+            #[allow(non_snake_case)]
+            pub mod $dtype {
+                use super::super::$dtypes as $dtypes;
+                impl_field_op![
+                    $dtypes =>
+                    Sub
+                    sub
+                    -
+                    $dtype
+                ];
             }
-        }
-        let mut store = DataStore::with_field_iter(fields.iter().map(|f| f.target_field.clone()));
-        for FieldInfo { target_field, left_ident, rght_ident, bin_op_types } in fields {
-            vec![
-                self.select_one(&left_ident),
-                rhs.select_one(&rght_ident),
-            ].apply_field_reduce(
-                &mut $reducefn_name {
-                    target_ds: &mut store,
-                    target_ident: &target_field.ident,
-                    left_convert: bin_op_types.left,
-                    right_convert: bin_op_types.right,
-                },
-            )?;
-        }
-        Ok(store.into())
-    }
-}
-impl $opname<DataView> for DataView {
-    type Output = Result<DataView>;
-    fn $opfn(self, rhs: DataView) -> Result<DataView> {
-        (&self).$opfn(&rhs)
-    }
-}
-impl<'a> $opname<&'a DataView> for DataView {
-    type Output = Result<DataView>;
-    fn $opfn(self, rhs: &'a DataView) -> Result<DataView> {
-        (&self).$opfn(rhs)
-    }
-}
-impl<'a> $opname<DataView> for &'a DataView {
-    type Output = Result<DataView>;
-    fn $opfn(self, rhs: DataView) -> Result<DataView> {
-        self.$opfn(&rhs)
+        )*}
     }
 }
 
-// END IMPL_DV_DV_OP
-    }
-}
-
-#[inline]
-fn add<T: DataType + Copy + Add<T, Output=T>>(l: &T, r: &T) -> T { *l + *r }
-#[inline]
-fn booladd(l: &bool, r: &bool) -> bool { *l | *r }
-impl_dv_dv_op!(Add2Fn, Add, add, "+", add, booladd, infer_ft_add_result);
-
-#[inline]
-fn sub<T: DataType + Copy + Sub<T, Output=T>>(l: &T, r: &T) -> T { *l - *r }
-#[inline]
-fn boolsub(l: &bool, r: &bool) -> bool { *l | !*r }
-impl_dv_dv_op!(Sub2Fn, Sub, sub, "-", sub, boolsub, infer_ft_sub_result);
-
-#[inline]
-fn mul<T: DataType + Copy + Mul<T, Output=T>>(l: &T, r: &T) -> T { *l * *r }
-#[inline]
-fn boolmul(l: &bool, r: &bool) -> bool { *l & *r }
-impl_dv_dv_op!(Mul2Fn, Mul, mul, "*", mul, boolmul, infer_ft_mul_result);
-
-#[inline]
-fn div<T: DataType + Copy + Div<T, Output=T>>(l: &T, r: &T) -> T { *l / *r }
-#[inline]
-fn booldiv(l: &bool, r: &bool) -> bool { *l & !*r }
-impl_dv_dv_op!(Div2Fn, Div, div, "/", div, booldiv, infer_ft_div_result);
-
-impl<'a> Neg for &'a DataView {
-    type Output = Result<DataView>;
-    fn neg(self) -> Result<DataView> {
-        let mut store = DataStore::empty();
-        for (ident, vf) in self.fields.iter() {
-            let new_ident = FieldIdent::Name(format!("-{}", ident));
-            let output_ty = infer_neg_output_type(
-                self.frames[vf.frame_idx].get_field_type(&vf.rident.ident).unwrap()
-            )?;
-            store.add_field(TypedFieldIdent {
-                ident: new_ident.clone(),
-                ty: output_ty
-            });
-            match output_ty {
-                FieldType::Signed => {
-                    self.select_one(ident)
-                        .map(ConvertFn::<i64>::new())
-                        .map(SingleTypeFn::new(|&x: &i64| -> i64 { -x }))
-                        .map(AddToDsFn {
-                            ds: &mut store,
-                            ident: new_ident,
-                        }).collect::<Vec<_>>()?;
-                },
-                FieldType::Float  => {
-                    self.select_one(ident)
-                        .map(ConvertFn::<f64>::new())
-                        .map(SingleTypeFn::new(|&x: &f64| -> f64 { -x }))
-                        .map(AddToDsFn {
-                            ds: &mut store,
-                            ident: new_ident,
-                        }).collect::<Vec<_>>()?;
-                },
-                _ => unreachable![]
+#[macro_export]
+macro_rules! field_multiplication {
+    // handle end-comma elision
+    ($dtypes:ident => $($dtype:tt,)*) => {
+        field_multiplication![$dtypes => $($dtype),*]
+    };
+    ($dtypes:ident => $($dtype:tt),*) => {
+        pub mod field_multiplication {$(
+            #[allow(non_snake_case)]
+            pub mod $dtype {
+                use super::super::$dtypes as $dtypes;
+                impl_field_op![
+                    $dtypes =>
+                    Mul
+                    mul
+                    *
+                    $dtype
+                ];
             }
-        }
-        Ok(store.into())
-    }
-}
-impl Neg for DataView {
-    type Output = Result<DataView>;
-    fn neg(self) -> Result<DataView> {
-        (&self).neg()
-    }
-}
-fn infer_neg_output_type(ft: FieldType) -> Result<FieldType> {
-    match ft {
-        FieldType::Unsigned => Ok(FieldType::Signed),
-        FieldType::Signed   => Ok(FieldType::Signed),
-        FieldType::Text     => Err(AgnesError::InvalidOp(
-            "Unable to apply negation operator '-' to field of type 'Text'".into())),
-        FieldType::Boolean  => Ok(FieldType::Signed),
-        FieldType::Float    => Ok(FieldType::Float),
+        )*}
     }
 }
 
+#[macro_export]
+macro_rules! field_division {
+    // handle end-comma elision
+    ($dtypes:ident => $($dtype:tt,)*) => {
+        field_division![$dtypes => $($dtype),*]
+    };
+    ($dtypes:ident => $($dtype:tt),*) => {
+        pub mod field_division {$(
+            #[allow(non_snake_case)]
+            pub mod $dtype {
+                use super::super::$dtypes as $dtypes;
+                impl_field_op![
+                    $dtypes =>
+                    Div
+                    div
+                    /
+                    $dtype
+                ];
+            }
+        )*}
+    }
+}
+
+#[macro_export]
+macro_rules! field_ops {
+    // handle end-comma elision
+    ($dtypes:ident => $($dtype:tt,)*) => {
+        field_ops![$dtypes => $($dtype),*]
+    };
+    ($dtypes:ident => $($dtype:tt),*) => {
+        field_addition!        [$dtypes => $($dtype),*];
+        field_subtraction!     [$dtypes => $($dtype),*];
+        field_multiplication!  [$dtypes => $($dtype),*];
+        field_division!        [$dtypes => $($dtype),*];
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use test_utils::*;
+    use select::Field;
+    use data_types::standard::DataView;
+    use field::FieldIdent;
 
     macro_rules! test_view_op {
-        ($left:expr, $right:expr, $result:expr, $op:expr, $strop:expr, $result_ty:expr,
-                $test_mod:ident) =>
+        ($dtype:ty, $left:expr, $right:expr, $result:expr, $op:expr, $strop:expr,
+            $test_mod:ident
+        ) =>
         {{
             let data_vec1 = $left;
             let data_vec2 = $right;
             let dv1 = data_vec1.clone().merged_with_sample_emp_table("Foo");
             let dv2 = data_vec2.clone().merged_with_sample_emp_table("Bar");
-            let computed_dv: DataView = ($op(dv1.v("Foo"), dv2.v("Bar"))).unwrap();
+            let computed_dv: DataView = ($op(
+                dv1.field::<$dtype, _>("Foo").unwrap(),
+                dv2.field::<$dtype, _>("Bar").unwrap()
+            )).unwrap();
             let target_ident = FieldIdent::Name(format!("Foo {} Bar", $strop));
-            assert_eq!(computed_dv.get_field_type(&target_ident).unwrap(), $result_ty);
             $test_mod::assert_dv_eq_vec(&computed_dv, &target_ident, $result);
         }}
     }
     macro_rules! test_add_op {
-        ($left:expr, $right:expr, $result:expr, $result_ty:expr, $test_mod:ident) => (
-            test_view_op!($left, $right, $result, |dv1, dv2| dv1 + dv2, "+", $result_ty, $test_mod)
+        ($dtype:ty, $left:expr, $right:expr, $result:expr, $test_mod:ident) => (
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| dv1  +  dv2, "+", $test_mod);
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| dv1  + &dv2, "+", $test_mod);
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| &dv1 +  dv2, "+", $test_mod);
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| &dv1 + &dv2, "+", $test_mod);
         )
     }
     macro_rules! test_sub_op {
-        ($left:expr, $right:expr, $result:expr, $result_ty:expr, $test_mod:ident) => (
-            test_view_op!($left, $right, $result, |dv1, dv2| dv1 - dv2, "-", $result_ty, $test_mod)
+        ($dtype:ty, $left:expr, $right:expr, $result:expr, $test_mod:ident) => (
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| dv1  -  dv2, "-", $test_mod);
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| dv1  - &dv2, "-", $test_mod);
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| &dv1 -  dv2, "-", $test_mod);
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| &dv1 - &dv2, "-", $test_mod);
         )
     }
     macro_rules! test_mul_op {
-        ($left:expr, $right:expr, $result:expr, $result_ty:expr, $test_mod:ident) => (
-            test_view_op!($left, $right, $result, |dv1, dv2| dv1 * dv2, "*", $result_ty, $test_mod)
+        ($dtype:ty, $left:expr, $right:expr, $result:expr, $test_mod:ident) => (
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| dv1  *  dv2, "*", $test_mod);
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| dv1  * &dv2, "*", $test_mod);
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| &dv1 *  dv2, "*", $test_mod);
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| &dv1 * &dv2, "*", $test_mod);
         )
     }
     macro_rules! test_div_op {
-        ($left:expr, $right:expr, $result:expr, $result_ty:expr, $test_mod:ident) => (
-            test_view_op!($left, $right, $result, |dv1, dv2| dv1 / dv2, "/", $result_ty, $test_mod)
+        ($dtype:ty, $left:expr, $right:expr, $result:expr, $test_mod:ident) => (
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| dv1  /  dv2, "/", $test_mod);
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| dv1  / &dv2, "/", $test_mod);
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| &dv1 /  dv2, "/", $test_mod);
+            test_view_op!($dtype, $left, $right, $result, |dv1, dv2| &dv1 / &dv2, "/", $test_mod);
         )
     }
 
     #[test]
     fn add_field() {
-        // unsigned data + unsigned data -> unsigned
+        // unsigned data + unsigned data
         test_add_op!(
+            u64,
             vec![2u64,  3, 8,  2,  20,  3, 0],
             vec![55u64, 3, 1,  9, 106,  9, 0],
             vec![57u64, 6, 9, 11, 126, 12, 0],
-            FieldType::Unsigned, unsigned
+            unsigned
         );
 
-        // unsigned data + signed data -> signed
+        // signed data + signed data
         test_add_op!(
-            vec![2u64,   3,  8,  2,   20,  3, 0],
-            vec![55i64, -3, -1,  9, -106,  9, 0],
-            vec![57i64,  0,  7, 11,  -86, 12, 0],
-            FieldType::Signed, signed
-        );
-
-        // unsigned data + boolean data -> unsigned
-        test_add_op!(
-            vec![2u64,     3,     8,    2,    20,     3,     0],
-            vec![true, false, false, true,  true, false, false],
-            vec![3u64,     3,     8,    3,    21,     3,     0],
-            FieldType::Unsigned, unsigned
-        );
-
-        // unsigned data + float data -> float
-        test_add_op!(
-            vec![2u64,    3,    8,    2,     20,    3,   0],
-            vec![55.0, -3.0, -1.0,  9.0, -106.0,  9.0, 0.0],
-            vec![57.0,  0.0,  7.0, 11.0,  -86.0, 12.0, 0.0],
-            FieldType::Float, float
-        );
-
-        // signed data + unsigned data -> signed
-        test_add_op!(
-            vec![55i64, -3, -1,  9, -106,  9, 0],
-            vec![2u64,   3,  8,  2,   20,  3, 0],
-            vec![57i64,  0,  7, 11,  -86, 12, 0],
-            FieldType::Signed, signed
-        );
-
-        // signed data + signed data -> signed
-        test_add_op!(
+            i64,
             vec![2i64,   3, -8,  2,   20, -3, 0],
             vec![55i64, -3, -1, -9, -106,  9, 0],
             vec![57i64,  0, -9, -7,  -86,  6, 0],
-            FieldType::Signed, signed
+            signed
         );
 
-        // signed data + boolean data -> signed
+        // float data + float data
         test_add_op!(
-            vec![2i64,    -3,    -8,   -2,    20,     3,     0],
-            vec![true, false, false, true,  true, false, false],
-            vec![3i64,    -3,    -8,   -1,    21,     3,     0],
-            FieldType::Signed, signed
-        );
-
-        // signed data + float data -> float
-        test_add_op!(
-            vec![2i64,    3,   -8,   -2,    -20,    3,   0],
-            vec![55.0, -3.0, -1.0,  9.0, -106.0,  9.0, 0.0],
-            vec![57.0,  0.0, -9.0,  7.0, -126.0, 12.0, 0.0],
-            FieldType::Float, float
-        );
-
-        // boolean data + unsigned data -> unsigned
-        test_add_op!(
-            vec![true, false, false, true,  true, false, false],
-            vec![2u64,     3,     8,    2,    20,     3,     0],
-            vec![3u64,     3,     8,    3,    21,     3,     0],
-            FieldType::Unsigned, unsigned
-        );
-
-        // boolean data + signed data -> signed
-        test_add_op!(
-            vec![true, false, false, true,  true, false, false],
-            vec![2i64,    -3,    -8,   -2,    20,     3,     0],
-            vec![3i64,    -3,    -8,   -1,    21,     3,     0],
-            FieldType::Signed, signed
-        );
-
-        // boolean data + boolean data -> boolean (OR)
-        test_add_op!(
-            vec![true,  true, false, false,  true, false, false],
-            vec![true, false, false,  true,  true, false,  true],
-            vec![true,  true, false,  true,  true, false,  true],
-            FieldType::Boolean, boolean
-        );
-
-        // boolean data + float data -> float
-        test_add_op!(
-            vec![true, false, false, true,  true, false, false],
-            vec![ 2.0,  -3.0,  -8.0, -2.0,  20.0,   3.0,   0.0],
-            vec![ 3.0,  -3.0,  -8.0, -1.0,  21.0,   3.0,   0.0],
-            FieldType::Float, float
-        );
-
-        // float data + unsigned data -> float
-        test_add_op!(
-            vec![55.0, -3.0, -1.0,  9.0, -106.0,  9.0, 0.0],
-            vec![2u64,    3,    8,    2,     20,    3,   0],
-            vec![57.0,  0.0,  7.0, 11.0,  -86.0, 12.0, 0.0],
-            FieldType::Float, float
-        );
-
-        // float data + signed data -> float
-        test_add_op!(
-            vec![55.0, -3.0, -1.0,  9.0, -106.0,  9.0, 0.0],
-            vec![2i64,    3,   -8,   -2,    -20,    3,   0],
-            vec![57.0,  0.0, -9.0,  7.0, -126.0, 12.0, 0.0],
-            FieldType::Float, float
-        );
-
-        // float data + boolean data -> float
-        test_add_op!(
-            vec![ 2.0,  -3.0,  -8.0, -2.0,  20.0,   3.0,   0.0],
-            vec![true, false, false, true,  true, false, false],
-            vec![ 3.0,  -3.0,  -8.0, -1.0,  21.0,   3.0,   0.0],
-            FieldType::Float, float
-        );
-
-        // float data + float data -> float
-        test_add_op!(
+            f64,
             vec![55.0, -3.0, -1.0,  9.0, -106.0,  9.0, 0.0],
             vec![ 2.0,  3.0, -8.0, -2.0,  -20.0,  3.0, 0.0],
             vec![57.0,  0.0, -9.0,  7.0, -126.0, 12.0, 0.0],
-            FieldType::Float, float
+            float
         );
     }
 
+
     #[test]
     fn sub_field() {
-        // unsigned data - unsigned data -> unsigned
+        // unsigned data - unsigned data
         test_sub_op!(
-            vec![  2u64,  3, 8,  2,  20,  3, 0],
-            vec![ 55u64,  3, 1,  9, 106,  9, 0],
-            vec![-53i64,  0, 7, -7, -86, -6, 0],
-            FieldType::Signed, signed
+            u64,
+            vec![ 55u64,  3, 8,  9, 200, 13, 0],
+            vec![ 52u64,  3, 1,  2, 106,  9, 0],
+            vec![  3u64,  0, 7,  7,  94,  4, 0],
+            unsigned
         );
 
-        // unsigned data - signed data -> signed
+        // signed data - signed data
         test_sub_op!(
-            vec![  2u64,  3,  8,  2,   20,  3, 0],
-            vec![ 55i64, -3, -1,  9, -106,  9, 0],
-            vec![-53i64,  6,  9, -7,  126, -6, 0],
-            FieldType::Signed, signed
-        );
-
-        // unsigned data - boolean data -> signed
-        test_sub_op!(
-            vec![2u64,     3,     8,    2,    20,     3,     0],
-            vec![true, false, false, true,  true, false,  true],
-            vec![1i64,     3,     8,    1,    19,     3,    -1],
-            FieldType::Signed, signed
-        );
-
-        // unsigned data - float data -> float
-        test_sub_op!(
-            vec![ 2u64,    3,    8,    2,     20,    3,   0],
-            vec![ 55.0, -3.0, -1.0,  9.0, -106.0,  9.0, 0.0],
-            vec![-53.0,  6.0,  9.0, -7.0,  126.0, -6.0, 0.0],
-            FieldType::Float, float
-        );
-
-        // signed data - unsigned data -> signed
-        test_sub_op!(
-            vec![55i64, -3, -1,  9, -106,  9, 0],
-            vec![2u64,   3,  8,  2,   20,  3, 0],
-            vec![53i64, -6, -9,  7, -126,  6, 0],
-            FieldType::Signed, signed
-        );
-
-        // signed data - signed data -> signed
-        test_sub_op!(
-            vec![ 2i64,   3, -8,  2,   20, -3, 0],
+            i64,
+            vec![  2i64,  3, -8,  2,   20, -3, 0],
             vec![ 55i64, -3, -1, -9, -106,  9, 0],
             vec![-53i64,  6, -7, 11,  126,-12, 0],
-            FieldType::Signed, signed
+            signed
         );
 
-        // signed data - boolean data -> signed
+        // float data - float data
         test_sub_op!(
-            vec![2i64,    -3,    -8,   -2,    20,     3,     0],
-            vec![true, false, false, true,  true, false, false],
-            vec![1i64,    -3,    -8,   -3,    19,     3,     0],
-            FieldType::Signed, signed
-        );
-
-        // signed data - float data -> float
-        test_sub_op!(
-            vec![ 2i64,    3,   -8,    -2,    -20,    3,   0],
-            vec![ 55.0, -3.0, -1.0,   9.0, -106.0,  9.0, 0.0],
-            vec![-53.0,  6.0, -7.0, -11.0,   86.0, -6.0, 0.0],
-            FieldType::Float, float
-        );
-
-        // boolean data - unsigned data -> signed
-        test_sub_op!(
-            vec![ true, false, false, true,  true, false, false],
-            vec![ 2u64,     3,     8,    2,    20,     3,     1],
-            vec![-1i64,    -3,    -8,   -1,   -19,    -3,    -1],
-            FieldType::Signed, signed
-        );
-
-        // boolean data - signed data -> signed
-        test_sub_op!(
-            vec![ true, false, false, true,  true, false, false],
-            vec![ 2i64,    -3,    -8,   -2,    20,     3,     0],
-            vec![-1i64,     3,     8,    3,   -19,    -3,     0],
-            FieldType::Signed, signed
-        );
-
-        // boolean data - boolean data -> boolean (l | ~r)
-        test_sub_op!(
-            vec![true,  true, false, false,  true, false, false],
-            vec![true, false, false,  true,  true, false,  true],
-            vec![true,  true,  true, false,  true,  true, false],
-            FieldType::Boolean, boolean
-        );
-
-        // boolean data - float data -> float
-        test_sub_op!(
-            vec![true, false, false, true,  true, false, false],
-            vec![ 2.0,  -3.0,  -8.0, -2.0,  20.0,   3.0,   0.0],
-            vec![-1.0,   3.0,   8.0,  3.0, -19.0,  -3.0,   0.0],
-            FieldType::Float, float
-        );
-
-        // float data - unsigned data -> float
-        test_sub_op!(
-            vec![55.0, -3.0, -1.0,  9.0, -106.0,  9.0, 0.0],
-            vec![2u64,    3,    8,    2,     20,    3,   0],
-            vec![53.0, -6.0, -9.0,  7.0, -126.0,  6.0, 0.0],
-            FieldType::Float, float
-        );
-
-        // float data - signed data -> float
-        test_sub_op!(
-            vec![55.0, -3.0, -1.0,  9.0, -106.0,  9.0, 0.0],
-            vec![2i64,    3,   -8,   -2,    -20,    3,   0],
-            vec![53.0, -6.0,  7.0, 11.0,  -86.0,  6.0, 0.0],
-            FieldType::Float, float
-        );
-
-        // float data - boolean data -> float
-        test_sub_op!(
-            vec![ 2.0,  -3.0,  -8.0, -2.0,  20.0,   3.0,   0.0],
-            vec![true, false, false, true,  true, false, false],
-            vec![ 1.0,  -3.0,  -8.0, -3.0,  19.0,   3.0,   0.0],
-            FieldType::Float, float
-        );
-
-        // float data - float data -> float
-        test_sub_op!(
+            f64,
             vec![55.0, -3.0, -1.0,  9.0, -106.0,  9.0, 0.0],
             vec![ 2.0,  3.0, -8.0, -2.0,  -20.0,  3.0, 0.0],
             vec![53.0, -6.0,  7.0, 11.0,  -86.0,  6.0, 0.0],
-            FieldType::Float, float
+            float
         );
     }
 
     #[test]
     fn mul_field() {
-        // unsigned data * unsigned data -> unsigned
+        // unsigned data * unsigned data
         test_mul_op!(
+            u64,
             vec![  2u64,  3, 8,  2,   20,  3, 4],
             vec![ 55u64,  3, 1,  9,  106,  9, 0],
             vec![110u64,  9, 8, 18, 2120, 27, 0],
-            FieldType::Unsigned, unsigned
+            unsigned
         );
 
-        // unsigned data * signed data -> signed
+        // signed data * signed data
         test_mul_op!(
-            vec![  2u64,  3,  8,  2,    20,  3,  0],
-            vec![ 55i64, -3, -1,  9,  -106,  9, -4],
-            vec![110i64, -9, -8, 18, -2120, 27,  0],
-            FieldType::Signed, signed
-        );
-
-        // unsigned data * boolean data -> unsigned
-        test_mul_op!(
-            vec![2u64,     3,     8,    2,    20,     3,     0],
-            vec![true, false, false, true,  true, false,  true],
-            vec![2u64,     0,     0,    2,    20,     0,     0],
-            FieldType::Unsigned, unsigned
-        );
-
-        // unsigned data * float data -> float
-        test_mul_op!(
-            vec![ 2u64,    3,    8,    2,      20,    3,    0],
-            vec![ 55.0, -3.0, -1.0,  9.0,  -106.0,  9.0, -4.0],
-            vec![110.0, -9.0, -8.0, 18.0, -2120.0, 27.0,  0.0],
-            FieldType::Float, float
-        );
-
-        // signed data * unsigned data -> signed
-        test_mul_op!(
-            vec![ 55i64,  -3, -1,  9,  -106,  9, -4],
-            vec![  2u64,   3,  8,  2,    20,  3,  0],
-            vec![110i64,  -9, -8, 18, -2120, 27,  0],
-            FieldType::Signed, signed
-        );
-
-        // signed data * signed data -> signed
-        test_mul_op!(
+            i64,
             vec![  2i64,  3, -8,   2,    20,  -3,  0],
             vec![ 55i64, -3, -1,  -9,  -106,   9, -4],
             vec![110i64, -9,  8, -18, -2120, -27,  0],
-            FieldType::Signed, signed
+            signed
         );
 
-        // signed data * boolean data -> signed
+        // float data * float data
         test_mul_op!(
-            vec![2i64,    -3,    -8,   -2,    20,     3,     0],
-            vec![true, false, false, true,  true, false,  true],
-            vec![2i64,     0,     0,   -2,    20,     0,     0],
-            FieldType::Signed, signed
-        );
-
-        // signed data * float data -> float
-        test_mul_op!(
-            vec![ 2i64,    3,   -8,    -2,    -20,    3,   0],
-            vec![ 55.0, -3.0, -1.0,   9.0, -106.0,  9.0, 4.0],
-            vec![110.0, -9.0,  8.0, -18.0, 2120.0, 27.0, 0.0],
-            FieldType::Float, float
-        );
-
-        // boolean data * unsigned data -> unsigned
-        test_mul_op!(
-            vec![true, false, false, true,  true, false, true],
-            vec![2u64,     3,     8,    2,    20,     3,    0],
-            vec![2u64,     0,     0,    2,    20,     0,    0],
-            FieldType::Unsigned, unsigned
-        );
-
-        // boolean data * signed data -> signed
-        test_mul_op!(
-            vec![true, false, false, true,  true, false, true],
-            vec![2i64,    -3,    -8,   -2,    20,     3,    0],
-            vec![2i64,     0,     0,   -2,    20,     0,    0],
-            FieldType::Signed, signed
-        );
-
-        // boolean data * boolean data -> boolean (AND)
-        test_mul_op!(
-            vec![true,  true, false, false,  true, false, false],
-            vec![true, false, false,  true,  true, false,  true],
-            vec![true, false, false, false,  true, false, false],
-            FieldType::Boolean, boolean
-        );
-
-        // boolean data * float data -> float
-        test_mul_op!(
-            vec![true, false, false, true,  true, false, true],
-            vec![ 2.0,  -3.0,  -8.0, -2.0,  20.0,   3.0,  0.0],
-            vec![ 2.0,   0.0,   0.0, -2.0,  20.0,   0.0,  0.0],
-            FieldType::Float, float
-        );
-
-        // float data * unsigned data -> float
-        test_mul_op!(
-            vec![ 55.0, -3.0, -1.0,  9.0, - 106.0,  9.0, 0.0],
-            vec![ 2u64,    3,    8,    2,      20,    3,   4],
-            vec![110.0, -9.0, -8.0, 18.0, -2120.0, 27.0, 0.0],
-            FieldType::Float, float
-        );
-
-        // float data * signed data -> float
-        test_mul_op!(
-            vec![ 55.0, -3.0, -1.0,   9.0, -106.0,  9.0, 0.0],
-            vec![ 2i64,    3,   -8,    -2,    -20,    3,   4],
-            vec![110.0, -9.0,  8.0, -18.0, 2120.0, 27.0, 0.0],
-            FieldType::Float, float
-        );
-
-        // float data * boolean data -> float
-        test_mul_op!(
-            vec![ 2.0,  -3.0,  -8.0, -2.0,  20.0,   3.0,  0.0],
-            vec![true, false, false, true,  true, false, true],
-            vec![ 2.0,   0.0,   0.0, -2.0,  20.0,   0.0,  0.0],
-            FieldType::Float, float
-        );
-
-        // float data * float data -> float
-        test_mul_op!(
+            f64,
             vec![ 55.0, -3.0, -1.0,   9.0, -106.0,  9.0, 0.0],
             vec![  2.0,  3.0, -8.0,  -2.0,  -20.0,  3.0, 4.0],
             vec![110.0, -9.0,  8.0, -18.0, 2120.0, 27.0, 0.0],
-            FieldType::Float, float
+            float
         );
     }
 
@@ -871,152 +346,32 @@ mod tests {
         use std::f64::INFINITY as INF;
         use std::f64::NEG_INFINITY as NEGINF;
 
-        // unsigned data / unsigned data -> float
+        // unsigned data / unsigned data
         test_div_op!(
+            u64,
             vec![ 55u64,   3,   8,   2,   20,   0,   4],
-            vec![ 11u64,   2,   1,   5,  100,   3,   0],
-            vec![   5.0, 1.5, 8.0, 0.4,  0.2, 0.0, INF],
-            FieldType::Float, float
+            vec![ 11u64,   2,   1,   5,  100,   3,   1],
+            vec![  5u64,   1,   8,   0,    0,   0,   4],
+            unsigned
         );
 
-        // unsigned data / signed data -> float
+        // signed data / signed data
         test_div_op!(
-            vec![ 55u64,    3,    8,   2,   20,   0,   4],
-            vec![ 11i64,   -2,   -1,   5, -100,  -3,   0],
-            vec![   5.0, -1.5, -8.0, 0.4, -0.2, 0.0, INF],
-            FieldType::Float, float
-        );
-
-        // unsigned data / boolean data -> float
-        test_div_op!(
-            vec![2u64,     3,     8,    2,    20,     3,     0],
-            vec![true, false, false, true,  true, false,  true],
-            vec![ 2.0,   INF,   INF,  2.0,  20.0,   INF,   0.0],
-            FieldType::Float, float
-        );
-
-        // unsigned data / float data -> float
-        test_div_op!(
-            vec![55u64,    3,    8,   2,     20,    0,   4],
-            vec![ 11.0, -2.0, -1.0, 5.0, -100.0, -3.0, 0.0],
-            vec![  5.0, -1.5, -8.0, 0.4,   -0.2,  0.0, INF],
-            FieldType::Float, float
-        );
-
-        // signed data / unsigned data -> float
-        test_div_op!(
+            i64,
             vec![ 55i64,   -3,   -8,   2,  -20,   0,   4],
-            vec![ 11u64,    2,    1,   5,  100,   3,   0],
-            vec![   5.0, -1.5, -8.0, 0.4, -0.2, 0.0, INF],
-            FieldType::Float, float
+            vec![ 11i64,   -2,    1,   5,  100,  -3,   1],
+            vec![  5i64,    1,   -8,   0,   -0,   0,   4],
+            signed
         );
 
-        // signed data / signed data -> float
+        // float data / float data
         test_div_op!(
-            vec![ 55i64,   -3,   -8,   2,  -20,   0,   4],
-            vec![ 11i64,   -2,    1,   5,  100,  -3,   0],
-            vec![   5.0,  1.5, -8.0, 0.4, -0.2, 0.0, INF],
-            FieldType::Float, float
-        );
-
-        // signed data / boolean data -> float
-        test_div_op!(
-            vec![2i64,     -3,     -8,   -2,    20,      -3,     0],
-            vec![true,  false,  false, true,  true,   false,  true],
-            vec![ 2.0, NEGINF, NEGINF, -2.0,  20.0,  NEGINF,   0.0],
-            FieldType::Float, float
-        );
-
-        // signed data / float data -> float
-        test_div_op!(
-            vec![55i64,   -3,   -8,   2,    -20,    0,     -4],
-            vec![ 11.0, -2.0, -1.0, 5.0, -100.0, -3.0,    0.0],
-            vec![  5.0,  1.5,  8.0, 0.4,    0.2,  0.0, NEGINF],
-            FieldType::Float, float
-        );
-
-        // boolean data / unsigned data -> float
-        test_div_op!(
-            vec![true, false, false, true,  true, false, true],
-            vec![2u64,     3,     8,    4,    20,     3,    0],
-            vec![ 0.5,   0.0,   0.0, 0.25,  0.05,   0.0,  INF],
-            FieldType::Float, float
-        );
-
-        // boolean data / signed data -> float
-        test_div_op!(
-            vec![true, false, false, true,   true, false, true],
-            vec![2i64,    -3,    -8,    4,    -20,    -3,    0],
-            vec![ 0.5,   0.0,   0.0, 0.25,  -0.05,   0.0,  INF],
-            FieldType::Float, float
-        );
-
-        // boolean data / boolean data -> boolean (left & ~right)
-        test_div_op!(
-            vec![ true,  true, false, false,  true, false, false],
-            vec![ true, false, false,  true,  true, false,  true],
-            vec![false,  true, false, false, false, false, false],
-            FieldType::Boolean, boolean
-        );
-
-        // boolean data / float data -> float
-        test_div_op!(
-            vec![true, false, false, true,  true, false, true],
-            vec![ 2.0,  -3.0,  -8.0, -2.0,  20.0,   3.0,  0.0],
-            vec![ 0.5,   0.0,   0.0, -0.5,  0.05,   0.0,  INF],
-            FieldType::Float, float
-        );
-
-        // float data / unsigned data -> float
-        test_div_op!(
-            vec![ 55.0, -3.0, -8.0,  2.0,  -20.0, 0.0, 4.0],
-            vec![11u64,    2,    1,    5,    100,   3,   0],
-            vec![  5.0, -1.5, -8.0,  0.4,   -0.2, 0.0, INF],
-            FieldType::Float, float
-        );
-
-        // float data / signed data -> float
-        test_div_op!(
-            vec![ 55.0, -3.0, -8.0,  2.0,  -20.0, 0.0, 4.0],
-            vec![11i64,   -2,   -1,    5,   -100,  -3,   0],
-            vec![  5.0,  1.5,  8.0,  0.4,    0.2, 0.0, INF],
-            FieldType::Float, float
-        );
-
-        // float data / boolean data -> float
-        test_div_op!(
-            vec![ 2.0,   -3.0,   -8.0, -2.0,  20.0,   3.0,  0.0],
-            vec![true,  false,  false, true,  true, false, true],
-            vec![ 2.0, NEGINF, NEGINF, -2.0,  20.0,   INF,  0.0],
-            FieldType::Float, float
-        );
-
-        // float data / float data -> float
-        test_div_op!(
+            f64,
             vec![ 55.0, -3.0, -8.0,  2.0,  -20.0,  0.0, 4.0],
-            vec![ 11.0, -2.0, -1.0,  5.0, -100.0, -3.0, 0.0],
-            vec![  5.0,  1.5,  8.0,  0.4,    0.2,  0.0, INF],
-            FieldType::Float, float
+            vec![ 11.0, -2.0, -1.0,  5.0,    0.0, -3.0, 0.0],
+            vec![  5.0,  1.5,  8.0,  0.4, NEGINF,  0.0, INF],
+            float
         );
     }
 
-    #[test]
-    fn neg_field() {
-        let dv: DataView = DataStore::with_data(
-            vec![("Foo", vec![0u64, 5, 2, 6, 3].into())], None, None, None, None
-        ).into();
-        let computed_dv: DataView = (-dv).unwrap();
-        let target_ident = FieldIdent::Name("-Foo".into());
-        assert_eq!(computed_dv.get_field_type(&target_ident).unwrap(), FieldType::Signed);
-        signed::assert_dv_eq_vec(&computed_dv, &target_ident, vec![0i64, -5, -2, -6, -3]);
-
-        let dv: DataView = DataStore::with_data(
-            None, None, None, None, vec![("Foo", vec![0.0, -5.0, 2.0, 6.0, -3.0].into())]
-        ).into();
-        let computed_dv: DataView = (-dv).unwrap();
-        println!("{}", computed_dv);
-        let target_ident = FieldIdent::Name("-Foo".into());
-        assert_eq!(computed_dv.get_field_type(&target_ident).unwrap(), FieldType::Float);
-        float::assert_dv_eq_vec(&computed_dv, &target_ident, vec![0.0, 5.0, -2.0, -6.0, 3.0]);
-    }
 }

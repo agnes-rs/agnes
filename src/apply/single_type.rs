@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use masked::{MaybeNa};
+use field::{Value};
 use apply::mapfn::MapFn;
 use field::DataType;
 
@@ -22,16 +22,16 @@ impl<T, U: DataType, F: FnMut(&T) -> U> SingleTypeFn<T, U, F> {
 }
 macro_rules! impl_value_map {
     ($name:tt, $ty:ty) => {
-        fn $name(&mut self, value: MaybeNa<&$ty>) -> Self::Output { value.map(&mut self.f) }
+        fn $name(&mut self, value: Value<&$ty>) -> Self::Output { value.map(&mut self.f) }
     }
 }
 macro_rules! impl_unreachable {
     ($name:tt, $ty:ty) => {
-        fn $name(&mut self, _: MaybeNa<&$ty>) -> Self::Output { unreachable![] }
+        fn $name(&mut self, _: Value<&$ty>) -> Self::Output { unreachable![] }
     }
 }
 impl<U: DataType, F: FnMut(&u64) -> U> MapFn for SingleTypeFn<u64, U, F> {
-    type Output = MaybeNa<U>;
+    type Output = Value<U>;
     impl_value_map!(apply_unsigned, u64);
     impl_unreachable!(apply_signed, i64);
     impl_unreachable!(apply_text, String);
@@ -39,7 +39,7 @@ impl<U: DataType, F: FnMut(&u64) -> U> MapFn for SingleTypeFn<u64, U, F> {
     impl_unreachable!(apply_float, f64);
 }
 impl<U: DataType, F: FnMut(&i64) -> U> MapFn for SingleTypeFn<i64, U, F> {
-    type Output = MaybeNa<U>;
+    type Output = Value<U>;
     impl_unreachable!(apply_unsigned, u64);
     impl_value_map!(apply_signed, i64);
     impl_unreachable!(apply_text, String);
@@ -47,7 +47,7 @@ impl<U: DataType, F: FnMut(&i64) -> U> MapFn for SingleTypeFn<i64, U, F> {
     impl_unreachable!(apply_float, f64);
 }
 impl<U: DataType, F: FnMut(&String) -> U> MapFn for SingleTypeFn<String, U, F> {
-    type Output = MaybeNa<U>;
+    type Output = Value<U>;
     impl_unreachable!(apply_unsigned, u64);
     impl_unreachable!(apply_signed, i64);
     impl_value_map!(apply_text, String);
@@ -55,7 +55,7 @@ impl<U: DataType, F: FnMut(&String) -> U> MapFn for SingleTypeFn<String, U, F> {
     impl_unreachable!(apply_float, f64);
 }
 impl<U: DataType, F: FnMut(&bool) -> U> MapFn for SingleTypeFn<bool, U, F> {
-    type Output = MaybeNa<U>;
+    type Output = Value<U>;
     impl_unreachable!(apply_unsigned, u64);
     impl_unreachable!(apply_signed, i64);
     impl_unreachable!(apply_text, String);
@@ -63,7 +63,7 @@ impl<U: DataType, F: FnMut(&bool) -> U> MapFn for SingleTypeFn<bool, U, F> {
     impl_unreachable!(apply_float, f64);
 }
 impl<U: DataType, F: FnMut(&f64) -> U> MapFn for SingleTypeFn<f64, U, F> {
-    type Output = MaybeNa<U>;
+    type Output = Value<U>;
     impl_unreachable!(apply_unsigned, u64);
     impl_unreachable!(apply_signed, i64);
     impl_unreachable!(apply_text, String);

@@ -1,6 +1,6 @@
 use store::{AddData, DataStore};
 use field::FieldIdent;
-use masked::MaybeNa;
+use field::Value;
 use apply::mapfn::MapFn;
 
 map_fn![

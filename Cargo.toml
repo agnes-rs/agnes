@@ -24,6 +24,7 @@ prettytable-rs = "0.6"
 csv-sniffer = "0.1"
 tempfile = "3"
 num-traits = "0.2.5"
+mashup = "0.1"
 
 [dev-dependencies]
 serde_json = "1.0"

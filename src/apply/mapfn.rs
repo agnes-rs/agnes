@@ -7,7 +7,7 @@ the data structure.
 */
 use std::marker::PhantomData;
 
-use masked::{MaybeNa, IntoMaybeNa};
+use field::{Value, IntoValue};
 use error::*;
 use field::{DataType, FieldIdent};
 use view::DataView;
@@ -70,7 +70,7 @@ impl<'a, D: 'a + Apply, F: MapFn> Map<'a, D, F> {
     }
     /// Compose this `MapFn` with another `MapFn`.
     pub fn map<G: MapFn>(self, g: G) -> Map<'a, D, Composed<F, G>>
-        where G: ApplyToDatum<<F::Output as IntoMaybeNa>::DType>
+        where G: ApplyToDatum<<F::Output as IntoValue>::DType>
     {
         Map::new(self.data, Composed { f: self.f, g }, self.name)
     }
@@ -96,19 +96,19 @@ impl<'a, D: ApplyTo> Selection<'a, D> {
 }
 
 /// Trait for conversion from a `Map` structure. Usually called from `map.collect()`.
-pub trait FromMap<A: IntoMaybeNa>: Sized {
+pub trait FromMap<A: IntoValue>: Sized {
     /// Convert a `Map` structure into the resultant data structure.
     fn from_map<'a, D: 'a + Apply, F>(map: Map<'a, D, F>) -> Result<Self>
         where F: MapFn<Output=A>;
 }
-impl<A: IntoMaybeNa> FromMap<A> for Vec<A> {
+impl<A: IntoValue> FromMap<A> for Vec<A> {
     fn from_map<'a, D: 'a + Apply, F>(mut map: Map<'a, D, F>) -> Result<Vec<A>>
         where F: MapFn<Output=A>
     {
         map.data.apply(&mut map.f)
     }
 }
-impl<A: IntoMaybeNa> FromMap<A> for DataView
+impl<A: IntoValue> FromMap<A> for DataView
     where DataStore: AddDataVec<A::DType>
 {
     fn from_map<'a, D: 'a + Apply, F>(map: Map<'a, D, F>) -> Result<DataView>
@@ -117,7 +117,7 @@ impl<A: IntoMaybeNa> FromMap<A> for DataView
         let field_name = map.name.clone();
         let mut mapped_data_vec = map.collect::<Vec<_>>()?;
         let data_vec = mapped_data_vec.drain(..)
-            .map(|value| value.into_maybena()).collect();
+            .map(|value| value.into_Value()).collect();
         let mut ds = DataStore::empty();
         ds.add_data_vec(field_name.into(), data_vec);
         Ok(ds.into())
@@ -130,24 +130,24 @@ pub struct Composed<F: MapFn, G: MapFn> {
     g: G,
 }
 impl<F: MapFn, G: MapFn> MapFn for Composed<F, G>
-    where G: ApplyToDatum<<F::Output as IntoMaybeNa>::DType>
+    where G: ApplyToDatum<<F::Output as IntoValue>::DType>
 {
-    type Output = <G as ApplyToDatum<<F::Output as IntoMaybeNa>::DType>>::Output;
+    type Output = <G as ApplyToDatum<<F::Output as IntoValue>::DType>>::Output;
 
-    fn apply_unsigned(&mut self, value: MaybeNa<&u64>) -> Self::Output {
-        self.g.apply_to_datum(self.f.apply_unsigned(value).into_maybena().as_ref())
+    fn apply_unsigned(&mut self, value: Value<&u64>) -> Self::Output {
+        self.g.apply_to_datum(self.f.apply_unsigned(value).into_Value().as_ref())
     }
-    fn apply_signed(&mut self, value: MaybeNa<&i64>) -> Self::Output {
-        self.g.apply_to_datum(self.f.apply_signed(value).into_maybena().as_ref())
+    fn apply_signed(&mut self, value: Value<&i64>) -> Self::Output {
+        self.g.apply_to_datum(self.f.apply_signed(value).into_Value().as_ref())
     }
-    fn apply_text(&mut self, value: MaybeNa<&String>) -> Self::Output {
-        self.g.apply_to_datum(self.f.apply_text(value).into_maybena().as_ref())
+    fn apply_text(&mut self, value: Value<&String>) -> Self::Output {
+        self.g.apply_to_datum(self.f.apply_text(value).into_Value().as_ref())
     }
-    fn apply_boolean(&mut self, value: MaybeNa<&bool>) -> Self::Output {
-        self.g.apply_to_datum(self.f.apply_boolean(value).into_maybena().as_ref())
+    fn apply_boolean(&mut self, value: Value<&bool>) -> Self::Output {
+        self.g.apply_to_datum(self.f.apply_boolean(value).into_Value().as_ref())
     }
-    fn apply_float(&mut self, value: MaybeNa<&f64>) -> Self::Output {
-        self.g.apply_to_datum(self.f.apply_float(value).into_maybena().as_ref())
+    fn apply_float(&mut self, value: Value<&f64>) -> Self::Output {
+        self.g.apply_to_datum(self.f.apply_float(value).into_Value().as_ref())
     }
 }
 
@@ -155,18 +155,18 @@ impl<F: MapFn, G: MapFn> MapFn for Composed<F, G>
 /// Trait for a type-dependent function that applies to a specific element.
 pub trait MapFn {
     /// The desired output of this function.
-    type Output: IntoMaybeNa;
+    type Output: IntoValue;
 
     /// The method to use when working with unsigned (`u64`) data.
-    fn apply_unsigned(&mut self, value: MaybeNa<&u64>) -> Self::Output;
+    fn apply_unsigned(&mut self, value: Value<&u64>) -> Self::Output;
     /// The method to use when working with signed (`i64`) data.
-    fn apply_signed(&mut self, value: MaybeNa<&i64>) -> Self::Output;
+    fn apply_signed(&mut self, value: Value<&i64>) -> Self::Output;
     /// The method to use when working with text (`String`) data.
-    fn apply_text(&mut self, value: MaybeNa<&String>) -> Self::Output;
+    fn apply_text(&mut self, value: Value<&String>) -> Self::Output;
     /// The method to use when working with boolean (`bool`) data.
-    fn apply_boolean(&mut self, value: MaybeNa<&bool>) -> Self::Output;
+    fn apply_boolean(&mut self, value: Value<&bool>) -> Self::Output;
     /// The method to use when working with floating-point (`f64`) data.
-    fn apply_float(&mut self, value: MaybeNa<&f64>) -> Self::Output;
+    fn apply_float(&mut self, value: Value<&f64>) -> Self::Output;
 }
 
 #[macro_export]
@@ -310,31 +310,31 @@ macro_rules! map_fn_impl {
         );
     );
     (fn unsigned($self:ident, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_unsigned(&mut $self, $value: MaybeNa<&u64>) -> Self::Output {
+        fn apply_unsigned(&mut $self, $value: Value<&u64>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
     );
     (fn signed($self:ident, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_signed(&mut $self, $value: MaybeNa<&i64>) -> Self::Output {
+        fn apply_signed(&mut $self, $value: Value<&i64>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
     );
     (fn text($self:ident, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_text(&mut $self, $value: MaybeNa<&String>) -> Self::Output {
+        fn apply_text(&mut $self, $value: Value<&String>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
     );
     (fn boolean($self:ident, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_boolean(&mut $self, $value: MaybeNa<&bool>) -> Self::Output {
+        fn apply_boolean(&mut $self, $value: Value<&bool>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
     );
     (fn float($self:ident, $value:ident) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_float(&mut $self, $value: MaybeNa<&f64>) -> Self::Output {
+        fn apply_float(&mut $self, $value: Value<&f64>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
@@ -384,31 +384,31 @@ macro_rules! map_fn_impl {
         );
     );
     (fn unsigned($self:ident, _) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_unsigned(&mut $self, _: MaybeNa<&u64>) -> Self::Output {
+        fn apply_unsigned(&mut $self, _: Value<&u64>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
     );
     (fn signed($self:ident, _) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_signed(&mut $self, _: MaybeNa<&i64>) -> Self::Output {
+        fn apply_signed(&mut $self, _: Value<&i64>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
     );
     (fn text($self:ident, _) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_text(&mut $self, _: MaybeNa<&String>) -> Self::Output {
+        fn apply_text(&mut $self, _: Value<&String>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
     );
     (fn boolean($self:ident, _) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_boolean(&mut $self, _: MaybeNa<&bool>) -> Self::Output {
+        fn apply_boolean(&mut $self, _: Value<&bool>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
     );
     (fn float($self:ident, _) { $($body:tt)* } $($rest:tt)*) => (
-        fn apply_float(&mut $self, _: MaybeNa<&f64>) -> Self::Output {
+        fn apply_float(&mut $self, _: Value<&f64>) -> Self::Output {
             $($body)*
         }
         map_fn_impl!($($rest)*);
@@ -430,15 +430,15 @@ pub trait ApplyUnchecked<T: DataType> {
     /// Apply the provided function to each data element in this data structure. Panics if applied
     /// to a data element of a type the function is not expecting.
     fn apply_unchecked<F, S, Output>(&self, state: S, f: F) -> Result<Vec<Output>>
-        where F: Fn(MaybeNa<&T>, &mut S) -> Output, Output: IntoMaybeNa;
+        where F: Fn(Value<&T>, &mut S) -> Output, Output: IntoValue;
 }
 impl<U> ApplyUnchecked<u64> for U where U: Apply {
     fn apply_unchecked<F, S, Output>(&self, state: S, f: F) -> Result<Vec<Output>>
-        where F: Fn(MaybeNa<&u64>, &mut S) -> Output, Output: IntoMaybeNa
+        where F: Fn(Value<&u64>, &mut S) -> Output, Output: IntoValue
     {
         map_fn![
             UncheckedUnsignedFn<(F, S, Output)>
-                where (F: Fn(MaybeNa<&u64>, &mut S) -> Output, Output: IntoMaybeNa)
+                where (F: Fn(Value<&u64>, &mut S) -> Output, Output: IntoValue)
             {
                 type Output = Output;
                 f: F,
@@ -456,11 +456,11 @@ impl<U> ApplyUnchecked<u64> for U where U: Apply {
 }
 impl<U> ApplyUnchecked<i64> for U where U: Apply {
     fn apply_unchecked<F, S, Output>(&self, state: S, f: F) -> Result<Vec<Output>>
-        where F: Fn(MaybeNa<&i64>, &mut S) -> Output, Output: IntoMaybeNa
+        where F: Fn(Value<&i64>, &mut S) -> Output, Output: IntoValue
     {
         map_fn![
             UncheckedSignedFn<(F, S, Output)>
-                where (F: Fn(MaybeNa<&i64>, &mut S) -> Output, Output: IntoMaybeNa)
+                where (F: Fn(Value<&i64>, &mut S) -> Output, Output: IntoValue)
             {
                 type Output = Output;
                 f: F,
@@ -478,11 +478,11 @@ impl<U> ApplyUnchecked<i64> for U where U: Apply {
 }
 impl<U> ApplyUnchecked<String> for U where U: Apply {
     fn apply_unchecked<F, S, Output>(&self, state: S, f: F) -> Result<Vec<Output>>
-        where F: Fn(MaybeNa<&String>, &mut S) -> Output, Output: IntoMaybeNa
+        where F: Fn(Value<&String>, &mut S) -> Output, Output: IntoValue
     {
         map_fn![
             UncheckedTextFn<(F, S, Output)>
-                where (F: Fn(MaybeNa<&String>, &mut S) -> Output, Output: IntoMaybeNa)
+                where (F: Fn(Value<&String>, &mut S) -> Output, Output: IntoValue)
             {
                 type Output = Output;
                 f: F,
@@ -500,11 +500,11 @@ impl<U> ApplyUnchecked<String> for U where U: Apply {
 }
 impl<U> ApplyUnchecked<bool> for U where U: Apply {
     fn apply_unchecked<F, S, Output>(&self, state: S, f: F) -> Result<Vec<Output>>
-        where F: Fn(MaybeNa<&bool>, &mut S) -> Output, Output: IntoMaybeNa
+        where F: Fn(Value<&bool>, &mut S) -> Output, Output: IntoValue
     {
         map_fn![
             UncheckedBoolFn<(F, S, Output)>
-                where (F: Fn(MaybeNa<&bool>, &mut S) -> Output, Output: IntoMaybeNa)
+                where (F: Fn(Value<&bool>, &mut S) -> Output, Output: IntoValue)
             {
                 type Output = Output;
                 f: F,
@@ -522,11 +522,11 @@ impl<U> ApplyUnchecked<bool> for U where U: Apply {
 }
 impl<U> ApplyUnchecked<f64> for U where U: Apply {
     fn apply_unchecked<F, S, Output>(&self, state: S, f: F) -> Result<Vec<Output>>
-        where F: Fn(MaybeNa<&f64>, &mut S) -> Output, Output: IntoMaybeNa
+        where F: Fn(Value<&f64>, &mut S) -> Output, Output: IntoValue
     {
         map_fn![
             UncheckedFloatFn<(F, S, Output)>
-                where (F: Fn(MaybeNa<&f64>, &mut S) -> Output, Output: IntoMaybeNa)
+                where (F: Fn(Value<&f64>, &mut S) -> Output, Output: IntoValue)
             {
                 type Output = Output;
                 f: F,
@@ -543,20 +543,20 @@ impl<U> ApplyUnchecked<f64> for U where U: Apply {
     }
 }
 
-/// Trait for structures that can be applied to a single `MaybeNa` value, resulting in a specific
+/// Trait for structures that can be applied to a single `Value` value, resulting in a specific
 /// output.
 pub trait ApplyToDatum<T: DataType> {
     /// The output when this type is applied to a datum.
-    type Output: IntoMaybeNa;
+    type Output: IntoValue;
     /// Apply this type to a datum.
-    fn apply_to_datum(&mut self, value: MaybeNa<&T>) -> Self::Output;
+    fn apply_to_datum(&mut self, value: Value<&T>) -> Self::Output;
 }
 macro_rules! impl_apply_datum {
     ($($dtype:ty, $f:tt);*) => {$(
 
 impl<T> ApplyToDatum<$dtype> for T where T: MapFn {
     type Output = <Self as MapFn>::Output;
-    fn apply_to_datum(&mut self, value: MaybeNa<&$dtype>) -> Self::Output {
+    fn apply_to_datum(&mut self, value: Value<&$dtype>) -> Self::Output {
         self.$f(value)
     }
 }
@@ -805,7 +805,7 @@ mod tests {
         println!("{}", dv);
 
         map_fn![
-            ConvertUnsigned { type Output = MaybeNa<u64>; }
+            ConvertUnsigned { type Output = Value<u64>; }
             fn unsigned(self, value) { value.map(|&val| val) }
             fn signed(self, value) { value.map(|&val| if val < 0 { 0 } else { val as u64 }) }
             fn text(self, value) { value.map(|&ref val| val.parse().unwrap_or(0)) }
@@ -820,7 +820,7 @@ mod tests {
         );
 
         map_fn![
-            ConvertFloat { type Output = MaybeNa<f64>; }
+            ConvertFloat { type Output = Value<f64>; }
             fn [signed, float](self, value) { value.map(|&val| val as f64) }
             fn unsigned(self, value) { value.map(|&val| val as f64 + 0.0001) }
             fn text(self, value) { value.map(|&ref val| val.parse().unwrap_or(0.0)) }

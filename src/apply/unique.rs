@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use masked::MaybeNa;
+use field::Value;
 use field::FieldIdent;
 use apply::mapfn::*;
 use access::{FieldData, DataIndex};
@@ -30,7 +30,7 @@ field_map_fn![
     }
     fn float(self, field) {
         let sorted = SortOrderFn {}.apply_float(field);
-        let mut prev_value: Option<MaybeNa<&f64>> = None;
+        let mut prev_value: Option<Value<&f64>> = None;
         let mut indices = vec![];
         for i in sorted {
             let datum = field.get_data(i).unwrap();
@@ -49,10 +49,10 @@ field_map_fn![
 pub trait Unique {
     /// Compute the unique values within the specified field, and return a `DataView` containing
     /// those values.
-    fn unique<T: Into<FieldIdent>>(&self, ident: T) -> Result<DataView>;
+    fn unique<I: Into<FieldIdent>>(&self, ident: I) -> Result<DataView>;
 }
 impl Unique for DataView {
-    fn unique<T: Into<FieldIdent>>(&self, ident: T) -> Result<DataView> {
+    fn unique<I: Into<FieldIdent>>(&self, ident: I) -> Result<DataView> {
         let ident = ident.into();
         let permutation = self.field_apply_to(&mut UniqueFn {}, &ident)?;
         let mut subview = self.v(ident);
@@ -113,21 +113,19 @@ impl CompositeUnique for DataView {
 mod tests {
     use super::*;
     use view::DataView;
-    use store::DataStore;
-    use masked::{MaskedData, MaybeNa};
+    use store::{DataStore, WithDataVec};
+    use field::Value;
     use test_utils::*;
 
     #[test]
     fn unique() {
-        let dv: DataView = DataStore::with_data(
-            vec![("Foo", MaskedData::from_masked_vec(vec![
-                MaybeNa::Exists(0),
-                MaybeNa::Exists(5),
-                MaybeNa::Exists(5),
-                MaybeNa::Exists(0),
-                MaybeNa::Exists(3)
-            ]))], None, None, None, None,
-        ).into();
+        let dv: DataView = DataStore::empty().with_data_vec("Foo", vec![
+                Value::Exists(0),
+                Value::Exists(5),
+                Value::Exists(5),
+                Value::Exists(0),
+                Value::Exists(3)
+        ]).into();
         let dv_unique = dv.unique("Foo").unwrap();
         unsigned::assert_dv_eq_vec(&dv_unique, &"Foo".into(),
             vec![0u64, 5, 3]
