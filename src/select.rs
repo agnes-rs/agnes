@@ -78,6 +78,7 @@ mod tests {
     use field::Value;
     use test_utils::*;
     use access::DataIndex;
+    use error::*;
 
     #[test]
     fn select() {
@@ -87,5 +88,18 @@ mod tests {
             .map(|datum: Value<&u64>| if datum.exists() { 1i64 } else { 0 })
             .collect::<Vec<_>>();
         assert_eq!(result, vec![1, 1, 1, 1, 1, 1, 1]);
+    }
+
+    #[test]
+    fn select_wrong_type() {
+        let dv = sample_merged_emp_table();
+        println!("{}", dv);
+        let result = dv.field::<i64, _>("EmpId");
+        match result {
+            Err(AgnesError::IncompatibleTypes { .. }) => {},
+            Err(_) => { panic!["wrong error when calling field() with incorrect type"]; },
+            Ok(_) => { panic!["expected error when calling field() with incorrect type, but \
+                               received Ok"]; }
+        }
     }
 }

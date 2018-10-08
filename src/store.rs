@@ -331,8 +331,15 @@ impl<'a, DTypes, T> SelectField<'a, T, DTypes> for DataStore<DTypes>
             .ok_or_else(|| AgnesError::FieldNotFound(ident.clone()))
             .map(|&field_idx| &self.fields[field_idx])
             .and_then(|ds_field| {
-                // by construction, td_index is always in range, so unwrap is safe
-                Ok(self.data.select_type().get(ds_field.td_index).unwrap())
+                if ds_field.ty != T::DTYPE {
+                    Err(AgnesError::IncompatibleTypes {
+                        expected: ds_field.ty.to_string(),
+                        actual: T::DTYPE.to_string()
+                    })
+                } else {
+                    // by construction, td_index is always in range, so unwrap is safe
+                    Ok(self.data.select_type().get(ds_field.td_index).unwrap())
+                }
             })
             .map(|field| OwnedOrRef::Ref(field) )
     }

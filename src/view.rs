@@ -874,7 +874,7 @@ mod tests {
             Err(AgnesError::IncompatibleTypes { .. }) => {},
             Err(_) => { panic!["wrong error when calling tmap() with incorrect type"]; },
             Ok(_) => { panic!["expected error when calling tmap() with incorrect type, but \
-                               received result"]; }
+                               received Ok"]; }
         }
     }
 }
