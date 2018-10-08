@@ -39,6 +39,7 @@ impl<'a, DTypes> DataView<DTypes>
         for frame in &mut subview.frames {
             frame.update_permutation(&permutation);
         }
+
         Ok(subview)
     }
 }

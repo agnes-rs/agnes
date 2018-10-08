@@ -35,7 +35,7 @@ impl<DTypes> DsField<DTypes>
         -> DsField<DTypes>
     {
         DsField {
-            ident: ident,
+            ident,
             ds_index,
             ty,
             td_index
@@ -126,7 +126,7 @@ impl<DTypes> DataStore<DTypes>
                 // add data to self.data structure
                 let (dtype, data) = (self.data.select_dtype(), self.data.select_type_mut());
                 let td_idx = data.len();
-                data.push(FieldData::new());
+                data.push(FieldData::default());
 
                 // add indexing information
                 let fields_idx = self.fields.len();
@@ -161,7 +161,7 @@ impl<DTypes> DataStore<DTypes>
     {
         let ds_field = self.field_map
             .get(&ident)
-            .ok_or(AgnesError::FieldNotFound(ident.clone()))
+            .ok_or_else(|| AgnesError::FieldNotFound(ident.clone()))
             .map(|&field_idx| &self.fields[field_idx])?;
 
         self.data.map(
@@ -176,7 +176,7 @@ impl<DTypes> DataStore<DTypes>
     {
         let ds_field = self.field_map
             .get(&ident)
-            .ok_or(AgnesError::FieldNotFound(ident.clone()))
+            .ok_or_else(|| AgnesError::FieldNotFound(ident.clone()))
             .map(|&field_idx| &self.fields[field_idx])?;
 
         if ds_field.ty != T::DTYPE {
@@ -196,7 +196,7 @@ impl<DTypes> DataStore<DTypes>
     {
         let ds_field = self.field_map
             .get(&ident)
-            .ok_or(AgnesError::FieldNotFound(ident.clone()))
+            .ok_or_else(|| AgnesError::FieldNotFound(ident.clone()))
             .map(|&field_idx| &self.fields[field_idx])?;
 
         self.data.map_ext(
@@ -212,7 +212,7 @@ impl<DTypes> DataStore<DTypes>
     {
         let ds_field = self.field_map
             .get(&ident)
-            .ok_or(AgnesError::FieldNotFound(ident.clone()))
+            .ok_or_else(|| AgnesError::FieldNotFound(ident.clone()))
             .map(|&field_idx| &self.fields[field_idx])?;
 
         Ok(self.data.map_partial(
@@ -284,7 +284,7 @@ impl<'a, T, DTypes> FuncExt<DTypes, T> for CopyInto<'a, DTypes>
 }
 
 impl<DTypes: AssocTypes> DataStore<DTypes> {
-    pub fn fields<'a>(&'a self) -> impl Iterator<Item=&'a FieldIdent> {
+    pub fn fields(&self) -> impl Iterator<Item=&FieldIdent> {
         self.fields.iter().map(|ds_field| &ds_field.ident)
     }
 
@@ -296,7 +296,7 @@ impl<DTypes: AssocTypes> DataStore<DTypes> {
     /// Get the field information struct for a given field name
     pub fn get_field_type(&self, ident: &FieldIdent) -> Option<DTypes::DType> {
         self.field_map.get(ident)
-            .and_then(|&index| self.fields.get(index).map(|&ref dsfield| dsfield.ty))
+            .and_then(|&index| self.fields.get(index).map(|dsfield| dsfield.ty))
     }
 
     /// Retrieve number of rows for this data store
@@ -328,7 +328,7 @@ impl<'a, DTypes, T> SelectField<'a, T, DTypes> for DataStore<DTypes>
     {
         self.field_map
             .get(&ident)
-            .ok_or(AgnesError::FieldNotFound(ident.clone()))
+            .ok_or_else(|| AgnesError::FieldNotFound(ident.clone()))
             .map(|&field_idx| &self.fields[field_idx])
             .and_then(|ds_field| {
                 // by construction, td_index is always in range, so unwrap is safe
@@ -370,7 +370,6 @@ impl<DTypes, T> AddData<T, DTypes>
     fn add<V: Into<Value<T>>>(&mut self, ident: FieldIdent, value: V)
         -> Result<()>
     {
-        let ident = ident.into();
         if !self.has_field(&ident) {
             self.add_empty_field::<T>(TFieldIdent::new(ident.clone()))?;
         }
@@ -571,7 +570,7 @@ pub trait IntoDataStore<DTypes: DTypeList> {
     fn into_dataview<I: Into<FieldIdent>>(self, ident: I) -> Result<DataView<DTypes>>
         where Self: Sized
     {
-        self.into_datastore(ident).map(|ds| DataView::from(ds))
+        self.into_datastore(ident).map(DataView::from)
     }
 
     fn into_dv<I: Into<FieldIdent>>(self, ident: I) -> Result<DataView<DTypes>> where Self: Sized {

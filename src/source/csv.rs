@@ -39,7 +39,7 @@ impl CsvSource {
 
         Ok(CsvSource {
             src: loc,
-            metadata: metadata
+            metadata
         })
     }
     /// Return the compute `Metadata` for this CSV source.
@@ -74,14 +74,14 @@ impl CsvReader {
                 for (i, header) in headers.iter().enumerate() {
                     field_coll.add(TypedFieldIdent::new(
                         FieldIdent::Name(header.into()),
-                        src.metadata.types[i].into()
+                        src.metadata.types[i]
                     ), i);
                 }
             } else {
                 for i in 0..src.metadata.num_fields {
                     field_coll.add(TypedFieldIdent::new(
                         FieldIdent::Index(i),
-                        src.metadata.types[i].into()
+                        src.metadata.types[i]
                     ), i);
                 }
             }
@@ -89,7 +89,7 @@ impl CsvReader {
 
         Ok(CsvReader {
             reader: csv_reader,
-            field_coll: field_coll,
+            field_coll,
         })
     }
 
@@ -100,9 +100,12 @@ impl CsvReader {
         for row in self.reader.byte_records() {
             let record = row?;
             for field in &self.field_coll.fields {
-                let value = decode(record.get(field.src_index).ok_or(
-                    AgnesError::FieldNotFound(field.ty_ident.ident.clone()))?)?;
-                insert(&mut ds, field.ty_ident.clone(), value.clone())?;
+                let value = decode(
+                    record.get(field.src_index).ok_or_else(||
+                        AgnesError::FieldNotFound(field.ty_ident.ident.clone())
+                    )?
+                )?;
+                insert(&mut ds, &field.ty_ident, &value)?;
             }
         }
         Ok(ds)
@@ -111,7 +114,7 @@ impl CsvReader {
 
 // Insert a value (provided in unparsed string form) for specified field
 fn insert(
-    ds: &mut DataStore<dt_csv::Types>, ty_ident: TypedFieldIdent, value_str: String
+    ds: &mut DataStore<dt_csv::Types>, ty_ident: &TypedFieldIdent, value_str: &str
 )
     -> Result<()>
 {
@@ -127,7 +130,7 @@ fn insert(
         },
         csv_sniffer::Type::Text => {
             // ds.add_field::<String>(TFieldIdent::new(ident));
-            ds.add::<String, _>(ident, parse(value_str, |val| Ok(val))?)?;
+            ds.add::<String, _>(ident, parse(value_str, |s| Ok(s.to_string()))?)?;
         },
         csv_sniffer::Type::Boolean => {
             // ds.add_field::<bool>(TFieldIdent::new(ident));
@@ -141,10 +144,10 @@ fn insert(
     Ok(())
 }
 
-fn parse<T: DataType<dt_csv::Types>, F>(value_str: String, f: F) -> Result<Value<T>>
-    where F: Fn(String) -> Result<T>
+fn parse<T: DataType<dt_csv::Types>, F>(value_str: &str, f: F) -> Result<Value<T>>
+    where F: Fn(&str) -> Result<T>
 {
-    if value_str.trim().len() == 0 {
+    if value_str.trim().is_empty() {
         Ok(Value::Na)
     } else {
         Ok(Value::Exists(f(value_str)?))
@@ -154,23 +157,23 @@ fn parse<T: DataType<dt_csv::Types>, F>(value_str: String, f: F) -> Result<Value
 /// as a signed integer; if successful, assumes that the integer is negative and translates that
 /// to '0'. If that fails, tries to parse as a float; if successful, converts to unsigned integer
 /// (or '0' if negative)
-fn parse_unsigned(value_str: String) -> Result<u64> {
+fn parse_unsigned(value_str: &str) -> Result<u64> {
     Ok(value_str.parse::<u64>().or_else(|e| {
         // try parsing as a signed int...if successful, it's negative, so just set it to 0
         value_str.parse::<i64>().map(|_| 0u64).or_else(|_| {
             // try parsing as a float
             value_str.parse::<f64>().map(|f| {
                 if f < 0.0 { 0u64 } else { f as u64 }
-            }).or(Err(e))
+            }).or_else(|_| Err(e))
         })
     })?)
 }
 /// A forgiving signed integer parser. If normal signed integer parsing fails, tries to parse as
 /// a float; if successful, converts to a signed integer.
-fn parse_signed(value_str: String) -> Result<i64> {
+fn parse_signed(value_str: &str) -> Result<i64> {
     Ok(value_str.parse::<i64>().or_else(|e| {
         // try parsing as float
-        value_str.parse::<f64>().map(|f| f as i64).or(Err(e))
+        value_str.parse::<f64>().map(|f| f as i64).or_else(|_| Err(e))
     })?)
 }
 
@@ -182,7 +185,7 @@ struct IndexMap {
 }
 impl IndexMap {
     fn new(src: usize, dest: usize) -> IndexMap {
-        IndexMap { src: src, dest: dest }
+        IndexMap { src, dest }
     }
 }
 
@@ -194,8 +197,8 @@ struct TypedFieldIdent {
 impl TypedFieldIdent {
     fn new(ident: FieldIdent, ty: csv_sniffer::Type) -> TypedFieldIdent {
         TypedFieldIdent {
-            ident: ident,
-            ty: ty
+            ident,
+            ty
         }
     }
 }
@@ -212,8 +215,8 @@ impl SrcField {
     /// index.
     fn from_ty_ident(ty_ident: TypedFieldIdent, src_index: usize) -> SrcField {
         SrcField {
-            ty_ident: ty_ident,
-            src_index: src_index
+            ty_ident,
+            src_index
         }
     }
 }

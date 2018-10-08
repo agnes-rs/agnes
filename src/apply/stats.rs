@@ -91,7 +91,7 @@ impl<DTypes, T> Func<DTypes, T> for SumFn
         DataIterator::new(data)
             .fold(T::zero(), |sum, value| {
                 match value {
-                    Value::Exists(&ref value) => sum + value,
+                    Value::Exists(value) => sum + value,
                     Value::Na => sum
                 }
             })
@@ -223,7 +223,7 @@ impl<DTypes, T: DataType<DTypes>> Func<DTypes, T> for SumSqFn
         DataIterator::new(data)
             .fold(T::zero(), |sum, value| {
                 match value {
-                    Value::Exists(&ref value) => sum + value.clone() * value,
+                    Value::Exists(value) => sum + value.clone() * value,
                     Value::Na => sum
                 }
             })
@@ -407,7 +407,7 @@ impl<DTypes, T> Func<DTypes, T> for MinFn
         DataIterator::new(data)
             .fold(T::max_value(), |cur_min, value| {
                 match value {
-                    Value::Exists(&ref value) =>
+                    Value::Exists(value) =>
                         if value < &cur_min { value.clone() } else { cur_min },
                     Value::Na => cur_min
                 }
@@ -445,7 +445,7 @@ impl<DTypes> Func<DTypes, String> for MinFn
         DataIterator::new(data)
             .fold(u64::max_value(), |cur_min, value| {
                 match value {
-                    Value::Exists(&ref value) => {
+                    Value::Exists(value) => {
                         let len = value.len() as u64;
                         if len < cur_min { len } else { cur_min }
                     },
@@ -471,7 +471,7 @@ impl<DTypes, T> Func<DTypes, T> for MaxFn
         DataIterator::new(data)
             .fold(T::min_value(), |cur_max, value| {
                 match value {
-                    Value::Exists(&ref value) =>
+                    Value::Exists(value) =>
                         if value > &cur_max { value.clone() } else { cur_max },
                     Value::Na => cur_max,
                 }
@@ -509,7 +509,7 @@ impl<DTypes> Func<DTypes, String> for MaxFn
         DataIterator::new(data)
             .fold(u64::min_value(), |cur_max, value| {
                 match value {
-                    Value::Exists(&ref value) => {
+                    Value::Exists(value) => {
                         let len = value.len() as u64;
                         if len > cur_max { len } else { cur_max }
                     },

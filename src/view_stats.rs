@@ -97,11 +97,11 @@ impl<DTypes: DTypeList> fmt::Display for ViewStats<DTypes> {
             table.add_row(pt::row::Row::new(vec![
                 cell![fstats.ident],
                 cell![fstats.ty],
-                cell![format!["{}",fstats.min.clone().unwrap_or("".to_string())]],
-                cell![format!["{}",fstats.max.clone().unwrap_or("".to_string())]],
-                cell![format!["{}",fstats.sum.clone().unwrap_or("".to_string())]],
-                cell![format!["{}",fstats.mean.clone().unwrap_or("".to_string())]],
-                cell![format!["{}",fstats.stdev.clone().unwrap_or("".to_string())]],
+                cell![fstats.min.clone().unwrap_or_default()],
+                cell![fstats.max.clone().unwrap_or_default()],
+                cell![fstats.sum.clone().unwrap_or_default()],
+                cell![fstats.mean.clone().unwrap_or_default()],
+                cell![fstats.stdev.clone().unwrap_or_default()],
             ]));
         }
 

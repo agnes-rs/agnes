@@ -146,8 +146,11 @@ pub enum NetError {
 impl fmt::Display for NetError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            NetError::UnsupportedUriScheme(ref t) =>
-                write!(f, "Unsupported scheme: {}", t.clone().unwrap_or("none".to_string())),
+            NetError::UnsupportedUriScheme(ref t) => write!(
+                    f,
+                    "Unsupported scheme: {}",
+                    t.clone().unwrap_or_else(|| "none".to_string())
+            ),
             NetError::Tls(ref err) => write!(f, "TLS error: {}", err),
             NetError::Http(ref err) => write!(f, "HTTP error: {}", err),
             NetError::LocalFile => write!(f, "unable to access local file over HTTP")

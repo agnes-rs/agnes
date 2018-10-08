@@ -49,14 +49,14 @@ impl<DTypes> DataFrame<DTypes>
     pub fn has_field(&self, s: &FieldIdent) -> bool {
         self.store.has_field(s)
     }
-    pub(crate) fn update_permutation(&mut self, new_permutation: &Vec<usize>) {
+    pub(crate) fn update_permutation(&mut self, new_permutation: &[usize]) {
         // check if we already have a permutation
         self.permutation = match self.permutation {
             Some(ref prev_perm) => {
                 // we already have a permutation, map the filter indices through it
                 Some(new_permutation.iter().map(|&new_idx| prev_perm[new_idx]).collect())
             },
-            None => Some(new_permutation.clone())
+            None => Some(new_permutation.to_vec())
         };
     }
 
@@ -88,7 +88,7 @@ impl<DTypes> DataFrame<DTypes>
         self.store.map_partial(ident, self, f)
     }
 
-    pub fn sort_by<'a>(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
+    pub fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
         where DTypes::Storage: FramedMap<DTypes, SortOrderFunc, Vec<usize>>
     {
         let sort_order = self.sort_order_by(ident)?;
@@ -134,6 +134,7 @@ impl<DTypes, F, FOut, T> FramedMapExt<DTypes, F, FOut> for T
 
 pub trait Reindexer<DTypes: DTypeList>: Debug {
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool { self.len() == 0 }
     fn map_index(&self, requested: usize) -> usize;
     fn reindex<'a, 'b, DI>(&'a self, data_index: &'b DI) -> Reindexed<'a,'b, Self, DI>
         where DI: 'b + DataIndex<DTypes>,

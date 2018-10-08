@@ -18,7 +18,7 @@ use access::{DataIndex, DataIndexMut};
 use error;
 
 /// (Possibly missing) data value container.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Value<T> {
     /// Indicates a missing (NA) value.
     Na,
@@ -48,7 +48,7 @@ impl<T> Value<T> {
         }
     }
     /// Returns a `Value` which contains a reference to the original underlying datum.
-    pub fn as_ref<'a>(&'a self) -> Value<&'a T> {
+    pub fn as_ref(&self) -> Value<&T> {
         match *self {
             Value::Exists(ref val) => Value::Exists(&val),
             Value::Na => Value::Na
@@ -76,7 +76,7 @@ impl<'a, T> PartialEq<T> for Value<&'a T>
 {
     fn eq(&self, other: &T) -> bool {
         match *self {
-            Value::Exists(&ref value) => value.eq(other),
+            Value::Exists(value) => value.eq(other),
             Value::Na => false,
         }
     }
@@ -144,17 +144,16 @@ impl<DTypes, T> FieldData<DTypes, T>
         assert_eq!(self.mask.len(), self.data.len());
         self.data.len()
     }
+    pub fn is_empty(&self) -> bool { self.len() == 0 }
     /// Get the value at the given index. Return `None` if `index` is out of bounds, or a `Value`
     /// Object with the value (or indicator that value is missing).
     pub fn get(&self, index: usize) -> Option<Value<&T>> {
         if index >= self.data.len() {
             None
+        } else if self.mask[index] {
+            Some(Value::Exists(&self.data[index]))
         } else {
-            if self.mask[index] {
-                Some(Value::Exists(&self.data[index]))
-            } else {
-                Some(Value::Na)
-            }
+            Some(Value::Na)
         }
     }
     /// Interpret `FieldData` as a `Vec` of `Value` objects.
@@ -170,18 +169,22 @@ impl<DTypes, T> FieldData<DTypes, T>
         }).collect()
     }
 }
-impl<DTypes, T> FieldData<DTypes, T>
+impl<DTypes, T> Default for FieldData<DTypes, T>
     where DTypes: DTypeList,
-          T: DataType<DTypes>
+          T: DataType<DTypes>,
 {
-    /// Create new empty `FieldData` struct.
-    pub fn new() -> FieldData<DTypes, T> {
+    fn default() -> FieldData<DTypes, T> {
         FieldData {
             data: vec![],
             mask: BitVec::new(),
             _marker: PhantomData,
         }
     }
+}
+impl<DTypes, T> FieldData<DTypes, T>
+    where DTypes: DTypeList,
+          T: DataType<DTypes>
+{
     /// Create a `FieldData` struct from a vector of non-NA values. Resulting `FieldData` struct
     /// will have no `Value::Na` values.
     pub fn from_vec<U: Into<T>>(mut v: Vec<U>) -> FieldData<DTypes, T> {
@@ -223,7 +226,7 @@ impl<DTypes, T> FieldData<DTypes, T>
     }
     /// Create a `FieldData` struct from a vector of field values.
     pub fn from_field_vec(mut v: Vec<Value<T>>) -> FieldData<DTypes, T> {
-        let mut ret = FieldData::new();
+        let mut ret = FieldData::default();
         for elem in v.drain(..) {
             ret.push(elem);
         }
@@ -235,7 +238,7 @@ impl<DTypes, T> FromIterator<Value<T>> for FieldData<DTypes, T>
           DTypes: DTypeList
 {
     fn from_iter<I: IntoIterator<Item=Value<T>>>(iter: I) -> Self {
-        let mut data = FieldData::new();
+        let mut data = FieldData::default();
         for value in iter {
             data.push(value);
         }
@@ -247,7 +250,7 @@ impl<'a, DTypes, T> FromIterator<Value<&'a T>> for FieldData<DTypes, T>
           DTypes: DTypeList
 {
     fn from_iter<I: IntoIterator<Item=Value<&'a T>>>(iter: I) -> Self {
-        let mut data = FieldData::new();
+        let mut data = FieldData::default();
         for value in iter {
             data.push(value.cloned());
         }
@@ -263,7 +266,7 @@ impl<DTypes, T> FromIterator<T> for FieldData<DTypes, T>
         let mut data = vec![];
         for value in iter {
             mask.push(true);
-            data.push(value.into());
+            data.push(value);
         }
         FieldData {
             data,
@@ -401,7 +404,7 @@ impl RFieldIdent {
     /// Produce a string representation of this `RFieldIdent`. Uses the renamed name (if exists),
     /// of the result of `to_string` on the underlying `FieldIdent`.
     pub fn to_string(&self) -> String {
-        self.rename.clone().unwrap_or(self.ident.to_string())
+        self.rename.clone().unwrap_or_else(|| self.ident.to_string())
     }
     /// Produce a new `FieldIdent` using the `rename` value of this `RFieldIdent` (if exists), or
     /// simply a clone of the underlying `FieldIdent`.
@@ -425,7 +428,7 @@ impl<T> TFieldIdent<T> {
     /// Create a new typed field identifier
     pub fn new(ident: FieldIdent) -> TFieldIdent<T> {
         TFieldIdent {
-            ident: ident,
+            ident,
             phantom: PhantomData
         }
     }

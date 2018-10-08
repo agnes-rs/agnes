@@ -28,7 +28,7 @@ fn main() {
         .v(["Country Code", "Region"]);
     dv_gdp_metadata.filter("Region", |_: &String| true).unwrap();
 
-    let mut dv_gdp_joined: DataView = dv_gdp.join::<String>(&dv_gdp_metadata, Join::equal(
+    let mut dv_gdp_joined: DataView = dv_gdp.join::<String>(&dv_gdp_metadata, &Join::equal(
         JoinKind::Inner,
         "Country Code",
         "Country Code"
@@ -40,7 +40,7 @@ fn main() {
     dv_gdp_joined.rename("1983", "1983 GDP").unwrap();
     dv_life.rename("1983", "1983 Life Expectancy").unwrap();
 
-    let dv: DataView = dv_gdp_joined.join::<String>(&dv_life, Join::equal(
+    let dv: DataView = dv_gdp_joined.join::<String>(&dv_life, &Join::equal(
         JoinKind::Inner,
         "Country Code",
         "Country Code"

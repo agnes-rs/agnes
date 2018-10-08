@@ -19,7 +19,8 @@ pub trait DataIndex<DTypes>: Debug
     fn get_datum(&self, idx: usize) -> Result<Value<&Self::DType>>;
     /// Returns the length of this data field.
     fn len(&self) -> usize;
-    fn iter<'a>(&'a self) -> DataIterator<'a, DTypes, Self::DType> where Self: Sized {
+    fn is_empty(&self) -> bool { self.len() == 0 }
+    fn iter(&self) -> DataIterator<DTypes, Self::DType> where Self: Sized {
         DataIterator::new(self)
     }
 }

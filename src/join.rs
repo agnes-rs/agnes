@@ -125,48 +125,48 @@ pub enum Predicate {
     GreaterThanEqual,
 }
 impl Predicate {
-    fn is_equality_pred(&self) -> bool {
-        *self == Predicate::Equal || *self == Predicate::GreaterThanEqual
-            || *self == Predicate::LessThanEqual
+    fn is_equality_pred(self) -> bool {
+        self == Predicate::Equal || self == Predicate::GreaterThanEqual
+            || self == Predicate::LessThanEqual
     }
-    fn is_greater_than_pred(&self) -> bool {
-        *self == Predicate::GreaterThan || *self == Predicate::GreaterThanEqual
+    fn is_greater_than_pred(self) -> bool {
+        self == Predicate::GreaterThan || self == Predicate::GreaterThanEqual
     }
-    fn is_less_than_pred(&self) -> bool {
-        *self == Predicate::LessThan || *self == Predicate::LessThanEqual
+    fn is_less_than_pred(self) -> bool {
+        self == Predicate::LessThan || self == Predicate::LessThanEqual
     }
-    fn apply<DTypes, T>(&self, left: &Value<&T>, right: &Value<&T>) -> PredResults
+    fn apply<DTypes, T>(self, left: Value<&T>, right: Value<&T>) -> PredResults
         where DTypes: AssocTypes,
               T: PartialEq + DtOrd + DataType<DTypes>
     {
-        match *self {
+        match self {
             Predicate::Equal => {
-                match left.dt_cmp(right) {
+                match left.dt_cmp(&right) {
                     Ordering::Less => PredResults::Advance { left: true, right: false },
                     Ordering::Equal => PredResults::Add,
                     Ordering::Greater => PredResults::Advance { left: false, right: true },
                 }
             },
             Predicate::LessThan => {
-                match left.dt_cmp(right) {
+                match left.dt_cmp(&right) {
                     Ordering::Less => PredResults::Add,
                     _ => PredResults::Advance { left: false, right: true },
                 }
             },
             Predicate::LessThanEqual => {
-                match left.dt_cmp(right) {
+                match left.dt_cmp(&right) {
                     Ordering::Greater => PredResults::Advance { left: false, right: true },
                     _ => PredResults::Add
                 }
             },
             Predicate::GreaterThan => {
-                match left.dt_cmp(right) {
+                match left.dt_cmp(&right) {
                     Ordering::Greater => PredResults::Add,
                     _ => PredResults::Advance { left: true, right: false }
                 }
             },
             Predicate::GreaterThanEqual => {
-                match left.dt_cmp(right) {
+                match left.dt_cmp(&right) {
                     Ordering::Less => PredResults::Advance { left: true, right: false },
                     _ => PredResults::Add
                 }
@@ -188,7 +188,7 @@ enum PredResults {
 //TODO: implement hash_join!
 #[allow(dead_code)]
 pub(crate) fn hash_join<DTypes>(
-    _left: &DataView<DTypes>, _right: &DataView<DTypes>, join: Join
+    _left: &DataView<DTypes>, _right: &DataView<DTypes>, join: &Join
 )
     -> Result<DataStore<DTypes>>
     where DTypes: DTypeList
@@ -201,7 +201,7 @@ pub(crate) fn hash_join<DTypes>(
 //FIXME: fix join calls with wrong type
 /// Join two dataviews with specified `Join` using the sort-merge algorithm.
 pub(crate) fn sort_merge_join<'b, DTypes, T>(
-    left: &'b DataView<DTypes>, right: &'b DataView<DTypes>, join: Join
+    left: &'b DataView<DTypes>, right: &'b DataView<DTypes>, join: &Join
 )   -> Result<DataStore<DTypes>>
     where T: 'static + DataType<DTypes> + DtOrd + PartialEq + Default,
           DTypes: DTypeList,
@@ -212,10 +212,10 @@ pub(crate) fn sort_merge_join<'b, DTypes, T>(
 {
     // return early if fields don't exist, don't match types, or if DataViews are empty
     if !left.has_field(&join.left_ident) {
-        return Err(AgnesError::FieldNotFound(join.left_ident.clone().into()));
+        return Err(AgnesError::FieldNotFound(join.left_ident.clone()));
     }
     if !right.has_field(&join.right_ident) {
-        return Err(AgnesError::FieldNotFound(join.right_ident.clone().into()));
+        return Err(AgnesError::FieldNotFound(join.right_ident.clone()));
     }
     if left.get_field_type(&join.left_ident) != right.get_field_type(&join.right_ident) {
         return Err(AgnesError::TypeMismatch("unable to join on fields of different types".into()));
@@ -239,18 +239,16 @@ pub(crate) fn sort_merge_join<'b, DTypes, T>(
     // compute merged frame list and field list for the new dataframe
     // compute the field list for the new dataframe
     let (_, other_frame_indices) = compute_merged_frames(left, right);
-    let (right_idents, mut new_fields) =
-        compute_merged_field_list(left, right, &other_frame_indices, &join)?;
-    let new_fields = new_fields.drain(..).map(|(_, vf)| vf).collect::<Vec<_>>();
+    let MergedFields { right_view_idents, new_fields } =
+        compute_merged_field_list(left, right, &other_frame_indices, join)?;
     // create new datastore with fields of both left and right
     let mut ds = DataStore::empty();
     let new_field_idents = new_fields.iter()
-        .map(|&ref view_field| view_field.rident.to_renamed_field_ident())
+        .map(|(_, view_field)| view_field.rident.to_renamed_field_ident())
         .collect::<Vec<_>>();
 
     let mut field_idx = 0;
     for left_ident in left.fields.keys() {
-
         for (left_idx, _) in &merge_indices {
             left.map_ext(
                 left_ident,
@@ -263,7 +261,7 @@ pub(crate) fn sort_merge_join<'b, DTypes, T>(
         }
         field_idx += 1;
     }
-    for right_ident in &right_idents {
+    for right_ident in &right_view_idents {
         for (_, right_idx) in &merge_indices {
             right.map_ext(
                 right_ident,
@@ -281,8 +279,8 @@ pub(crate) fn sort_merge_join<'b, DTypes, T>(
 }
 
 fn merge_field_data<'a, DTypes, T, U>(
-    left_perm: &Vec<usize>,
-    right_perm: &Vec<usize>,
+    left_perm: &[usize],
+    right_perm: &[usize],
     left_key_data: &'a U,
     right_key_data: &'a U,
     predicate: Predicate,
@@ -304,7 +302,7 @@ fn merge_field_data<'a, DTypes, T, U>(
     while left_idx < left_perm.len() && right_idx < right_perm.len() {
         let left_val = lval(left_idx);
         let right_val = rval(right_idx);
-        let pred_results = predicate.apply(&left_val, &right_val);
+        let pred_results = predicate.apply(left_val, right_val);
         match pred_results {
             PredResults::Add => {
                 // figure out subsets
@@ -365,13 +363,13 @@ fn merge_field_data<'a, DTypes, T, U>(
                         right_idx = right_eq_end;
                     },
                     Predicate::GreaterThan => {
-                        right_idx = right_idx + 1;
+                        right_idx += 1;
                     },
                     Predicate::LessThanEqual => {
                         left_idx = left_eq_end;
                     },
                     Predicate::LessThan => {
-                        left_idx = left_idx + 1;
+                        left_idx += 1;
                     }
                 }
             },
@@ -412,10 +410,15 @@ pub(crate) fn compute_merged_frames<DTypes>(
     (new_frames, right_frame_indices)
 }
 
+pub(crate) struct MergedFields {
+    pub(crate) right_view_idents: Vec<FieldIdent>,
+    pub(crate) new_fields: Vec<(FieldIdent, ViewField)>,
+}
+
 pub(crate) fn compute_merged_field_list<'a, DTypes, T: Into<Option<&'a Join>>>(
-    left: &DataView<DTypes>, right: &DataView<DTypes>, right_frame_mapping: &Vec<usize>, join: T
+    left: &DataView<DTypes>, right: &DataView<DTypes>, right_frame_mapping: &[usize], join: T
 )
-    -> Result<(Vec<FieldIdent>, Vec<(FieldIdent, ViewField)>)>
+    -> Result<MergedFields>
     where DTypes: DTypeList
 {
     // build new fields vector, updating the frame indices in the ViewFields copied
@@ -466,7 +469,10 @@ pub(crate) fn compute_merged_field_list<'a, DTypes, T: Into<Option<&'a Join>>>(
         });
     }
     if field_collisions.is_empty() {
-        Ok((right_idents, new_fields.drain(..).collect::<Vec<_>>()))
+        Ok(MergedFields {
+            right_view_idents: right_idents,
+            new_fields: new_fields.drain(..).collect::<Vec<_>>()
+        })
     } else {
         Err(AgnesError::FieldCollision(field_collisions))
     }
@@ -555,7 +561,7 @@ mod tests {
         let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
         println!("{}", dv1);
         println!("{}", dv2);
-        let joined_dv: DataView = dv1.join::<u64>(&dv2, Join::equal(
+        let joined_dv: DataView = dv1.join::<u64>(&dv2, &Join::equal(
             JoinKind::Inner,
             "DeptId",
             "DeptId"
@@ -597,7 +603,7 @@ mod tests {
         let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
         // println!("{}", dv1);
         // println!("{}", dv2);
-        let joined_dv: DataView = dv1.join::<u64>(&dv2, Join::equal(
+        let joined_dv: DataView = dv1.join::<u64>(&dv2, &Join::equal(
             JoinKind::Inner,
             "DeptId",
             "DeptId"
@@ -648,7 +654,7 @@ mod tests {
         let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
         // println!("{}", dv1);
         // println!("{}", dv2);
-        let joined_dv: DataView = dv1.join::<u64>(&dv2, Join::equal(
+        let joined_dv: DataView = dv1.join::<u64>(&dv2, &Join::equal(
             JoinKind::Inner,
             "DeptId",
             "DeptId"
@@ -680,7 +686,7 @@ mod tests {
 
         dv2.filter("DeptId", |val: &u64| *val != 1u64).unwrap();
         println!("{}", dv2);
-        let joined_dv: DataView = dv1.join::<u64>(&dv2, Join::equal(
+        let joined_dv: DataView = dv1.join::<u64>(&dv2, &Join::equal(
             JoinKind::Inner,
             "DeptId",
             "DeptId"
@@ -708,7 +714,7 @@ mod tests {
         // println!("~~\n>\n~~\n{}\n{}", dv1, dv2);
         // also test renaming
         dv2.rename("DeptId", "RightDeptId").expect("rename failed");
-        let joined_dv: DataView = dv1.join::<u64>(&dv2, Join::greater_than(
+        let joined_dv: DataView = dv1.join::<u64>(&dv2, &Join::greater_than(
             JoinKind::Inner,
             "DeptId",
             "RightDeptId"
@@ -724,7 +730,7 @@ mod tests {
         let ds2 = dept_table(vec![2], vec!["Sales"]);
         let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
         // println!("~~\n>=\n~~\n+{}\n{}", dv1, dv2);
-        let joined_dv: DataView = dv1.join::<u64>(&dv2, Join::greater_than_equal(
+        let joined_dv: DataView = dv1.join::<u64>(&dv2, &Join::greater_than_equal(
             JoinKind::Inner,
             "DeptId",
             "DeptId"
@@ -740,7 +746,7 @@ mod tests {
         let ds2 = dept_table(vec![2], vec!["Sales"]);
         let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
         // println!("~~\n<\n~~\n{}\n{}", dv1, dv2);
-        let joined_dv: DataView = dv1.join::<u64>(&dv2, Join::less_than(
+        let joined_dv: DataView = dv1.join::<u64>(&dv2, &Join::less_than(
             JoinKind::Inner,
             "DeptId",
             "DeptId"
@@ -756,7 +762,7 @@ mod tests {
         let ds2 = dept_table(vec![2], vec!["Sales"]);
         let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
         // println!("~~\n<=\n~~\n{}\n{}", dv1, dv2);
-        let joined_dv: DataView = dv1.join::<u64>(&dv2, Join::less_than_equal(
+        let joined_dv: DataView = dv1.join::<u64>(&dv2, &Join::less_than_equal(
             JoinKind::Inner,
             "DeptId",
             "DeptId"

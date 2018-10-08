@@ -19,8 +19,8 @@ impl<U, T> DtFrom<T> for U where U: From<T> {
 pub struct ConvertFunc<Target> {
     _marker: PhantomData<Target>
 }
-impl<Target> ConvertFunc<Target> {
-    pub fn new() -> ConvertFunc<Target> {
+impl<Target> Default for ConvertFunc<Target> {
+    fn default() -> ConvertFunc<Target> {
         ConvertFunc {
             _marker: PhantomData,
         }

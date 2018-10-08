@@ -561,7 +561,7 @@ macro_rules! data_types {
             fn add_vec(&mut self) -> $crate::error::Result<usize> {
                 let type_data = &mut data_types![@tail_recurse(self, $($plus)*)].head;
                 let td_idx = type_data.len();
-                type_data.push($crate::field::FieldData::new());
+                type_data.push($crate::field::FieldData::default());
                 Ok(td_idx)
             }
         }

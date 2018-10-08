@@ -25,7 +25,7 @@ use access::DataIndex;
 use frame::{DataFrame, FramedMap, FramedTMap, FramedMapExt, Framed, FramedFunc, SerializedField};
 use filter::Filter;
 use field::{Value};
-use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list};
+use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list, MergedFields};
 use field::{FieldIdent, RFieldIdent};
 use error;
 use store::{DataStore, CopyInto};
@@ -58,7 +58,7 @@ impl<DTypes> DataView<DTypes>
     /// Generate a new subview of this DataView.
     pub fn v<L: IntoFieldList>(&self, s: L) -> DataView<DTypes> {
         let mut sub_fields = IndexMap::new();
-        for ident in s.into_field_list().iter() {
+        for ident in &s.into_field_list() {
             if let Some(field) = self.fields.get(ident) {
                 sub_fields.insert(ident.clone(), field.clone());
             }
@@ -72,7 +72,7 @@ impl<DTypes> DataView<DTypes>
     /// not exist.
     pub fn subview<L: IntoFieldList>(&self, s: L) -> error::Result<DataView<DTypes>> {
         let mut sub_fields = IndexMap::new();
-        for ident in s.into_field_list().iter() {
+        for ident in &s.into_field_list() {
             if let Some(field) = self.fields.get(ident) {
                 sub_fields.insert(ident.clone(), field.clone());
             } else {
@@ -88,7 +88,7 @@ impl<DTypes> DataView<DTypes>
     pub fn nrows(&self) -> usize
         where DTypes::Storage: MaxLen<DTypes>
     {
-        if self.frames.len() == 0 { 0 } else { self.frames[0].nrows() }
+        if self.frames.is_empty() { 0 } else { self.frames[0].nrows() }
     }
     /// Returns `true` if the DataView is empty (has no rows or has no fields)
     pub fn is_empty(&self) -> bool
@@ -155,7 +155,7 @@ impl<DTypes> DataView<DTypes>
         let (new_frames, other_store_indices) = compute_merged_frames(self, other);
 
         // compute merged field list
-        let (_, mut new_fields) =
+        let MergedFields { mut new_fields, .. } =
             compute_merged_field_list(self, other, &other_store_indices, None)?;
         let new_fields = IndexMap::from_iter(new_fields.drain(..));
         Ok(DataView {
@@ -169,7 +169,7 @@ impl<DTypes> DataView<DTypes>
     ///
     /// Note that since this is creating a new `DataStore` object, it will be allocated new data to
     /// store the contents of the joined `DataView`s.
-    pub fn join<'b, T>(&'b self, other: &'b DataView<DTypes>, join: Join)
+    pub fn join<'b, T>(&'b self, other: &'b DataView<DTypes>, join: &Join)
         -> error::Result<DataStore<DTypes>>
         where T: 'static + DataType<DTypes> + DtOrd + PartialEq + Default,
               DTypes: 'b,
@@ -183,13 +183,12 @@ impl<DTypes> DataView<DTypes>
             // },
             _ => {
                 sort_merge_join::<DTypes, T>(self, other, join)
-
             }
         }
     }
 
     /// Returns an iterator over the fields (as `FieldIdent`s of this DataView.
-    pub fn idents<'a>(&'a self) -> Keys<'a, FieldIdent, ViewField> {
+    pub fn idents(&self) -> Keys<FieldIdent, ViewField> {
         self.fields.keys()
     }
 
@@ -200,7 +199,7 @@ impl<DTypes> DataView<DTypes>
     {
         let ident = ident.into();
         self.fields.get(&ident)
-            .ok_or(error::AgnesError::FieldNotFound(ident))
+            .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
             .and_then(|view_field: &ViewField| {
                 self.frames[view_field.frame_idx].map(&view_field.rident.ident, f)
             })
@@ -214,7 +213,7 @@ impl<DTypes> DataView<DTypes>
     {
         let ident = ident.into();
         self.fields.get(&ident)
-            .ok_or(error::AgnesError::FieldNotFound(ident))
+            .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
             .and_then(|view_field: &ViewField| {
                 self.frames[view_field.frame_idx].tmap(&view_field.rident.ident, f)
             })
@@ -227,7 +226,7 @@ impl<DTypes> DataView<DTypes>
     {
         let ident = ident.into();
         self.fields.get(&ident)
-            .ok_or(error::AgnesError::FieldNotFound(ident))
+            .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
             .and_then(|view_field: &ViewField| {
                 self.frames[view_field.frame_idx].map_ext(&view_field.rident.ident, f)
             })
@@ -240,7 +239,7 @@ impl<DTypes> DataView<DTypes>
     {
         let ident = ident.into();
         self.fields.get(&ident)
-            .ok_or(error::AgnesError::FieldNotFound(ident))
+            .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
             .and_then(|view_field: &ViewField| {
                 self.frames[view_field.frame_idx].map_partial(&view_field.rident.ident, f)
             })
@@ -283,7 +282,7 @@ impl<'a, DTypes, T> SelectField<'a, T, DTypes>
               DTypes::Storage: TypeSelector<DTypes, T>
     {
         self.fields.get(&ident)
-            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
+            .ok_or_else(|| error::AgnesError::FieldNotFound(ident.clone()))
             .and_then(|view_field: &ViewField| {
                 self.frames[view_field.frame_idx].select(view_field.rident.ident.clone())
             })
@@ -334,7 +333,7 @@ impl<DTypes> From<DataStore<DTypes>> for DataView<DTypes>
         }
         DataView {
             frames: vec![store.into()],
-            fields: fields
+            fields
         }
     }
 }
@@ -346,7 +345,7 @@ impl<DTypes> Display for DataView<DTypes>
                   + for<'a, 'b> Map<DTypes, FramedFunc<'a, DTypes, AddCellToRowFunc<'b>>, ()>
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        if self.frames.len() == 0 || self.fields.len() == 0 {
+        if self.frames.is_empty() || self.fields.is_empty() {
             return write!(f, "Empty DataView");
         }
         let nrows = self.frames[0].nrows();
@@ -523,7 +522,7 @@ impl IntoFieldList for String {
 }
 impl IntoFieldList for Vec<String> {
     fn into_field_list(mut self) -> Vec<FieldIdent> {
-        self.drain(..).map(|s| FieldIdent::Name(s)).collect()
+        self.drain(..).map(FieldIdent::Name).collect()
     }
 }
 macro_rules! impl_into_field_list_string_arr {

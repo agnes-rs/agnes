@@ -61,7 +61,7 @@ impl LocalFileReader {
         match *loc {
             FileLocator::File(ref path) => {
                 let file = File::open(path)?;
-                Ok(LocalFileReader { file: file })
+                Ok(LocalFileReader { file })
             },
             FileLocator::Http(_) => {
                 // download file up to nbytes and save it to temp directory
@@ -113,7 +113,7 @@ impl HttpFileReader {
     pub fn new(loc: &FileLocator) -> Result<HttpFileReader> {
         match *loc {
             FileLocator::File(_) => {
-                return Err(NetError::LocalFile.into());
+                Err(NetError::LocalFile.into())
             },
             FileLocator::Http(ref uri) => {
                 // establish event loop
@@ -125,7 +125,7 @@ impl HttpFileReader {
                     .build(&handle);
                 // set up a future to retrieve the file.
                 let resp = client.get(uri.clone());
-                Ok(HttpFileReader { core: core, response_state: State::Awaiting(resp) })
+                Ok(HttpFileReader { core, response_state: State::Awaiting(resp) })
             }
         }
     }
@@ -220,8 +220,8 @@ enum State {
 pub enum FileReader {
     /// Implements `Read` for local files
     Local(LocalFileReader),
-    /// Implements `Read` for http-served files
-    Http(HttpFileReader),
+    /// Implements `Read` for http-served files (boxed since HttpFileReader is large)
+    Http(Box<HttpFileReader>),
 }
 
 impl FileReader {
@@ -232,7 +232,7 @@ impl FileReader {
                 Ok(FileReader::Local(LocalFileReader::new(loc)?))
             },
             FileLocator::Http(_) => {
-                Ok(FileReader::Http(HttpFileReader::new(loc)?))
+                Ok(FileReader::Http(Box::new(HttpFileReader::new(loc)?)))
             }
         }
     }

@@ -3,9 +3,8 @@ Dataframe library for Rust. Provides data structs and utilities for data aggrega
 and viewing.
 */
 
-// #![warn(missing_docs)]
-#![deny(bare_trait_objects)]
-#![deny(unconditional_recursion)]
+#![warn(missing_docs)]
+#![deny(bare_trait_objects, unconditional_recursion)]
 #![recursion_limit="256"]
 
 extern crate serde;
