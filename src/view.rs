@@ -30,7 +30,7 @@ use field::{FieldIdent, RFieldIdent};
 use error;
 use store::{DataStore, CopyInto};
 use data_types::*;
-use apply::sort::{DtOrd, SortOrderFunc};
+use apply::sort::{DtOrd, SortOrderFn};
 use select::{SelectField, Field};
 
 /// A field in a `DataView`. Contains the (possibly-renamed) field identifier and the store index
@@ -246,7 +246,7 @@ impl<DTypes> DataView<DTypes>
     }
 
     pub fn sort_by<'a>(&'a mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
-        where DTypes::Storage: FramedMap<DTypes, SortOrderFunc, Vec<usize>>,
+        where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>,
     {
         match self.fields.get(ident) {
             Some(view_field) => {
@@ -342,7 +342,7 @@ const MAX_DISP_ROWS: usize = 1000;
 impl<DTypes> Display for DataView<DTypes>
     where DTypes: DTypeList,
           DTypes::Storage: MaxLen<DTypes>
-                  + for<'a, 'b> Map<DTypes, FramedFunc<'a, DTypes, AddCellToRowFunc<'b>>, ()>
+                  + for<'a, 'b> Map<DTypes, FramedFunc<'a, DTypes, AddCellToRowFn<'b>>, ()>
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         if self.frames.is_empty() || self.fields.is_empty() {
@@ -356,7 +356,7 @@ impl<DTypes> Display for DataView<DTypes>
         for view_field in self.fields.values() {
             match self.frames[view_field.frame_idx].map(
                 &view_field.rident.ident,
-                AddCellToRowFunc {
+                AddCellToRowFn {
                     rows: &mut rows,
                 },
             ) {
@@ -372,10 +372,10 @@ impl<DTypes> Display for DataView<DTypes>
     }
 }
 
-pub struct AddCellToRowFunc<'a> {
+pub struct AddCellToRowFn<'a> {
     rows: &'a mut Vec<pt::row::Row>,
 }
-impl<'a, DTypes, T> Func<DTypes, T> for AddCellToRowFunc<'a>
+impl<'a, DTypes, T> Func<DTypes, T> for AddCellToRowFn<'a>
     where DTypes: DTypeList,
           T: 'a + DataType<DTypes>,
           for<'b> Value<&'b T>: ToString

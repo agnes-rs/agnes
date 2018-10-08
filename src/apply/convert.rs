@@ -16,17 +16,17 @@ impl<U, T> DtFrom<T> for U where U: From<T> {
     }
 }
 
-pub struct ConvertFunc<Target> {
+pub struct ConvertFn<Target> {
     _marker: PhantomData<Target>
 }
-impl<Target> Default for ConvertFunc<Target> {
-    fn default() -> ConvertFunc<Target> {
-        ConvertFunc {
+impl<Target> Default for ConvertFn<Target> {
+    fn default() -> ConvertFn<Target> {
+        ConvertFn {
             _marker: PhantomData,
         }
     }
 }
-impl<DTypes, T, Target> Func<DTypes, T> for ConvertFunc<Target>
+impl<DTypes, T, Target> Func<DTypes, T> for ConvertFn<Target>
     where DTypes: DTypeList,
           T: DataType<DTypes> + Clone,
           Target: DataType<DTypes> + Clone + Default,

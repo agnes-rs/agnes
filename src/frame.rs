@@ -13,7 +13,7 @@ use data_types::*;
 use field::{FieldIdent};
 use access::{OwnedOrRef, DataIndex};
 use select::{SelectField, Field};
-use apply::sort::SortOrderFunc;
+use apply::sort::SortOrderFn;
 use error;
 use field::{Value};
 
@@ -89,7 +89,7 @@ impl<DTypes> DataFrame<DTypes>
     }
 
     pub fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
-        where DTypes::Storage: FramedMap<DTypes, SortOrderFunc, Vec<usize>>
+        where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>
     {
         let sort_order = self.sort_order_by(ident)?;
         self.update_permutation(&sort_order);
@@ -97,9 +97,9 @@ impl<DTypes> DataFrame<DTypes>
     }
 
     fn sort_order_by(&self, ident: &FieldIdent) -> error::Result<Vec<usize>>
-        where DTypes::Storage: FramedMap<DTypes, SortOrderFunc, Vec<usize>>,
+        where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>,
     {
-        self.map(ident, SortOrderFunc)
+        self.map(ident, SortOrderFn)
     }
 }
 

@@ -70,8 +70,8 @@ impl<'a, T> DtOrd for &'a T where T: DtOrd + ?Sized {
     }
 }
 
-pub struct SortOrderFunc;
-impl<DTypes, T> Func<DTypes, T> for SortOrderFunc
+pub struct SortOrderFn;
+impl<DTypes, T> Func<DTypes, T> for SortOrderFn
     where DTypes: DTypeList,
           T: 'static + Default + DtOrd + DataType<DTypes>,
 {
