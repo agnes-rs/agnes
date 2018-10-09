@@ -94,9 +94,14 @@ macro_rules! field_addition {
         field_addition![$dtypes => $($dtype),*]
     };
     ($dtypes:ident => $($dtype:tt),*) => {
-        pub mod field_addition {$(
+        pub mod field_addition {
+            //! Addition operations between two fields.
+
+        $(
             #[allow(non_snake_case)]
             pub mod $dtype {
+                //! Field-field addition operations for $dtype.
+
                 use super::super::$dtypes as $dtypes;
                 impl_field_op![
                     $dtypes =>
@@ -106,7 +111,8 @@ macro_rules! field_addition {
                     $dtype
                 ];
             }
-        )*}
+        )*
+        }
     }
 }
 
@@ -117,9 +123,14 @@ macro_rules! field_subtraction {
         field_subtraction![$dtypes => $($dtype),*]
     };
     ($dtypes:ident => $($dtype:tt),*) => {
-        pub mod field_subtraction {$(
+        pub mod field_subtraction {
+            //! Subtraction operations between two fields.
+
+        $(
             #[allow(non_snake_case)]
             pub mod $dtype {
+                //! Field-field subtraction operations for $dtype.
+
                 use super::super::$dtypes as $dtypes;
                 impl_field_op![
                     $dtypes =>
@@ -129,7 +140,8 @@ macro_rules! field_subtraction {
                     $dtype
                 ];
             }
-        )*}
+        )*
+        }
     }
 }
 
@@ -140,9 +152,14 @@ macro_rules! field_multiplication {
         field_multiplication![$dtypes => $($dtype),*]
     };
     ($dtypes:ident => $($dtype:tt),*) => {
-        pub mod field_multiplication {$(
+        pub mod field_multiplication {
+            //! Multiplication operations between two fields.
+
+        $(
             #[allow(non_snake_case)]
             pub mod $dtype {
+                //! Field-field multiplication operations for $dtype.
+
                 use super::super::$dtypes as $dtypes;
                 impl_field_op![
                     $dtypes =>
@@ -163,9 +180,13 @@ macro_rules! field_division {
         field_division![$dtypes => $($dtype),*]
     };
     ($dtypes:ident => $($dtype:tt),*) => {
-        pub mod field_division {$(
+        pub mod field_division {
+            //! Division operations between two fields.
+
+        $(
             #[allow(non_snake_case)]
             pub mod $dtype {
+                //! Field-field division operations for $dtype.
                 use super::super::$dtypes as $dtypes;
                 impl_field_op![
                     $dtypes =>
@@ -175,7 +196,8 @@ macro_rules! field_division {
                     $dtype
                 ];
             }
-        )*}
+        )*
+        }
     }
 }
 

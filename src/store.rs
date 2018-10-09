@@ -75,7 +75,6 @@ impl<DTypes> DataStore<DTypes>
             fields: Vec::new(),
             field_map: HashMap::new(),
 
-            // type_registry: HashMap::new(),
             data: DTypes::Storage::create_storage(),
         }
     }
@@ -156,6 +155,10 @@ impl<DTypes> DataStore<DTypes>
         }
     }
 
+    /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+    /// implemented for all types in `DTypes`.
+    ///
+    /// Fails if the specified identifier is not found in this `DataStore`.
     pub fn map<F, FOut>(&self, ident: &FieldIdent, f: F) -> Result<FOut>
         where DTypes::Storage: Map<DTypes, F, FOut>,
     {
@@ -169,6 +172,12 @@ impl<DTypes> DataStore<DTypes>
             f,
         )
     }
+
+    /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+    /// implemented for type `T`.
+    ///
+    /// Fails if the specified identifier is not found in this `DataStore` or the incorrect type `T`
+    /// is used.
     pub fn tmap<T, F>(&self, ident: &FieldIdent, f: F) -> Result<F::Output>
         where F: Func<DTypes, T>,
               T: DataType<DTypes>,
@@ -191,6 +200,11 @@ impl<DTypes> DataStore<DTypes>
             f,
         )
     }
+
+    /// Applies the provided `FuncExt` to the data in the specified field. This `FuncExt` must be
+    /// implemented for all types in `DTypes`.
+    ///
+    /// Fails if the specified identifier is not found in this `DataStore`.
     pub fn map_ext<F, FOut>(&self, ident: &FieldIdent, f: F) -> Result<FOut>
         where DTypes::Storage: MapExt<DTypes, F, FOut>,
     {
@@ -204,6 +218,10 @@ impl<DTypes> DataStore<DTypes>
             f,
         )
     }
+
+    /// Applies the provided `FuncPartial` to the data in the specified field.
+    ///
+    /// Fails if the specified identifier is not found in this `DataStore`.
     pub fn map_partial<F, R>(&self, ident: &FieldIdent, reindexer: &R, f: F)
         -> Result<Option<F::Output>>
         where DTypes::Storage: MapPartial<DTypes, F>,
@@ -241,12 +259,17 @@ impl<DTypes> DataStore<DTypes>
     }
 }
 
-pub struct CopyInto<'a, DTypes: 'a + AssocTypes> {
+/// Function (implementing [Func](../data_types/trait.Func.html)) that copies data into a
+/// target location.
+pub struct CopyIntoFn<'a, DTypes: 'a + AssocTypes> {
+    /// Source data index to copy from.
     pub src_idx: usize,
+    /// Target field.
     pub target_ident: FieldIdent,
+    /// Target `DataStore`.
     pub target_ds: &'a mut DataStore<DTypes>
 }
-impl<'a, T, DTypes> FuncExt<DTypes, T> for CopyInto<'a, DTypes>
+impl<'a, T, DTypes> FuncExt<DTypes, T> for CopyIntoFn<'a, DTypes>
     where T: 'static + DataType<DTypes> + Default + Clone,
           DTypes: 'a + DTypeList,
           DTypes::Storage: CreateStorage + AddVec<T> + TypeSelector<DTypes, T>,
@@ -284,6 +307,8 @@ impl<'a, T, DTypes> FuncExt<DTypes, T> for CopyInto<'a, DTypes>
 }
 
 impl<DTypes: AssocTypes> DataStore<DTypes> {
+    /// Returns an iterator of [FieldIdent](../field/enum.FieldIdent.html)s contained in this
+    /// `DataStore`.
     pub fn fields(&self) -> impl Iterator<Item=&FieldIdent> {
         self.fields.iter().map(|ds_field| &ds_field.ident)
     }
@@ -348,6 +373,7 @@ impl<'a, DTypes, T> SelectField<'a, T, DTypes> for DataStore<DTypes>
 impl<DTypes> DataStore<DTypes>
     where DTypes: DTypeList
 {
+    /// Add a field to this `DataStore` with `ident` and `value`.
     pub fn add<T, V>(&mut self, ident: FieldIdent, value: V) -> Result<()>
         where T: 'static + DataType<DTypes> + Default,
               V: Into<Value<T>>,
@@ -412,8 +438,6 @@ impl<DTypes, T> AddDataVec<T, DTypes>
     }
 }
 
-
-
 /// Trait for adding data to a data structure (e.g. `DataStore`) from an iterator.
 pub trait AddDataFromIter<T, DTypes>
     where T: DataType<DTypes>,
@@ -443,13 +467,14 @@ impl<DTypes, T> AddDataFromIter<T, DTypes>
     }
 }
 
-
-
+/// Trait for cloning data into a data structure (e.g. `DataStore`) from an iterator.
 pub trait AddClonedDataFromIter<'a, T, DTypes>
     where T: 'a + DataType<DTypes>,
           DTypes: DTypeList,
           DTypes::Storage: TypeSelector<DTypes, T>
 {
+    /// Add data to `self` with provided field identifier from an iterator over items of type
+    /// `Value<&T>`, cloning the values.
     fn add_cloned_data_from_iter<I, Iter, V>(&mut self, ident: I, iter: Iter)
         -> Result<()>
         where I: Into<FieldIdent>,
@@ -474,11 +499,15 @@ impl<'a, DTypes, T> AddClonedDataFromIter<'a, T, DTypes>
     }
 }
 
+/// Trait for adding a vector of data (of valid types) to a data structure, which is consumed and
+/// returned in the process.
 pub trait WithDataVec<T, DTypes>
     where T: DataType<DTypes>,
           DTypes: DTypeList,
           DTypes::Storage: TypeSelector<DTypes, T>
 {
+    /// Consume the data structure, add the `data` to a new field `ident`, and return the new data
+    /// structure.
     fn with_data_vec<I: Into<FieldIdent>, V: Into<Value<T>>>(self, ident: I, data: Vec<V>)
         -> Result<Self>
         where Self: Sized;
@@ -499,6 +528,8 @@ impl<T, U, DTypes> WithDataVec<T, DTypes> for U
 impl<DTypes> DataStore<DTypes>
     where DTypes: DTypeList,
 {
+    /// Consume the `DataStore`, add the `data` to a new field `ident`, and return the new
+    /// `DataStore`.
     pub fn with_data_vec<T: DataType<DTypes>, I: Into<FieldIdent>, V: Into<Value<T>>>(
         self,
         ident: I,
@@ -512,11 +543,15 @@ impl<DTypes> DataStore<DTypes>
     }
 }
 
+/// Trait for adding data (of valid types) from an iterator to a data structure, which is consumed
+/// and returned in the process.
 pub trait WithDataFromIter<T, DTypes>
     where T: DataType<DTypes>,
           DTypes: DTypeList,
           DTypes::Storage: TypeSelector<DTypes, T>
 {
+    /// Consume the data structure, add the data from `iter` to a new field `ident`, and return the
+    /// new data structure.
     fn with_data_from_iter<I, Iter, V>(self, ident: I, iter: Iter) -> Result<Self>
         where I: Into<FieldIdent>,
               V: Into<Value<T>>,
@@ -538,11 +573,16 @@ impl<T, U, DTypes> WithDataFromIter<T, DTypes> for U
         Ok(self)
     }
 }
+
+/// Trait for cloning data (of valid types) from an iterator into a data structure, which is
+/// consumed and returned in the process.
 pub trait WithClonedDataFromIter<'a, T, DTypes>
     where T: 'a + DataType<DTypes>,
           DTypes: DTypeList,
           DTypes::Storage: TypeSelector<DTypes, T>,
 {
+    /// Consume the data structure, clone the data from `iter` into a new field `ident`, and return
+    /// the new data structure.
     fn with_cloned_data_from_iter<I, Iter, V>(self, ident: I, iter: Iter)
         -> Result<Self>
         where I: Into<FieldIdent>, V: Into<Value<&'a T>>,
@@ -567,19 +607,32 @@ impl<'a, DTypes, T> WithClonedDataFromIter<'a, T, DTypes>
     }
 }
 
+/// Trait for data structures that can be converted into a new [DataStore](struct.DataStore.html).
 pub trait IntoDataStore<DTypes: DTypeList> {
+    /// Convert this data structure into a [DataStore](struct.DataStore.html) under a field named
+    /// `ident`.
     fn into_datastore<I: Into<FieldIdent>>(self, ident: I) -> Result<DataStore<DTypes>>;
 
+    /// Convert this data structure into a [DataStore](struct.DataStore.html) under a field named
+    /// `ident`.
+    ///
+    /// Shorthand for [into_datastore](struct.DataStore.html#into_datastore).
     fn into_ds<I: Into<FieldIdent>>(self, ident: I) -> Result<DataStore<DTypes>> where Self: Sized {
         self.into_datastore(ident)
     }
 
+    /// Convert this data structure into a [DataView](../view/struct.DataView.html) under a field
+    /// named `ident`.
     fn into_dataview<I: Into<FieldIdent>>(self, ident: I) -> Result<DataView<DTypes>>
         where Self: Sized
     {
         self.into_datastore(ident).map(DataView::from)
     }
 
+    /// Convert this data structure into a [DataView](../view/struct.DataView.html) under a field
+    /// named `ident`.
+    ///
+    /// Shorthand for [into_dataview](struct.DataStore.html#into_dataview).
     fn into_dv<I: Into<FieldIdent>>(self, ident: I) -> Result<DataView<DTypes>> where Self: Sized {
         self.into_dataview(ident)
     }

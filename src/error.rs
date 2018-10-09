@@ -46,13 +46,18 @@ pub enum AgnesError {
     },
     /// Incompatible types error
     IncompatibleTypes {
+        /// Expected / supported type
         expected: String,
+        /// Type specified by caller
         actual: String
     },
+    /// Invalid operation
     InvalidOp(String),
     /// Invalid type for an operation
     InvalidType {
+        /// Type specified
         ty: String,
+        /// Operation attempted
         operation: String
     }
 }

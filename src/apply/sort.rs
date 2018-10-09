@@ -1,9 +1,16 @@
+/*!
+Sorting functions for `agnes` data structures.
+*/
+
 use std::cmp::Ordering;
 
 use access::DataIndex;
 use data_types::{DTypeList, DataType, Func};
 use field::Value;
 
+/// Returns the permutation (list of indices in sorted order) of values in field represented
+/// by the provided [DataIndex](../../access/trait.DataIndex.html). Uses the
+/// [DtOrd](trait.DtOrd.html) trait for computing the ordering.
 pub fn sort_order<DTypes, T>(data: &dyn DataIndex<DTypes, DType=T>) -> Vec<usize>
     where DTypes: DTypeList,
           T: DataType<DTypes> + DtOrd
@@ -18,7 +25,14 @@ pub fn sort_order<DTypes, T>(data: &dyn DataIndex<DTypes, DType=T>) -> Vec<usize
 
 // ordering is (arbitrarily) going to be:
 // NA values, followed by everything else ascending
+/// Trait for data types that are ordered. Used for ordering of data types inside of `agnes` data
+/// structures instead of `Ord`, but like `Ord`, returns `std::cmp::Ordering`.
+///
+/// This comparison handles missing (NA) values, ordering them as being `Ordering::Less` than
+/// non-missing values.
 pub trait DtOrd {
+    /// Returns an `Ordering` between `self` and `other`. NA values are ordered as `Ordering::Less`
+    /// than non-missing values.
     fn dt_cmp(&self, other: &Self) -> Ordering;
 }
 
@@ -70,6 +84,8 @@ impl<'a, T> DtOrd for &'a T where T: DtOrd + ?Sized {
     }
 }
 
+/// Function (implementing [Func](../../data_types/trait.Func.html)) sorting values in a data field
+/// and returning the sorted permutation of values.
 pub struct SortOrderFn;
 impl<DTypes, T> Func<DTypes, T> for SortOrderFn
     where DTypes: DTypeList,

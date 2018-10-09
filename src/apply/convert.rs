@@ -1,3 +1,7 @@
+/*!
+Conversion functions for converting between types of within `agnes` data structures.
+*/
+
 use std::marker::PhantomData;
 
 use access::{DataIterator, DataIndex};
@@ -16,6 +20,8 @@ impl<U, T> DtFrom<T> for U where U: From<T> {
     }
 }
 
+/// Function (implementing [Func](../../data_types/trait.Func.html)) converting the values of a
+/// field into a new field of type `Target`.
 pub struct ConvertFn<Target> {
     _marker: PhantomData<Target>
 }

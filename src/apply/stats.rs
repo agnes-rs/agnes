@@ -12,6 +12,8 @@ use data_types::Func;
 use data_types::{DataType, DTypeList};
 use num_traits;
 
+/// Function (implementing [Func](../../data_types/trait.Func.html)) computing the number of NA
+/// values in a field.
 pub struct NumNaFn;
 impl<DTypes, T> Func<DTypes, T> for NumNaFn
     where DTypes: DTypeList,
@@ -30,6 +32,8 @@ impl<DTypes, T> Func<DTypes, T> for NumNaFn
     }
 }
 
+/// Function (implementing [Func](../../data_types/trait.Func.html)) computing the number of non-NA
+/// (existing) values in a field.
 pub struct NumExistsFn;
 impl<DTypes, T> Func<DTypes, T> for NumExistsFn
     where DTypes: DTypeList,
@@ -48,8 +52,11 @@ impl<DTypes, T> Func<DTypes, T> for NumExistsFn
     }
 }
 
+/// Trait providing methods for returning the number of NA and non-NA values in a field.
 pub trait NaCount<DTypes, T> {
+    /// Returns the number of NA values in this field.
     fn num_na(&self) -> usize;
+    /// Returns the number of non-NA (existing) value in this field.
     fn num_exists(&self) -> usize;
 }
 impl<DTypes, T, U> NaCount<DTypes, T> for U
@@ -67,6 +74,7 @@ impl<DTypes, T, U> NaCount<DTypes, T> for U
     }
 }
 
+/// Marker trait for data types over which a summation can be performed.
 pub trait CanSum: for<'a> Add<&'a Self, Output=Self> + num_traits::Zero {}
 impl CanSum for u64 {}
 impl CanSum for u32 {}
@@ -75,6 +83,8 @@ impl CanSum for i32 {}
 impl CanSum for f64 {}
 impl CanSum for f32 {}
 
+/// Function (implementing [Func](../../data_types/trait.Func.html)) computing the sum of values
+/// in a field.
 pub struct SumFn;
 impl<DTypes, T> Func<DTypes, T> for SumFn
     where DTypes: DTypeList,
@@ -119,7 +129,9 @@ impl<DTypes> Func<DTypes, bool> for SumFn
     }
 }
 
+/// Trait providing method for computing the summation of values in a field.
 pub trait Sum<DTypes, T, Output> {
+    /// Returns the sum over values in this field.
     fn sum(&self) -> Output;
 }
 
@@ -134,6 +146,7 @@ impl<DTypes, T, U, Output> Sum<DTypes, T, Output> for U
     }
 }
 
+/// Marker trait for data types over which a mean can be performed.
 pub trait CanMean: AsPrimitive<f64> {}
 impl CanMean for u64 {}
 impl CanMean for u32 {}
@@ -142,6 +155,8 @@ impl CanMean for i32 {}
 impl CanMean for f64 {}
 impl CanMean for f32 {}
 
+/// Function (implementing [Func](../../data_types/trait.Func.html)) computing the mean of values
+/// in a field.
 pub struct MeanFn;
 impl<DTypes, T: DataType<DTypes>> Func<DTypes, T> for MeanFn
     where DTypes: DTypeList,
@@ -183,7 +198,9 @@ impl<DTypes> Func<DTypes, bool> for MeanFn
     }
 }
 
+/// Trait providing method for computing the mean of values in a field.
 pub trait Mean<DTypes, T> {
+    /// Returns the arithmetic mean of values in this field
     fn mean(&self) -> f64;
 }
 
@@ -198,6 +215,7 @@ impl<DTypes, T, U> Mean<DTypes, T> for U
     }
 }
 
+/// Marker trait for data types over which a summation of squares of values can be performed.
 pub trait CanSumSq: CanSum + Clone + for<'a> Mul<&'a Self, Output=Self> {}
 impl CanSumSq for u64 {}
 impl CanSumSq for u32 {}
@@ -206,7 +224,8 @@ impl CanSumSq for i32 {}
 impl CanSumSq for f64 {}
 impl CanSumSq for f32 {}
 
-
+/// Function (implementing [Func](../../data_types/trait.Func.html)) computing the sum of squares
+/// of values in a field.
 pub struct SumSqFn;
 impl<DTypes, T: DataType<DTypes>> Func<DTypes, T> for SumSqFn
     where DTypes: DTypeList,
@@ -251,7 +270,9 @@ impl<DTypes> Func<DTypes, bool> for SumSqFn
     }
 }
 
+/// Trait providing method for computing the summation of squares of values in a field.
 pub trait SumSq<DTypes, T, Output> {
+    /// Returns the sum of squares of values for this field.
     fn sum_sq(&self) -> Output;
 }
 
@@ -266,6 +287,8 @@ impl<DTypes, T, Output, U> SumSq<DTypes, T, Output> for U
     }
 }
 
+/// Function (implementing [Func](../../data_types/trait.Func.html)) computing the (sample) variance
+/// of values in a field.
 pub struct VarFn;
 impl<DTypes, T> Func<DTypes, T> for VarFn
     where DTypes: DTypeList,
@@ -293,6 +316,8 @@ impl<DTypes, T> Func<DTypes, T> for VarFn
     }
 }
 
+/// Function (implementing [Func](../../data_types/trait.Func.html)) computing the population
+/// variance of values in a field.
 pub struct VarPFn;
 impl<DTypes, T: DataType<DTypes>> Func<DTypes, T> for VarPFn
     where DTypes: DTypeList,
@@ -320,6 +345,8 @@ impl<DTypes, T: DataType<DTypes>> Func<DTypes, T> for VarPFn
     }
 }
 
+/// Function (implementing [Func](../../data_types/trait.Func.html)) computing the (sample)
+/// standard deviation of values in a field.
 pub struct StdevFn;
 impl<DTypes, T> Func<DTypes, T> for StdevFn
     where DTypes: DTypeList,
@@ -339,6 +366,8 @@ impl<DTypes, T> Func<DTypes, T> for StdevFn
     }
 }
 
+/// Function (implementing [Func](../../data_types/trait.Func.html)) computing the population
+/// standard deviation of values in a field.
 pub struct StdevPFn;
 impl<DTypes, T> Func<DTypes, T> for StdevPFn
     where DTypes: DTypeList,
@@ -358,12 +387,17 @@ impl<DTypes, T> Func<DTypes, T> for StdevPFn
     }
 }
 
+/// Trait providing methods for computing the variance and standard deviation of values in a field.
 pub trait Variance<DTypes, T> {
+    /// Returns the (sample) variance of values in this field.
     fn var(&self) -> f64;
+    /// Returns the population variance of values in this field.
     fn varp(&self) -> f64;
+    /// Returns the (sample) standard deviation of the values in this field.
     fn stdev(&self) -> f64 {
         self.var().sqrt()
     }
+    /// Returns the population standard deviation of the values in this field.
     fn stdevp(&self) -> f64 {
         self.varp().sqrt()
     }
@@ -384,6 +418,7 @@ impl<DTypes, T, U> Variance<DTypes, T> for U
     }
 }
 
+/// Marker trait for data types over which a minimum and maximum can be computed.
 pub trait CanMinMax: PartialOrd + num_traits::Bounded {}
 impl CanMinMax for u64 {}
 impl CanMinMax for u32 {}
@@ -392,6 +427,8 @@ impl CanMinMax for i32 {}
 impl CanMinMax for f64 {}
 impl CanMinMax for f32 {}
 
+/// Function (implementing [Func](../../data_types/trait.Func.html)) computing the minimum value
+/// among the values in a field.
 pub struct MinFn;
 impl<DTypes, T> Func<DTypes, T> for MinFn
     where DTypes: DTypeList,
@@ -455,7 +492,8 @@ impl<DTypes> Func<DTypes, String> for MinFn
     }
 }
 
-
+/// Function (implementing [Func](../../data_types/trait.Func.html)) computing the maximum value
+/// among the values in a field.
 pub struct MaxFn;
 impl<DTypes, T> Func<DTypes, T> for MaxFn
     where DTypes: DTypeList,
@@ -519,8 +557,11 @@ impl<DTypes> Func<DTypes, String> for MaxFn
     }
 }
 
+/// Trait providing methods for computing the minimum and maximum among values in a field.
 pub trait MinMax<DTypes, T, Output> {
+    /// Returns the minimum value of this field.
     fn min(&self) -> Output;
+    /// Returns the maximum value of this field.
     fn max(&self) -> Output;
 }
 

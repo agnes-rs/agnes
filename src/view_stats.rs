@@ -1,3 +1,7 @@
+/*!
+Functions for displaying statistics about a `DataView`.
+*/
+
 use std::fmt;
 
 use prettytable as pt;
@@ -10,6 +14,8 @@ use frame::{Reindexer};
 use data_types::{DTypeList, MapPartial, FuncPartial, FieldLocator};
 use error::*;
 
+/// Function (implementing [FuncPartial](../data_types/trait.FuncPartial.html)) that wraps
+/// another `FuncPartial` and calls `to_string()` on its output.
 pub struct StringifyFn<F> {
     inner: F,
 }

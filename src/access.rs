@@ -9,25 +9,29 @@ use error::*;
 use field::Value;
 use data_types::{DTypeList, DataType};
 
-/// Trait implemented by data structures that represent a single column / vector / field of data.
+/// Trait that provides access to values in a data field.
 pub trait DataIndex<DTypes>: Debug
     where DTypes: DTypeList,
 {
+    /// The data type contained within this field.
     type DType: DataType<DTypes>;
 
     /// Returns the data (possibly NA) at the specified index, if it exists.
     fn get_datum(&self, idx: usize) -> Result<Value<&Self::DType>>;
     /// Returns the length of this data field.
     fn len(&self) -> usize;
+    /// Returns whether or not this field is empty.
     fn is_empty(&self) -> bool { self.len() == 0 }
+    /// Returns an iterator over the values in this field.
     fn iter(&self) -> DataIterator<DTypes, Self::DType> where Self: Sized {
         DataIterator::new(self)
     }
 }
+/// Trait that provides mutable access to values in a data field.
 pub trait DataIndexMut<DTypes>: DataIndex<DTypes>
     where DTypes: DTypeList
 {
-    // fn set_datum(&mut self, idx: usize, value: Value<Self::DType>) -> Result<()>;
+    /// Add a value to this field.
     fn push(&mut self, value: Value<Self::DType>);
 }
 

@@ -1,3 +1,7 @@
+/*!
+Filtering functions for `agnes` data structures.
+*/
+
 use access::{DataIndex};
 use data_types::{DTypeList, DataType, MaxLen, TypeSelector};
 use field::{FieldIdent, Value};

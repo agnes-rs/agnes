@@ -28,7 +28,7 @@ use field::{Value};
 use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list, MergedFields};
 use field::{FieldIdent, RFieldIdent};
 use error;
-use store::{DataStore, CopyInto};
+use store::{DataStore, CopyIntoFn};
 use data_types::*;
 use apply::sort::{DtOrd, SortOrderFn};
 use select::{SelectField, Field};
@@ -174,7 +174,7 @@ impl<DTypes> DataView<DTypes>
         where T: 'static + DataType<DTypes> + DtOrd + PartialEq + Default,
               DTypes: 'b,
               DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T> + CreateStorage
-                      + for<'c> FramedMapExt<DTypes, CopyInto<'c, DTypes>, ()>
+                      + for<'c> FramedMapExt<DTypes, CopyIntoFn<'c, DTypes>, ()>
     {
         match join.predicate {
             // TODO: implement hash join
@@ -192,6 +192,10 @@ impl<DTypes> DataView<DTypes>
         self.fields.keys()
     }
 
+    /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+    /// implemented for all types in `DTypes`.
+    ///
+    /// Fails if the specified identifier is not found in this `DataView`.
     pub fn map<F, FOut, I>(&self, ident: I, f: F)
         -> error::Result<FOut>
         where DTypes::Storage: FramedMap<DTypes, F, FOut>,
@@ -204,6 +208,12 @@ impl<DTypes> DataView<DTypes>
                 self.frames[view_field.frame_idx].map(&view_field.rident.ident, f)
             })
     }
+
+    /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+    /// implemented for type `T`.
+    ///
+    /// Fails if the specified identifier is not found in this `DataView` or the incorrect type `T`
+    /// is used.
     pub fn tmap<T, F, I>(&self, ident: I, f: F)
         -> error::Result<F::Output>
         where F: Func<DTypes, T>,
@@ -219,6 +229,10 @@ impl<DTypes> DataView<DTypes>
             })
     }
 
+    /// Applies the provided `FuncExt` to the data in the specified field. This `FuncExt` must be
+    /// implemented for all types in `DTypes`.
+    ///
+    /// Fails if the specified identifier is not found in this `DataView`.
     pub fn map_ext<F, FOut, I>(&self, ident: I, f: F)
         -> error::Result<FOut>
         where DTypes::Storage: FramedMapExt<DTypes, F, FOut>,
@@ -231,6 +245,10 @@ impl<DTypes> DataView<DTypes>
                 self.frames[view_field.frame_idx].map_ext(&view_field.rident.ident, f)
             })
     }
+
+    /// Applies the provided `FuncPartial` to the data in the specified field.
+    ///
+    /// Fails if the specified identifier is not found in this `DataView`.
     pub fn map_partial<F, I>(&self, ident: I, f: F)
         -> error::Result<Option<F::Output>>
         where DTypes::Storage: MapPartial<DTypes, F> + MaxLen<DTypes>,
@@ -245,6 +263,14 @@ impl<DTypes> DataView<DTypes>
             })
     }
 
+    /// Returns the permutation (list of indices in sorted order) of values in field identified
+    /// by `ident`.
+    ///
+    /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
+    /// values at the beginning of the order (considered to be of 'lesser' value than existing
+    /// values).
+    ///
+    /// Fails if the field is not found in this `DataView`.
     pub fn sort_by<'a>(&'a mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
         where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>,
     {
@@ -372,6 +398,8 @@ impl<DTypes> Display for DataView<DTypes>
     }
 }
 
+/// Function (implementing [Func](../data_types/trait.Func.html)) that adds cells to
+/// `prettytable::row::Row`.
 pub struct AddCellToRowFn<'a> {
     rows: &'a mut Vec<pt::row::Row>,
 }

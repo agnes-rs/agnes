@@ -130,9 +130,14 @@ macro_rules! scalar_addition {
         scalar_addition![$dtypes => $($dtype),*]
     };
     ($dtypes:ident => $($dtype:tt),*) => {
-        pub mod scalar_addition {$(
+        pub mod scalar_addition {
+            //! Addition operations involving scalars and fields.
+
+        $(
             #[allow(non_snake_case)]
             pub mod $dtype {
+                //! Scalar-field addition operations for $dtype.
+
                 use super::super::$dtypes as $dtypes;
                 impl_scalar_op![
                     $dtypes =>
@@ -142,7 +147,8 @@ macro_rules! scalar_addition {
                     $dtype
                 ];
             }
-        )*}
+        )*
+        }
     }
 }
 
@@ -153,9 +159,14 @@ macro_rules! scalar_subtraction {
         scalar_subtraction![$dtypes => $($dtype),*]
     };
     ($dtypes:ident => $($dtype:tt),*) => {
-        pub mod scalar_subtraction {$(
+        pub mod scalar_subtraction {
+            //! Subtraction operations involving scalars and fields.
+
+        $(
             #[allow(non_snake_case)]
             pub mod $dtype {
+                //! Scalar-field subtraction operations for $dtype.
+
                 use super::super::$dtypes as $dtypes;
                 impl_scalar_op![
                     $dtypes =>
@@ -165,7 +176,8 @@ macro_rules! scalar_subtraction {
                     $dtype
                 ];
             }
-        )*}
+        )*
+        }
     }
 }
 
@@ -176,9 +188,14 @@ macro_rules! scalar_multiplication {
         scalar_multiplication![$dtypes => $($dtype),*]
     };
     ($dtypes:ident => $($dtype:tt),*) => {
-        pub mod scalar_multiplication {$(
+        pub mod scalar_multiplication {
+            //! Multiplication operations involving scalars and fields.
+
+        $(
             #[allow(non_snake_case)]
             pub mod $dtype {
+                //! Scalar-field multiplication operations for $dtype.
+
                 use super::super::$dtypes as $dtypes;
                 impl_scalar_op![
                     $dtypes =>
@@ -199,9 +216,14 @@ macro_rules! scalar_division {
         scalar_division![$dtypes => $($dtype),*]
     };
     ($dtypes:ident => $($dtype:tt),*) => {
-        pub mod scalar_division {$(
+        pub mod scalar_division {
+            //! Division operations involving scalars and fields.
+
+        $(
             #[allow(non_snake_case)]
             pub mod $dtype {
+                //! Scalar-field division operations for $dtype.
+
                 use super::super::$dtypes as $dtypes;
                 impl_scalar_op![
                     $dtypes =>
@@ -211,7 +233,8 @@ macro_rules! scalar_division {
                     $dtype
                 ];
             }
-        )*}
+        )*
+        }
     }
 }
 

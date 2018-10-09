@@ -45,9 +45,16 @@ impl<DTypes, U, T> DataIndex<DTypes> for Selection<DTypes, U, T>
     }
 }
 
+/// Trait for accessing the data of a single field as a [Selection](struct.Selection.html) struct
+/// which implements [DataIndex](../access/trait.DataIndex.html).
 pub trait Field<DTypes>
     where DTypes: DTypeList
 {
+    /// Returns a [Selection](struct.Selection.html) struct containing the data for the field
+    /// specified by `ident`.
+    ///
+    /// This method is a convenience method for calling the [select](trait.SelectField.html#select)
+    /// method on the [SelectField](trait.SelectField.html) trait.
     fn field<'a, T: 'a + DataType<DTypes>, I: Into<FieldIdent>>(&'a self, ident: I)
         -> Result<Selection<DTypes, <Self as SelectField<'a, T, DTypes>>::Output, T>>
         where Self: SelectField<'a, T, DTypes>,
@@ -60,12 +67,16 @@ pub trait Field<DTypes>
     }
 }
 
+/// Trait implemented by data structures to provide access to data for a single field.
 pub trait SelectField<'a, T, DTypes>
     where DTypes: DTypeList,
           T: 'a + DataType<DTypes>
 {
+    /// The return type for the `select` method.
     type Output: DataIndex<DTypes, DType=T>;
 
+    /// Returns an object that provides [DataIndex](../access/trait.DataIndex.html) access to the
+    /// data in the field specified by `ident`.
     fn select(&'a self, ident: FieldIdent) -> Result<Self::Output>
         where DTypes: AssocTypes,
               DTypes::Storage: TypeSelector<DTypes, T>;

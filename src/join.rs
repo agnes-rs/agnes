@@ -13,7 +13,7 @@ use data_types::{MaxLen, CreateStorage, DataType, TypeSelector, AssocTypes, DTyp
 use apply::sort::{DtOrd, sort_order};
 use select::{Field};
 use access::{DataIndex};
-use store::{CopyInto};
+use store::{CopyIntoFn};
 use error::*;
 
 /// Join information used to describe the type of join being used.
@@ -208,7 +208,7 @@ pub(crate) fn sort_merge_join<'b, DTypes, T>(
           DTypes::Storage: MaxLen<DTypes>
                   + TypeSelector<DTypes, T>
                   + CreateStorage
-                  + for<'c> FramedMapExt<DTypes, CopyInto<'c, DTypes>, ()>
+                  + for<'c> FramedMapExt<DTypes, CopyIntoFn<'c, DTypes>, ()>
 {
     // return early if fields don't exist, don't match types, or if DataViews are empty
     if !left.has_field(&join.left_ident) {
@@ -252,7 +252,7 @@ pub(crate) fn sort_merge_join<'b, DTypes, T>(
         for (left_idx, _) in &merge_indices {
             left.map_ext(
                 left_ident,
-                CopyInto {
+                CopyIntoFn {
                     src_idx: *left_idx,
                     target_ident: new_field_idents[field_idx].clone(),
                     target_ds: &mut ds
@@ -265,7 +265,7 @@ pub(crate) fn sort_merge_join<'b, DTypes, T>(
         for (_, right_idx) in &merge_indices {
             right.map_ext(
                 right_ident,
-                CopyInto {
+                CopyIntoFn {
                     src_idx: *right_idx,
                     target_ident: new_field_idents[field_idx].clone(),
                     target_ds: &mut ds

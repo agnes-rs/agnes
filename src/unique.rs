@@ -1,3 +1,7 @@
+/*!
+`DataView` methods and macros for finding unique values in a field.
+*/
+
 use std::collections::HashSet;
 use std::hash::Hash;
 
@@ -11,6 +15,10 @@ use field::FieldIdent;
 impl<'a, DTypes> DataView<DTypes>
     where DTypes: DTypeList
 {
+    /// Returns a `Vec` of indices that point to the set of unique values of the specified
+    /// identifier.
+    ///
+    /// Fails if identifier is not found in the `DataView` or the incorrect type `T` is specified.
     pub fn unique_indices<T, I>(&self, ident: I) -> Result<Vec<usize>>
         where DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T>,
               T: 'static + DataType<DTypes> + Hash + Eq,
@@ -28,6 +36,12 @@ impl<'a, DTypes> DataView<DTypes>
         }
         Ok(indices)
     }
+
+    /// Returns a newly constructed `DataView` of the unique values of the specified identifier for
+    /// this `DataView`.
+    ///
+    /// Fails if the identifier is not found in the `DataView` or the incorrect type `T` is
+    /// specified.
     pub fn unique<T, I>(&self, ident: I) -> Result<DataView<DTypes>>
         where DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T>,
               T: 'static + DataType<DTypes> + Hash + Eq,

@@ -60,12 +60,22 @@ impl<DTypes> DataFrame<DTypes>
         };
     }
 
+    /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+    /// implemented for all types in `DTypes`.
+    ///
+    /// Fails if the specified identifier is not found in this `DataFrame`.
     pub fn map<F, FOut>(&self, ident: &FieldIdent, f: F)
         -> error::Result<FOut>
         where DTypes::Storage: FramedMap<DTypes, F, FOut>,
     {
         self.store.map(ident, FramedFunc::new(self, f))
     }
+
+    /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+    /// implemented for type `T`.
+    ///
+    /// Fails if the specified identifier is not found in this `DataFrame` or the incorrect type `T`
+    /// is used.
     pub fn tmap<T, F>(&self, ident: &FieldIdent, f: F)
         -> error::Result<F::Output>
         where F: Func<DTypes, T>,
@@ -74,12 +84,21 @@ impl<DTypes> DataFrame<DTypes>
     {
         self.store.tmap(ident, FramedFunc::new(self, f))
     }
+
+    /// Applies the provided `FuncExt` to the data in the specified field. This `FuncExt` must be
+    /// implemented for all types in `DTypes`.
+    ///
+    /// Fails if the specified identifier is not found in this `DataFrame`.
     pub fn map_ext<F, FOut>(&self, ident: &FieldIdent, f: F)
         -> error::Result<FOut>
         where DTypes::Storage: FramedMapExt<DTypes, F, FOut>,
     {
         self.store.map_ext(ident, FramedFunc::new(self, f))
     }
+
+    /// Applies the provided `FuncPartial` to the data in the specified field.
+    ///
+    /// Fails if the specified identifier is not found in this `DataFrame`.
     pub fn map_partial<F>(&self, ident: &FieldIdent, f: F)
         -> error::Result<Option<F::Output>>
         where DTypes::Storage: MapPartial<DTypes, F> + MaxLen<DTypes>,
@@ -88,6 +107,10 @@ impl<DTypes> DataFrame<DTypes>
         self.store.map_partial(ident, self, f)
     }
 
+    /// Returns the permutation (list of indices in sorted order) of values in field identified
+    /// by `ident`.
+    ///
+    /// Fails if the field is not found in this `DataFrame`.
     pub fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
         where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>
     {
@@ -103,6 +126,8 @@ impl<DTypes> DataFrame<DTypes>
     }
 }
 
+/// Marker trait for a storage structure that implements [Map](../data_types/trait.Map.html), as
+/// accessed through a [DataFrame](struct.DataFrame.html).
 pub trait FramedMap<DTypes, F, FOut>:
     for<'a> Map<DTypes, FramedFunc<'a, DTypes, F>, FOut>
     where DTypes: AssocTypes
@@ -112,6 +137,8 @@ impl<DTypes, F, FOut, T> FramedMap<DTypes, F, FOut> for T
           DTypes: AssocTypes
 {}
 
+/// Marker trait for a storage structure that implements [TMap](../data_types/trait.TMap.html), as
+/// accessed through a [DataFrame](struct.DataFrame.html).
 pub trait FramedTMap<DTypes, T, F>:
     for<'a> TMap<DTypes, T, FramedFunc<'a, DTypes, F>>
     where DTypes: AssocTypes,
@@ -123,6 +150,8 @@ impl<DTypes, T, F, U> FramedTMap<DTypes, T, F> for U
           T: DataType<DTypes>
 {}
 
+/// Marker trait for a storage structure that implements [MapExt](../data_types/trait.MapExt.html),
+/// as accessed through a [DataFrame](struct.DataFrame.html).
 pub trait FramedMapExt<DTypes, F, FOut>:
     for<'a> MapExt<DTypes, FramedFunc<'a, DTypes, F>, FOut>
     where DTypes: AssocTypes
@@ -132,10 +161,17 @@ impl<DTypes, F, FOut, T> FramedMapExt<DTypes, F, FOut> for T
           DTypes: AssocTypes
 {}
 
+/// Trait for a data structure that re-indexes data and provides methods for accessing that
+/// reorganized data.
 pub trait Reindexer<DTypes: DTypeList>: Debug {
+    /// Returns the length of this field.
     fn len(&self) -> usize;
+    /// Returns `true` if this field is empty.
     fn is_empty(&self) -> bool { self.len() == 0 }
+    /// Returns the re-organized index of a requested index.
     fn map_index(&self, requested: usize) -> usize;
+    /// Returns a [Reindexed](struct.Reindexed.html) structure implementing
+    /// [DataIndex](../access/trait.DataIndex.html) that provides access to the reorganized data.
     fn reindex<'a, 'b, DI>(&'a self, data_index: &'b DI) -> Reindexed<'a,'b, Self, DI>
         where DI: 'b + DataIndex<DTypes>,
               Self: Sized
@@ -166,6 +202,9 @@ impl<DTypes> Reindexer<DTypes> for DataFrame<DTypes>
         }
     }
 }
+
+/// Data structure that provides [DataIndex](../access/trait.DataIndex.html) access to a reorganized
+/// (sorted / shuffled) data field.
 #[derive(Debug)]
 pub struct Reindexed<'a, 'b, R: 'a, DI: 'b>
 {
@@ -205,6 +244,8 @@ impl<DTypes> Field<DTypes> for DataFrame<DTypes>
     where DTypes: DTypeList
 {}
 
+/// Wrapper for a [Func](../data_types/trait.Func.html) that calls the underlying `Func` with the
+/// field data organized by this [DataFrame](struct.DataFrame.html).
 pub struct FramedFunc<'a, DTypes, F>
     where DTypes: 'a + DTypeList,
 {
@@ -221,6 +262,7 @@ impl<'a, DTypes, F> FramedFunc<'a, DTypes, F>
         }
     }
 }
+
 impl<'a, DTypes, T, F> Func<DTypes, T> for FramedFunc<'a, DTypes, F>
     where F: Func<DTypes, T>,
           T: DataType<DTypes>,
@@ -237,6 +279,7 @@ impl<'a, DTypes, T, F> Func<DTypes, T> for FramedFunc<'a, DTypes, F>
         self.func.call(&Framed::new(self.frame, OwnedOrRef::Ref(type_data)))
     }
 }
+
 impl<'a, DTypes, T, F> FuncExt<DTypes, T> for FramedFunc<'a, DTypes, F>
     where F: FuncExt<DTypes, T>,
           T: DataType<DTypes>,

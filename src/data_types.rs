@@ -1,3 +1,11 @@
+/*!
+Structures, traits, and macros for managing the list of data types that `agnes` data structures
+support.
+
+This module contains the heterogenous data structures for containing data, along with macros for
+automatically creating the structures for a specific data type list.
+*/
+
 use std::hash::Hash;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
@@ -9,17 +17,23 @@ use field::FieldData;
 use frame::Reindexer;
 use error::*;
 
-pub type TypeNum = usize;
+/// Type alias for a data structure containing all of the
+/// [FieldData](../field/struct.FieldData.html) structures for a single data type.
 pub type TypeData<DTypes, T> = Vec<FieldData<DTypes, T>>;
 
+/// The end of a heterogeneous type list.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Nil;
+/// Buildling block of a heterogeneous type list.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Cons<H, T> {
+    /// Value of this element of the type list.
     pub head: H,
+    /// Remaining elements of the type list.
     pub tail: T,
 }
 
+/// Helper function to construct a [Cons](struct.Cons.html) list.
 pub fn cons<H, T>(head: H, tail: T) -> Cons<H, T> {
     Cons {
         head,
@@ -27,7 +41,9 @@ pub fn cons<H, T>(head: H, tail: T) -> Cons<H, T> {
     }
 }
 
+/// Trait for adding a new element to the front of a [heterogeneous list](struct.Cons.html).
 pub trait Prepend {
+    /// Add an element to the front of this heterogeneous list.
     fn prepend<H>(self, head: H) -> Cons<H, Self> where Self: Sized {
         cons(head, self)
     }
@@ -35,8 +51,11 @@ pub trait Prepend {
 impl<H, T> Prepend for Cons<H, T> {}
 impl Prepend for Nil {}
 
+/// Trait for adding a new element to the end of a [heterogeneous list](struct.Cons.html).
 pub trait Append<U> {
+    /// New data type that for the lst after appending this element.
     type Appended;
+    /// Add an element to the end of this heterogeneous list.
     fn append(self, elem: U) -> Self::Appended;
 }
 impl<U> Append<U> for Nil {
@@ -66,18 +85,16 @@ macro_rules! map {
     }}
 }
 
-#[derive(Debug, Clone)]
-pub struct DTypeNil;
+/// End of a data type list.
+pub type DTypeNil = Nil;
+/// Building block of a type list.
+pub type DTypeCons<H, T> = Cons<PhantomData<H>, PhantomData<T>>;
 
-#[derive(Debug, Clone)]
-pub struct DTypeCons<H, T> {
-    head: PhantomData<H>,
-    tail: PhantomData<T>
-}
-
+/// End of a data storage list;
 #[derive(Debug, Clone)]
 pub struct StorageNil;
 
+/// Building block of a data storage list.
 #[derive(Debug, Clone)]
 pub struct StorageCons<DTypes: DTypeList, H: DataType<DTypes>, T> {
     head: TypeData<DTypes, H>,
@@ -85,7 +102,9 @@ pub struct StorageCons<DTypes: DTypeList, H: DataType<DTypes>, T> {
     _marker: PhantomData<DTypes>,
 }
 
+/// Trait providing a method for creating a new empty storage structure
 pub trait CreateStorage {
+    /// Create a new empty storage structure.
     fn create_storage() -> Self;
 }
 impl CreateStorage for StorageNil {
@@ -111,36 +130,45 @@ pub trait TypeSelector<DTypes, Target>
     where DTypes: DTypeList,
           Target: DataType<DTypes>
 {
+    /// Returns a reference to the [TypeData](type.TypeData.html) structure for type `Target`.
     fn select_type<'a>(&'a self) -> &'a TypeData<DTypes, Target>;
+    /// Returns a mutable reference to the [TypeData](type.TypeData.html) structure for type
+    /// `Target`.
     fn select_type_mut<'a>(&'a mut self) -> &'a mut TypeData<DTypes, Target>;
 }
 
-/// A trait for finding the `DType` for a specitifed `Target` type. Typically, you would use
+/// A trait for finding the `DType` for a specified `Target` type. Typically, you would use
 /// the `select_type_num` inherent method on StorageCons instead.
 pub trait DTypeSelector<DTypes, Target> where DTypes: AssocTypes {
+    /// Returns the `DType` enumeration value for the `Target` type.
     fn select_dtype(&self) -> DTypes::DType;
 }
 
 /// Trait for adding a data vector to the specified `Target` type.
 pub trait AddVec<Target>
 {
-    fn add_vec(&mut self) -> Result<TypeNum>;
+    /// Add an empty vector data for `Target` type.
+    fn add_vec(&mut self) -> Result<usize>;
 }
 
 impl<DTypes, H, T> StorageCons<DTypes, H, T>
     where DTypes: DTypeList,
           H: DataType<DTypes>
 {
+    /// Returns a reference to the [TypeData](type.TypeData.html) structure for type `Target`.
     pub fn select_type<'a, Target>(&'a self) -> &'a TypeData<DTypes, Target>
         where Target: DataType<DTypes>, Self: TypeSelector<DTypes, Target>
     {
         TypeSelector::select_type(self)
     }
+    /// Returns a mutable reference to the [TypeData](type.TypeData.html) structure for type
+    /// `Target`.
     pub fn select_type_mut<'a, Target>(&'a mut self) -> &'a mut TypeData<DTypes, Target>
         where Target: DataType<DTypes>, Self: TypeSelector<DTypes, Target>
     {
         TypeSelector::select_type_mut(self)
     }
+    /// Returns the `DType` enumeration value for the type `Target`.
     pub fn select_dtype<Target>(&self) -> DTypes::DType
         where Self: DTypeSelector<DTypes, Target>
     {
@@ -148,8 +176,10 @@ impl<DTypes, H, T> StorageCons<DTypes, H, T>
     }
 }
 
-// Maximum length
+/// Trait that provides a method for returning the maximum length of a field in a heterogeneous
+/// storage structure.
 pub trait MaxLen<DTypes> {
+    /// Returns the maximum length of all fields in this structure.
     fn max_len(&self) -> usize;
 }
 impl<DTypes> MaxLen<DTypes> for StorageNil {
@@ -167,15 +197,24 @@ impl<DTypes, Head: DataType<DTypes>, Tail> MaxLen<DTypes> for StorageCons<DTypes
     }
 }
 
+/// Trait that provides details on the location of a field within a heterogeneous data storage
+/// structure.
 pub trait FieldLocator<DTypes>
     where DTypes: AssocTypes
 {
+    /// The data type of this field.
     fn ty(&self) -> DTypes::DType;
+    /// The index of this field within the [TypeData](type.TypeData.html) structure.
     fn td_idx(&self) -> usize;
 }
 
+/// Field serialization trait. Behaves similar to the `serde::Serialize` trait, but with extra
+/// specification of what data, exactly, is to be serialize.
 pub trait FieldSerialize<DTypes> where DTypes: DTypeList
 {
+    /// Serialize the data [located](trait.FieldLocator.html) in a particular field, using
+    /// the specified [reindexer](../frame/trait.Reindexer.html) for indexing into the data,
+    /// using the specified `serializer`.
     fn serialize<L, R, S>(&self, locator: &L, reindexer: &R, serializer: S)
         -> ::std::result::Result<S::Ok, S::Error>
         where L: FieldLocator<DTypes>,
@@ -183,37 +222,71 @@ pub trait FieldSerialize<DTypes> where DTypes: DTypeList
               R: Reindexer<DTypes>;
 }
 
+/// Trait providing a method for applying a [Func](trait.Func.html) to data in data storage
+/// structure. Implemented automatically by `data_types` macros where a `Func` is implemented
+/// for all data types of a data storage structure.
 pub trait Map<DTypes, F, FOut> where DTypes: AssocTypes
 {
+    /// Apply a [Func](trait.Func.html) to the data specified by a
+    /// [FieldLocator](trait.FieldLocator.html).
+    ///
+    /// Fails if the field is not able to be located in this data structure.
     fn map<L>(&self, locator: &L, f: F) -> Result<FOut>
         where L: FieldLocator<DTypes>;
 }
+/// Trait providing a method for applying a [Func](trait.Func.html) to data in data storage
+/// structure. Implemented automatically by `data_types` macros where a `Func` is implemented
+/// for type `T`.
 pub trait TMap<DTypes, T, F>
     where DTypes: AssocTypes,
           T: DataType<DTypes>,
           F: Func<DTypes, T>
 {
+    /// Apply a [Func](trait.Func.html) to the data specified by a
+    /// [FieldLocator](trait.FieldLocator.html).
+    ///
+    /// Fails if the field is not able to be located in this data structure or has a different
+    /// type than `T`.
     fn tmap<L>(&self, locator: &L, f: F) -> Result<F::Output>
         where L: FieldLocator<DTypes>;
 }
+/// Trait providing a method for applying a [FuncExt](trait.FuncExt.html) to data in data storage
+/// structure. Implemented automatically by `data_types` macros where a `FuncExt` is implemented
+/// for all data types of a data storage structure.
 pub trait MapExt<DTypes: AssocTypes, F, FOut>
 {
+    /// Apply a [FuncExt](trait.Func.html) to the data specified by a
+    /// [FieldLocator](trait.FieldLocator.html).
+    ///
+    /// Fails if the field is not able to be located in this data structure.
     fn map_ext<L>(&self, locator: &L, f: F) -> Result<FOut>
         where L: FieldLocator<DTypes>;
 }
+/// Trait providing a method for applying a [FuncPartial](trait.FuncPartial.html) to data in data
+/// storage structure. Implemented automatically by `data_types` macros.
 pub trait MapPartial<DTypes, F>
     where DTypes: DTypeList,
           F: FuncPartial<DTypes>
 {
+    /// Apply a [FuncPartial](trait.Func.html) to the data specified by a
+    /// [FieldLocator](trait.FieldLocator.html).
+    ///
+    /// Fails if the field is not able to be located in this data structure.
     fn map_partial<L, R>(&self, locator: &L, reindexer: &R, f: F)
         -> Option<F::Output>
         where L: FieldLocator<DTypes>,
               R: Reindexer<DTypes>;
 }
 
+/// Trait for a function applied to a specified type `T` in `DTypes`. Used with the methods
+/// [map](../view/struct.DataView.html#map) and [tmap](../view/struct.DataView.html#tmap)
+/// in the [DataView](../view/struct.DataView.html) struct.
 pub trait Func<DTypes, T>
 {
+    /// Return value of this function.
     type Output;
+    /// This method is called with a trait object that implements
+    /// [DataIndex](../access/trait.DataIndex.html), which provides access to a field's data.
     fn call(
         &mut self,
         data: &dyn DataIndex<DTypes, DType=T>,
@@ -235,9 +308,17 @@ impl<DTypes, T, F, FOut> Func<DTypes, T> for F
     }
 }
 
+/// Trait for a function applied to a specified type `T` in `DTypes`. Used with the method
+/// [map_ext](../view/struct.DataView.html#map_ext) in the [DataView](../view/struct.DataView.html)
+/// struct. `FuncExt`s are similar to [Func](trait.Func.html)s except they also provide information
+/// about the type / location in storage field the `FuncExt` was called upon.
 pub trait FuncExt<DTypes: AssocTypes, T>
 {
+    /// Return value of this function.
     type Output;
+    /// This method is called with a trait object that implements
+    /// [DataIndex](../access/trait.DataIndex.html), which provides access to a field's data,
+    /// and a [FieldLocator](trait.FieldLocator.html) object containing location information.
     fn call<L>(
         &mut self,
         data: &dyn DataIndex<DTypes, DType=T>,
@@ -246,9 +327,20 @@ pub trait FuncExt<DTypes: AssocTypes, T>
         -> Self::Output
         where L: FieldLocator<DTypes>;
 }
-/// Trait for a function operating over all types present in a `DataType` list.
+
+/// Trait for a function operating over all types present in a list of data types.
 pub trait FuncPartial<DTypes: DTypeList> {
+    /// Return value of this function.
     type Output;
+    /// This method is called with the storage struct associated with `DTypes`, a
+    /// [FieldLocator](trait.FieldLocator.html)
+    /// which provides the information of the field that was specified in the
+    /// [map_partial](../view/struct.DataView.html#map_partial) call, and a
+    /// [Reindexer](../frame/trait.Reindexer.html) which should be used to index into the
+    /// storage structure.
+    ///
+    /// This method should return `None` if the function is not implemented for the data type of the
+    /// field specified by `locator`, and `Some(...)` when the function is implemented.
     fn call_partial<L, R>(
         &mut self,
         locator: &L,
@@ -265,14 +357,25 @@ pub trait DataType<DTypes>: Debug + Display + GetDType<DTypes>
     where DTypes: AssocTypes
 {}
 
+/// Trait used to provide associated types, used with a list of data types.
 pub trait AssocTypes {
+    /// Associated enumeration of the data types associated with this
+    /// [DTypeList](trait.DTypeList.html).
     type DType: Debug + Display + PartialEq + Copy + Eq + Hash;
+    /// Associated enumeration which can contain a single value of any of the data types associated
+    /// with this [DTypeList](trait.DTypeList.html).
     type DtValue: Debug + Display;
+    /// Associated enumeration which can contain a field of values of any of the data types
+    /// associated with this [DTypeList](trait.DTypeList.html).
     type DtField: Debug;
+    /// Assocated storage structure.
     type Storage: Debug;
 }
 
+/// Trait that provides access to a [DType](trait.AssocTypes.html#DType). Implemented by data types
+/// within `DTypes` to provide run-time access to the data type.
 pub trait GetDType<DTypes> where DTypes: AssocTypes {
+    /// [DType](trait.AssocTypes.html#DType) for this data type.
     const DTYPE: DTypes::DType;
 }
 
@@ -280,6 +383,8 @@ pub trait GetDType<DTypes> where DTypes: AssocTypes {
 pub trait DTypeList: Debug + Clone + AssocTypes {}
 impl<T> DTypeList for T where T: Debug + Clone + AssocTypes {}
 
+/// Marker trait for a data storage structure that implements
+/// [FieldSerialize](trait.FieldSerialize.html)
 pub trait Serializable<DTypes>: MaxLen<DTypes> + FieldSerialize<DTypes>
     where DTypes: DTypeList {}
 impl<T, DTypes> Serializable<DTypes> for T
@@ -401,7 +506,7 @@ macro_rules! data_types {
         #[allow(unreachable_patterns)]
         match $ds_field.ty() {
             $($out)*
-            _ => Err(::serde::ser::Error::custom(format!("unknown type with TypeNum {:?}",
+            _ => Err(::serde::ser::Error::custom(format!("unknown type with type {:?}",
                 $ds_field.ty())))
         }
     };
@@ -586,16 +691,21 @@ macro_rules! data_types {
         }
 
         variantify! {
+            /// Enumeration which holds a [DataIndex](../../access/trait.DataIndex.html) trait
+            /// object of any of the available types.
             #[allow(non_camel_case_types)]
             #[derive(Debug)]
             pub enum DtField {$(
+                /// Field of type $dtype.
                 "variant" $dtype(Box<dyn $crate::data_types::DataIndex<Types, DType=$dtype>>),
             )*}
         }
         variantify! {
+            /// Enumeration which can hold any value of the available data types.
             #[allow(non_camel_case_types)]
             #[derive(Debug, Clone)]
             pub enum DtValue {$(
+                /// Value for type $dtype.
                 "variant" $dtype($dtype),
             )*}
         }
@@ -620,9 +730,11 @@ macro_rules! data_types {
             }
         )*}
         variantify! {
+            /// Enumeration of the data types available.
             #[allow(non_camel_case_types)]
             #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
             pub enum DType {$(
+                /// Data type specifier for type $dtype.
                 "variant" $dtype,
             )*}
         }
@@ -678,8 +790,12 @@ macro_rules! data_types {
         ($($output:tt)*)
         ($($ext_output:tt)*)
     ) => {
+        /// Marker trait for data storage that implements `Map` for `Func`s of all data types
+        /// supported by this data storage.
         pub trait FuncAllTypes<FOut>: $($output)* {}
         impl<F, FOut> FuncAllTypes<FOut> for F where F: $($output)* {}
+        /// Marker trait for data storage that implements `MapExt` for `FuncExt`s of all data types
+        /// supported by this data storage.
         pub trait FuncAllTypesExt<FOut>: $($ext_output)* {}
         impl<F, FOut> FuncAllTypesExt<FOut> for F where F: $($ext_output)* {}
     };
@@ -692,12 +808,22 @@ macro_rules! data_types {
     };
     // normal ty-based implementation
     (@impl_ty_based $($dtype:ty,)*) => {
+        /// The available data types available for storage.
         pub type Types = DataTypes![$($dtype),*];
+        /// The storage structure.
         pub type Storage = StorageTypes![$($dtype),*];
+        /// Convenience type alias for a [DataFrame](../../frame/struct.DataFrame.html) generic
+        /// over type `Types`.
         pub type DataFrame = $crate::frame::DataFrame<Types>;
+        /// Convenience type alias for a [DataStore](../../store/struct.DataStore.html) generic
+        /// over type `Types`.
         pub type DataStore = $crate::store::DataStore<Types>;
+        /// Convenience type alias for a [DataView](../../view/struct.DataView.html) generic over
+        /// type `Types`.
         pub type DataView = $crate::view::DataView<Types>;
 
+        /// Convenience marker trait for a [DataType](../trait.DataType.html) generic over type
+        /// `Types`.
         pub trait DataType: $crate::data_types::DataType<Types> {}
         impl<T> DataType for T where T: $crate::data_types::DataType<Types> {}
 
@@ -781,6 +907,8 @@ macro_rules! register_partial_func {
 }
 
 pub mod csv {
+    //! Data type list for CSV files.
+
     data_types![u64, i64, String, bool, f64];
 
     register_partial_func![
@@ -811,12 +939,16 @@ pub mod csv {
     ];
 
     pub mod ops {
+        //! All arithmetic operations between fields or between a field and a scalar.
+
         use super::Types as Types;
         scalar_ops![Types => u64, i64, f64];
         field_ops! [Types => u64, i64, f64];
     }
 }
 pub mod standard {
+    //! A standard data type list for general basic use.
+
     data_types![u64, i64, String, bool, f64, u32, i32, f32,];
 
     register_partial_func![
@@ -847,6 +979,8 @@ pub mod standard {
     ];
 
     pub mod ops {
+        //! All arithmetic operations between fields or between a field and a scalar.
+
         use super::Types as Types;
         scalar_ops![Types => u64, i64, f64, u32, i32, f32];
         field_ops! [Types => u64, i64, f64, u32, i32, f32];

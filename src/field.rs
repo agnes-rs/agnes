@@ -139,11 +139,12 @@ impl<DTypes, T> FieldData<DTypes, T>
     where DTypes: DTypeList,
           T: DataType<DTypes>
 {
-    /// Length of this data vector
+    /// Returns the length of this data vector.
     pub fn len(&self) -> usize {
         assert_eq!(self.mask.len(), self.data.len());
         self.data.len()
     }
+    /// Returns `true` if this field contains no values.
     pub fn is_empty(&self) -> bool { self.len() == 0 }
     /// Get the value at the given index. Return `None` if `index` is out of bounds, or a `Value`
     /// Object with the value (or indicator that value is missing).
@@ -199,7 +200,7 @@ impl<DTypes, T> FieldData<DTypes, T>
     where DTypes: DTypeList,
           T: DataType<DTypes> + Default + Clone
 {
-    /// Add a new value (or an indication of a missing one) to the data vector
+    /// Add a new value (or an indication of a missing one) to the data vector.
     pub fn push_val(&mut self, value: Value<T>) {
         match value {
             Value::Exists(v) => {
@@ -212,6 +213,7 @@ impl<DTypes, T> FieldData<DTypes, T>
             }
         }
     }
+    /// Add a new value (passed by reference) to the data vector.
     pub fn push_ref(&mut self, value: Value<&T>) {
         match value {
             Value::Exists(v) => {
@@ -302,7 +304,6 @@ impl<DTypes, T> DataIndexMut<DTypes> for FieldData<DTypes, T>
     where DTypes: DTypeList,
           T: DataType<DTypes> + Default + Clone
 {
-
     fn push(&mut self, value: Value<Self::DType>) {
         self.push_val(value)
     }
