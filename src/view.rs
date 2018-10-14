@@ -517,6 +517,7 @@ impl IntoFieldList for Vec<FieldIdent> {
 }
 impl<'a> IntoFieldList for Vec<&'a FieldIdent> {
     fn into_field_list(self) -> Vec<FieldIdent> {
+        #[allow(unknown_lints, map_clone)]
         self.iter().map(|&fi| fi.clone()).collect()
     }
 }
