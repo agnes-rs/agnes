@@ -6,24 +6,6 @@ traits provided in the `mapfn` submodule (soon to be deprecated), or the iterato
 using `DataIterator` in the `access` module.
 */
 
-#[macro_use] pub mod mapfn;
-
-mod matches;
-pub use self::matches::*;
-
-mod sort_order;
-pub use self::sort_order::*;
-
-mod add_to_ds;
-pub use self::add_to_ds::*;
-
-mod single_type;
-pub use self::single_type::*;
-
+pub mod sort;
 pub mod stats;
-
-mod convert;
-pub use self::convert::*;
-
-mod unique;
-pub use self::unique::*;
+pub mod convert;

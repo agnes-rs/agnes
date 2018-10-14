@@ -3,14 +3,18 @@
 use std::collections::HashMap;
 
 use csv;
-use csv_sniffer::Sniffer;
+use csv_sniffer::{self, Sniffer};
 use csv_sniffer::metadata::Metadata;
 
 use source::{LocalFileReader, FileLocator};
 use source::decode::decode;
 use error::*;
-use store::DataStore;
-use field::{FieldIdent, TypedFieldIdent, SrcField};
+use store::{DataStore};
+use data_types::{DataType};
+use field::Value;
+use field::{FieldIdent};
+
+use data_types::csv as dt_csv;
 
 /// CSV Data source. Contains location of data file, and computes CSV metadata. Can be turned into
 /// `CsvReader` object.
@@ -35,7 +39,7 @@ impl CsvSource {
 
         Ok(CsvSource {
             src: loc,
-            metadata: metadata
+            metadata
         })
     }
     /// Return the compute `Metadata` for this CSV source.
@@ -70,14 +74,14 @@ impl CsvReader {
                 for (i, header) in headers.iter().enumerate() {
                     field_coll.add(TypedFieldIdent::new(
                         FieldIdent::Name(header.into()),
-                        src.metadata.types[i].into()
+                        src.metadata.types[i]
                     ), i);
                 }
             } else {
                 for i in 0..src.metadata.num_fields {
                     field_coll.add(TypedFieldIdent::new(
                         FieldIdent::Index(i),
-                        src.metadata.types[i].into()
+                        src.metadata.types[i]
                     ), i);
                 }
             }
@@ -85,24 +89,94 @@ impl CsvReader {
 
         Ok(CsvReader {
             reader: csv_reader,
-            field_coll: field_coll,
+            field_coll,
         })
     }
 
     /// Read a `CsvSource` into a `DataStore` object.
-    pub fn read(&mut self) -> Result<DataStore> {
+    pub fn read(&mut self) -> Result<DataStore<dt_csv::Types>>
+    {
         let mut ds = DataStore::empty();
-        for (_, row) in self.reader.byte_records().enumerate() {
+        for row in self.reader.byte_records() {
             let record = row?;
             for field in &self.field_coll.fields {
-                let value = decode(record.get(field.src_index).ok_or(
-                    AgnesError::FieldNotFound(field.ty_ident.ident.clone()))?)?;
-                ds.insert(field.ty_ident.clone(), value.clone())?;
+                let value = decode(
+                    record.get(field.src_index).ok_or_else(||
+                        AgnesError::FieldNotFound(field.ty_ident.ident.clone())
+                    )?
+                )?;
+                insert(&mut ds, &field.ty_ident, &value)?;
             }
         }
         Ok(ds)
     }
 }
+
+// Insert a value (provided in unparsed string form) for specified field
+fn insert(
+    ds: &mut DataStore<dt_csv::Types>, ty_ident: &TypedFieldIdent, value_str: &str
+)
+    -> Result<()>
+{
+    let ident = ty_ident.ident.clone();
+    match ty_ident.ty {
+        csv_sniffer::Type::Unsigned => {
+            // ds.add_field::<u64>(TFieldIdent::new(ident));
+            ds.add::<u64, _>(ident, parse(value_str, parse_unsigned)?)?;
+        },
+        csv_sniffer::Type::Signed => {
+            // ds.add_field::<i64>(TFieldIdent::new(ident));
+            ds.add::<i64, _>(ident, parse(value_str, parse_signed)?)?;
+        },
+        csv_sniffer::Type::Text => {
+            // ds.add_field::<String>(TFieldIdent::new(ident));
+            ds.add::<String, _>(ident, parse(value_str, |s| Ok(s.to_string()))?)?;
+        },
+        csv_sniffer::Type::Boolean => {
+            // ds.add_field::<bool>(TFieldIdent::new(ident));
+            ds.add::<bool, _>(ident, parse(value_str, |val| Ok(val.parse::<bool>()?))?)?;
+        },
+        csv_sniffer::Type::Float => {
+            // ds.add_field::<f64>(TFieldIdent::new(ident));
+            ds.add::<f64, _>(ident, parse(value_str, |val| Ok(val.parse::<f64>()?))?)?;
+        }
+    }
+    Ok(())
+}
+
+fn parse<T: DataType<dt_csv::Types>, F>(value_str: &str, f: F) -> Result<Value<T>>
+    where F: Fn(&str) -> Result<T>
+{
+    if value_str.trim().is_empty() {
+        Ok(Value::Na)
+    } else {
+        Ok(Value::Exists(f(value_str)?))
+    }
+}
+/// A forgiving unsigned integer parser. If normal unsigned integer parsing fails, tries to parse
+/// as a signed integer; if successful, assumes that the integer is negative and translates that
+/// to '0'. If that fails, tries to parse as a float; if successful, converts to unsigned integer
+/// (or '0' if negative)
+fn parse_unsigned(value_str: &str) -> Result<u64> {
+    Ok(value_str.parse::<u64>().or_else(|e| {
+        // try parsing as a signed int...if successful, it's negative, so just set it to 0
+        value_str.parse::<i64>().map(|_| 0u64).or_else(|_| {
+            // try parsing as a float
+            value_str.parse::<f64>().map(|f| {
+                if f < 0.0 { 0u64 } else { f as u64 }
+            }).or_else(|_| Err(e))
+        })
+    })?)
+}
+/// A forgiving signed integer parser. If normal signed integer parsing fails, tries to parse as
+/// a float; if successful, converts to a signed integer.
+fn parse_signed(value_str: &str) -> Result<i64> {
+    Ok(value_str.parse::<i64>().or_else(|e| {
+        // try parsing as float
+        value_str.parse::<f64>().map(|f| f as i64).or_else(|_| Err(e))
+    })?)
+}
+
 
 #[derive(Debug, Clone)]
 struct IndexMap {
@@ -111,7 +185,39 @@ struct IndexMap {
 }
 impl IndexMap {
     fn new(src: usize, dest: usize) -> IndexMap {
-        IndexMap { src: src, dest: dest }
+        IndexMap { src, dest }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TypedFieldIdent {
+    ident: FieldIdent,
+    ty: csv_sniffer::Type,
+}
+impl TypedFieldIdent {
+    fn new(ident: FieldIdent, ty: csv_sniffer::Type) -> TypedFieldIdent {
+        TypedFieldIdent {
+            ident,
+            ty
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SrcField {
+    /// Field identifier and type
+    ty_ident: TypedFieldIdent,
+    /// Index of field within the original data file
+    src_index: usize,
+}
+impl SrcField {
+    /// Create a new `SrcField` object from specified typed field identifier obejct ans source
+    /// index.
+    fn from_ty_ident(ty_ident: TypedFieldIdent, src_index: usize) -> SrcField {
+        SrcField {
+            ty_ident,
+            src_index
+        }
     }
 }
 

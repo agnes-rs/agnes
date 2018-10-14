@@ -2,13 +2,8 @@
 Mathematical operations for `DataView` objects.
 */
 
-mod op_error;
-pub use self::op_error::*;
+#[macro_use] mod scalar_op;
+pub use self::scalar_op::*;
 
-mod infer;
-pub(crate) use self::infer::*;
-
-mod scalar_op;
-pub(crate) use self::scalar_op::*;
-
-mod field_op;
+#[macro_use] mod field_op;
+pub use self::field_op::*;

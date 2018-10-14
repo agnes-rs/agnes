@@ -21,15 +21,17 @@ use indexmap::map::Keys;
 use serde::ser::{self, Serialize, Serializer, SerializeMap};
 use prettytable as pt;
 
-use frame::{DataFrame, Filter, SortBy, SerializedField};
-use masked::{MaybeNa};
-use field::{FieldIdent, RFieldIdent, FieldType, TypedFieldIdent};
+use access::DataIndex;
+use frame::{DataFrame, FramedMap, FramedTMap, FramedMapExt, Framed, FramedFunc, SerializedField};
+use filter::Filter;
+use field::{Value};
+use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list, MergedFields};
+use field::{FieldIdent, RFieldIdent};
 use error;
-use store::DataStore;
-use join::{Join, sort_merge_join, compute_merged_frames,
-    compute_merged_field_list};
-use apply::mapfn::*;
-use select::{Selection, Select};
+use store::{DataStore, CopyIntoFn};
+use data_types::*;
+use apply::sort::{DtOrd, SortOrderFn};
+use select::{SelectField, Field};
 
 /// A field in a `DataView`. Contains the (possibly-renamed) field identifier and the store index
 /// with the underlying data.
@@ -43,16 +45,20 @@ pub struct ViewField {
 
 /// A 'view' into a data store. The primary struct for viewing and manipulating data.
 #[derive(Debug, Clone, Default)]
-pub struct DataView {
-    pub(crate) frames: Vec<DataFrame>,
+pub struct DataView<DTypes>
+    where DTypes: DTypeList
+{
+    pub(crate) frames: Vec<DataFrame<DTypes>>,
     pub(crate) fields: IndexMap<FieldIdent, ViewField>,
 }
 
-impl DataView {
+impl<DTypes> DataView<DTypes>
+    where DTypes: DTypeList
+{
     /// Generate a new subview of this DataView.
-    pub fn v<L: IntoFieldList>(&self, s: L) -> DataView {
+    pub fn v<L: IntoFieldList>(&self, s: L) -> DataView<DTypes> {
         let mut sub_fields = IndexMap::new();
-        for ident in s.into_field_list().iter() {
+        for ident in &s.into_field_list() {
             if let Some(field) = self.fields.get(ident) {
                 sub_fields.insert(ident.clone(), field.clone());
             }
@@ -64,9 +70,9 @@ impl DataView {
     }
     /// Generate a new subview of this DataView, generating an error if a specified field does
     /// not exist.
-    pub fn subview<L: IntoFieldList>(&self, s: L) -> error::Result<DataView> {
+    pub fn subview<L: IntoFieldList>(&self, s: L) -> error::Result<DataView<DTypes>> {
         let mut sub_fields = IndexMap::new();
-        for ident in s.into_field_list().iter() {
+        for ident in &s.into_field_list() {
             if let Some(field) = self.fields.get(ident) {
                 sub_fields.insert(ident.clone(), field.clone());
             } else {
@@ -79,11 +85,15 @@ impl DataView {
         })
     }
     /// Number of rows in this data view
-    pub fn nrows(&self) -> usize {
-        if self.frames.len() == 0 { 0 } else { self.frames[0].nrows() }
+    pub fn nrows(&self) -> usize
+        where DTypes::Storage: MaxLen<DTypes>
+    {
+        if self.frames.is_empty() { 0 } else { self.frames[0].nrows() }
     }
     /// Returns `true` if the DataView is empty (has no rows or has no fields)
-    pub fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool
+        where DTypes::Storage: MaxLen<DTypes>
+    {
         self.nrows() == 0
     }
     /// Number of fields in this data view
@@ -95,20 +105,10 @@ impl DataView {
         self.fields.keys().collect()
     }
     /// Return the field type for specified field
-    pub fn get_field_type(&self, ident: &FieldIdent) -> Option<FieldType> {
+    pub(crate) fn get_field_type(&self, ident: &FieldIdent) -> Option<DTypes::DType> {
         self.fields.get(ident).and_then(|view_field: &ViewField| {
             self.frames[view_field.frame_idx].get_field_type(&view_field.rident.ident)
         })
-    }
-    /// Return the field types (as `TypedFieldIdent` structs) of this DataView
-    pub fn field_types(&self) -> Vec<TypedFieldIdent> {
-        self.fields.iter().map(|(ident, vf)| {
-            TypedFieldIdent {
-                ident: ident.clone(),
-                // since we're iterating over fields we know exist, unwrap is safe
-                ty: self.frames[vf.frame_idx].get_field_type(&vf.rident.ident).unwrap()
-            }
-        }).collect()
     }
     /// Returns `true` if this `DataView` contains this field.
     pub fn has_field(&self, s: &FieldIdent) -> bool {
@@ -142,7 +142,9 @@ impl DataView {
 
     /// Merge this `DataView` with another `DataView` object, creating a new `DataView` with the
     /// same number of rows and all the fields from both source `DataView` objects.
-    pub fn merge(&self, other: &DataView) -> error::Result<DataView> {
+    pub fn merge(&self, other: &DataView<DTypes>) -> error::Result<DataView<DTypes>>
+        where DTypes::Storage: MaxLen<DTypes>
+    {
         if self.nrows() != other.nrows() {
             return Err(error::AgnesError::DimensionMismatch(
                 "number of rows mismatch in merge".into()));
@@ -153,7 +155,7 @@ impl DataView {
         let (new_frames, other_store_indices) = compute_merged_frames(self, other);
 
         // compute merged field list
-        let (_, mut new_fields) =
+        let MergedFields { mut new_fields, .. } =
             compute_merged_field_list(self, other, &other_store_indices, None)?;
         let new_fields = IndexMap::from_iter(new_fields.drain(..));
         Ok(DataView {
@@ -167,138 +169,111 @@ impl DataView {
     ///
     /// Note that since this is creating a new `DataStore` object, it will be allocated new data to
     /// store the contents of the joined `DataView`s.
-    pub fn join(&self, other: &DataView, join: Join) -> error::Result<DataStore> {
+    pub fn join<'b, T>(&'b self, other: &'b DataView<DTypes>, join: &Join)
+        -> error::Result<DataStore<DTypes>>
+        where T: 'static + DataType<DTypes> + DtOrd + PartialEq + Default,
+              DTypes: 'b,
+              DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T> + CreateStorage
+                      + for<'c> FramedMapExt<DTypes, CopyIntoFn<'c, DTypes>, ()>
+    {
         match join.predicate {
             // TODO: implement hash join
             // Predicate::Equal => {
             //     hash_join(self, other, join)
             // },
             _ => {
-                sort_merge_join(self, other, join)
+                sort_merge_join::<DTypes, T>(self, other, join)
             }
         }
-    }
-
-    /// Returns an iterator over `Selection`s (the result of calling `select` on a DataView) of all
-    /// the fields in this DataView.
-    pub fn selections<'a>(&'a self) -> Selections<'a> {
-        Selections::new(self, self.fields.keys())
     }
 
     /// Returns an iterator over the fields (as `FieldIdent`s of this DataView.
-    pub fn fields<'a>(&'a self) -> Keys<'a, FieldIdent, ViewField> {
+    pub fn idents(&self) -> Keys<FieldIdent, ViewField> {
         self.fields.keys()
     }
-}
 
-/// An iterator over `Selection`s of fields in a DataView.
-pub struct Selections<'a> {
-    dv: &'a DataView,
-    keys: Keys<'a, FieldIdent, ViewField>
-}
-impl<'a> Selections<'a> {
-    fn new(dv: &'a DataView, keys: Keys<'a, FieldIdent, ViewField>) -> Selections<'a> {
-        Selections {
-            dv,
-            keys
-        }
+    /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+    /// implemented for all types in `DTypes`.
+    ///
+    /// Fails if the specified identifier is not found in this `DataView`.
+    pub fn map<F, FOut, I>(&self, ident: I, f: F)
+        -> error::Result<FOut>
+        where DTypes::Storage: FramedMap<DTypes, F, FOut>,
+              I: Into<FieldIdent>
+    {
+        let ident = ident.into();
+        self.fields.get(&ident)
+            .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
+            .and_then(|view_field: &ViewField| {
+                self.frames[view_field.frame_idx].map(&view_field.rident.ident, f)
+            })
     }
-}
-impl<'a> Iterator for Selections<'a> {
-    type Item = Selection<'a, DataView>;
-    fn next(&mut self) -> Option<Selection<'a, DataView>> {
-        self.keys.next().map(|ident| Selection::new(self.dv, ident.clone()))
-    }
-}
 
-impl ApplyTo for DataView {
-    fn apply_to<F: MapFn>(&self, f: &mut F, ident: &FieldIdent)
-        -> error::Result<Vec<F::Output>>
-    {
-        self.fields.get(ident)
-            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-            .and_then(|view_field: &ViewField| {
-                self.frames[view_field.frame_idx].apply_to(f, &view_field.rident.ident)
-            }
-        )
-    }
-}
-impl ApplyToElem for DataView {
-    fn apply_to_elem<F: MapFn>(&self, f: &mut F, ident: &FieldIdent, idx: usize)
+    /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+    /// implemented for type `T`.
+    ///
+    /// Fails if the specified identifier is not found in this `DataView` or the incorrect type `T`
+    /// is used.
+    pub fn tmap<T, F, I>(&self, ident: I, f: F)
         -> error::Result<F::Output>
+        where F: Func<DTypes, T>,
+              T: DataType<DTypes>,
+              DTypes::Storage: MaxLen<DTypes> + FramedTMap<DTypes, T, F>,
+              I: Into<FieldIdent>,
     {
-        self.fields.get(ident)
-            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
+        let ident = ident.into();
+        self.fields.get(&ident)
+            .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
             .and_then(|view_field: &ViewField| {
-                self.frames[view_field.frame_idx].apply_to_elem(f, &view_field.rident.ident, idx)
-            }
-        )
+                self.frames[view_field.frame_idx].tmap(&view_field.rident.ident, f)
+            })
     }
-}
-impl FieldApplyTo for DataView {
-    fn field_apply_to<F: FieldMapFn>(&self, f: &mut F, ident: &FieldIdent)
-        -> error::Result<F::Output>
-    {
-        self.fields.get(ident)
-            .ok_or(error::AgnesError::FieldNotFound(ident.clone()))
-            .and_then(|view_field: &ViewField| {
-                self.frames[view_field.frame_idx].field_apply_to(f, &view_field.rident.ident)
-            }
-        )
-    }
-}
 
-impl<'a> ApplyFieldReduce<'a> for Selection<'a, DataView> {
-    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
-        -> error::Result<F::Output>
+    /// Applies the provided `FuncExt` to the data in the specified field. This `FuncExt` must be
+    /// implemented for all types in `DTypes`.
+    ///
+    /// Fails if the specified identifier is not found in this `DataView`.
+    pub fn map_ext<F, FOut, I>(&self, ident: I, f: F)
+        -> error::Result<FOut>
+        where DTypes::Storage: FramedMapExt<DTypes, F, FOut>,
+              I: Into<FieldIdent>
     {
-        self.data.fields.get(&self.ident)
-            .ok_or(error::AgnesError::FieldNotFound(self.ident.clone()))
+        let ident = ident.into();
+        self.fields.get(&ident)
+            .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
             .and_then(|view_field: &ViewField| {
-                self.data.frames[view_field.frame_idx].select_one(&view_field.rident.ident)
-                    .apply_field_reduce(f)
-            }
-        )
+                self.frames[view_field.frame_idx].map_ext(&view_field.rident.ident, f)
+            })
     }
-}
-impl<'a> ApplyFieldReduce<'a> for Vec<Selection<'a, DataView>> {
-    fn apply_field_reduce<F: FieldReduceFn<'a>>(&self, f: &mut F)
-        -> error::Result<F::Output>
-    {
-        self.iter().map(|selection| {
-            selection.data.fields.get(&selection.ident)
-                .ok_or(error::AgnesError::FieldNotFound(selection.ident.clone()))
-                .map(|view_field: &ViewField| {
-                    selection.data.frames[view_field.frame_idx].select_one(&view_field.rident.ident)
-                })
-        }).collect::<error::Result<Vec<_>>>()
-            .and_then(|frame_selections| frame_selections.apply_field_reduce(f))
-    }
-}
 
-impl<T> Filter<T> for DataView where DataFrame: Filter<T> {
-    fn filter<F: Fn(&T) -> bool>(&mut self, ident: &FieldIdent, pred: F)
-        -> error::Result<Vec<usize>>
+    /// Applies the provided `FuncPartial` to the data in the specified field.
+    ///
+    /// Fails if the specified identifier is not found in this `DataView`.
+    pub fn map_partial<F, I>(&self, ident: I, f: F)
+        -> error::Result<Option<F::Output>>
+        where DTypes::Storage: MapPartial<DTypes, F> + MaxLen<DTypes>,
+              F: FuncPartial<DTypes>,
+              I: Into<FieldIdent>
     {
-        match self.fields.get(ident) {
-            Some(view_field) => {
-                // filter on frame index this field belongs to
-                let filter = self.frames[view_field.frame_idx].filter(
-                    &view_field.rident.ident, pred)?;
-                // apply same filter to rest of frames
-                for frame_idx in 0..self.frames.len() {
-                    if frame_idx != view_field.frame_idx {
-                        self.frames[frame_idx].update_permutation(&filter);
-                    }
-                }
-                Ok(filter)
-            },
-            None => Err(error::AgnesError::FieldNotFound(ident.clone()))
-        }
+        let ident = ident.into();
+        self.fields.get(&ident)
+            .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
+            .and_then(|view_field: &ViewField| {
+                self.frames[view_field.frame_idx].map_partial(&view_field.rident.ident, f)
+            })
     }
-}
-impl SortBy for DataView {
-    fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>> {
+
+    /// Returns the permutation (list of indices in sorted order) of values in field identified
+    /// by `ident`.
+    ///
+    /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
+    /// values at the beginning of the order (considered to be of 'lesser' value than existing
+    /// values).
+    ///
+    /// Fails if the field is not found in this `DataView`.
+    pub fn sort_by<'a>(&'a mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
+        where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>,
+    {
         match self.fields.get(ident) {
             Some(view_field) => {
                 // filter on frame index this field belongs to
@@ -316,14 +291,67 @@ impl SortBy for DataView {
     }
 }
 
-impl From<DataStore> for DataView {
-    fn from(store: DataStore) -> DataView {
+impl<DTypes> Field<DTypes> for DataView<DTypes>
+    where DTypes: DTypeList
+{}
+
+impl<'a, DTypes, T> SelectField<'a, T, DTypes>
+    for DataView<DTypes>
+    where T: 'static + DataType<DTypes>,
+          DTypes: 'a + DTypeList,
+          DTypes::Storage: MaxLen<DTypes>
+{
+    type Output = Framed<'a, DTypes, T>;
+
+    fn select(&'a self, ident: FieldIdent) -> error::Result<Framed<'a, DTypes, T>>
+        where DTypes: AssocTypes,
+              DTypes::Storage: TypeSelector<DTypes, T>
+    {
+        self.fields.get(&ident)
+            .ok_or_else(|| error::AgnesError::FieldNotFound(ident.clone()))
+            .and_then(|view_field: &ViewField| {
+                self.frames[view_field.frame_idx].select(view_field.rident.ident.clone())
+            })
+    }
+}
+
+impl<DTypes, T> Filter<DTypes, T> for DataView<DTypes>
+    where DataFrame<DTypes>: Filter<DTypes, T> + Field<DTypes>,
+          DTypes: DTypeList,
+          DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T>,
+          T: 'static + DataType<DTypes>
+{
+    fn filter<I: Into<FieldIdent>, F: Fn(&T) -> bool>(&mut self, ident: I, pred: F)
+        -> error::Result<Vec<usize>>
+    {
+        let ident = ident.into();
+        match self.fields.get(&ident) {
+            Some(view_field) => {
+                // filter on frame index this field belongs to
+                let filter = self.frames[view_field.frame_idx].filter(
+                    &view_field.rident.ident, pred)?;
+                // apply same filter to rest of frames
+                for frame_idx in 0..self.frames.len() {
+                    if frame_idx != view_field.frame_idx {
+                        self.frames[frame_idx].update_permutation(&filter);
+                    }
+                }
+                Ok(filter)
+            },
+            None => Err(error::AgnesError::FieldNotFound(ident.clone()))
+        }
+    }
+}
+
+impl<DTypes> From<DataStore<DTypes>> for DataView<DTypes>
+    where DTypes: DTypeList
+{
+    fn from(store: DataStore<DTypes>) -> DataView<DTypes> {
         let mut fields = IndexMap::new();
-        for field in &store.fields {
-            let ident = field.ty_ident.ident.clone();
+        for ident in store.fields() {
             fields.insert(ident.clone(), ViewField {
                 rident: RFieldIdent {
-                    ident: ident,
+                    ident: ident.clone(),
                     rename: None
                 },
                 frame_idx: 0,
@@ -331,62 +359,71 @@ impl From<DataStore> for DataView {
         }
         DataView {
             frames: vec![store.into()],
-            fields: fields
+            fields
         }
     }
 }
 
-impl Display for DataView {
+const MAX_DISP_ROWS: usize = 1000;
+impl<DTypes> Display for DataView<DTypes>
+    where DTypes: DTypeList,
+          DTypes::Storage: MaxLen<DTypes>
+                  + for<'a, 'b> Map<DTypes, FramedFunc<'a, DTypes, AddCellToRowFn<'b>>, ()>
+{
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        if self.frames.len() == 0 || self.fields.len() == 0 {
+        if self.frames.is_empty() || self.fields.is_empty() {
             return write!(f, "Empty DataView");
         }
-        const MAX_ROWS: usize = 1000;
         let nrows = self.frames[0].nrows();
 
         let mut table = pt::Table::new();
         table.set_titles(self.fields.keys().into());
-        let mut rows = vec![pt::row::Row::empty(); nrows.min(MAX_ROWS)];
-        for field in self.fields.values() {
-            match self.apply_to(&mut AddCellToRow { rows: &mut rows, i: 0 },
-                &field.rident.to_renamed_field_ident())
-            {
+        let mut rows = vec![pt::row::Row::empty(); nrows.min(MAX_DISP_ROWS)];
+        for view_field in self.fields.values() {
+            match self.frames[view_field.frame_idx].map(
+                &view_field.rident.ident,
+                AddCellToRowFn {
+                    rows: &mut rows,
+                },
+            ) {
                 Ok(_) => {},
                 Err(e) => { return write!(f, "view display error: {}", e); },
-            };
+            }
         }
         for row in rows.drain(..) {
             table.add_row(row);
         }
         table.set_format(*pt::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-        table.fmt(f)
+        Display::fmt(&table, f)
     }
 }
 
-struct AddCellToRow<'a> {
+/// Function (implementing [Func](../data_types/trait.Func.html)) that adds cells to
+/// `prettytable::row::Row`.
+pub struct AddCellToRowFn<'a> {
     rows: &'a mut Vec<pt::row::Row>,
-    i: usize
 }
-macro_rules! impl_apply_cell_to_row {
-    ($name:tt; $ty:ty) => {
-        fn $name(&mut self, value: MaybeNa<&$ty>) {
-            //FIXME: this will fail if i is > MAX_ROWS
-            // need to be able to short-circuit this once we hit MAX_ROWS
-            self.rows[self.i].add_cell(cell!(value));
-            self.i += 1;
+impl<'a, DTypes, T> Func<DTypes, T> for AddCellToRowFn<'a>
+    where DTypes: DTypeList,
+          T: 'a + DataType<DTypes>,
+          for<'b> Value<&'b T>: ToString
+{
+    type Output = ();
+    fn call(
+        &mut self,
+        type_data: &dyn DataIndex<DTypes, DType=T>,
+    )
+    {
+        for i in 0..type_data.len().min(MAX_DISP_ROWS) {
+            self.rows[i].add_cell(cell!(type_data.get_datum(i).unwrap()));
         }
     }
 }
-impl<'a> MapFn for AddCellToRow<'a> {
-    type Output = ();
-    impl_apply_cell_to_row!(apply_unsigned; u64);
-    impl_apply_cell_to_row!(apply_signed;   i64);
-    impl_apply_cell_to_row!(apply_text;     String);
-    impl_apply_cell_to_row!(apply_boolean;  bool);
-    impl_apply_cell_to_row!(apply_float;    f64);
-}
 
-impl Serialize for DataView {
+impl<DTypes> Serialize for DataView<DTypes>
+    where DTypes: DTypeList,
+          DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>
+{
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let mut map = serializer.serialize_map(Some(self.fields.len()))?;
         for field in self.fields.values() {
@@ -406,12 +443,17 @@ impl<T> SerializeAsVec for Vec<T> where T: Serialize {}
 /// A 'view' into a single field's data in a data frame. This is a specialty view used to serialize
 /// a `DataView` as a single sequence instead of as a map.
 #[derive(Debug, Clone)]
-pub struct FieldView {
-    frame: DataFrame,
+pub struct FieldView<DTypes>
+    where DTypes: DTypeList
+{
+    frame: DataFrame<DTypes>,
     field: RFieldIdent,
 }
 
-impl Serialize for FieldView {
+impl<DTypes> Serialize for FieldView<DTypes>
+    where DTypes: DTypeList,
+          DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>,
+{
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
             where S: Serializer {
         if self.frame.has_field(&self.field.ident) {
@@ -424,14 +466,19 @@ impl Serialize for FieldView {
         }
     }
 }
-impl SerializeAsVec for FieldView {}
+impl<DTypes> SerializeAsVec for FieldView<DTypes>
+    where DTypes: DTypeList,
+          DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>
+{}
 
-impl DataView {
+impl<DTypes> DataView<DTypes>
+    where DTypes: DTypeList
+{
     /// Create a `FieldView` object from a `DataView` object, if possible. Typically, use this on
     /// `DataView` objects with only a single field; however, if the `DataView` object has multiple
     /// fields, the first one will be used for this `FieldView`. Returns `None` if the `DataView`
     /// has no fields (is empty).
-    pub fn as_fieldview(&self) -> Option<FieldView> {
+    pub fn as_fieldview(&self) -> Option<FieldView<DTypes>> {
         if self.fields.is_empty() {
             None
         } else {
@@ -485,35 +532,16 @@ impl<'a> IntoFieldList for Vec<&'a str> {
     }
 }
 macro_rules! impl_into_field_list_str_arr {
-    ($val:expr) => {
+    ($($val:expr),*) => {$(
         impl<'a> IntoFieldList for [&'a str; $val] {
             fn into_field_list(self) -> Vec<FieldIdent> {
                 self.iter().map(|s| FieldIdent::Name(s.to_string())).collect()
             }
         }
-    }
+    )*}
 }
-impl_into_field_list_str_arr!(1);
-impl_into_field_list_str_arr!(2);
-impl_into_field_list_str_arr!(3);
-impl_into_field_list_str_arr!(4);
-impl_into_field_list_str_arr!(5);
-impl_into_field_list_str_arr!(6);
-impl_into_field_list_str_arr!(7);
-impl_into_field_list_str_arr!(8);
-impl_into_field_list_str_arr!(9);
-impl_into_field_list_str_arr!(10);
-impl_into_field_list_str_arr!(11);
-impl_into_field_list_str_arr!(12);
-impl_into_field_list_str_arr!(13);
-impl_into_field_list_str_arr!(14);
-impl_into_field_list_str_arr!(15);
-impl_into_field_list_str_arr!(16);
-impl_into_field_list_str_arr!(17);
-impl_into_field_list_str_arr!(18);
-impl_into_field_list_str_arr!(19);
-impl_into_field_list_str_arr!(20);
-
+impl_into_field_list_str_arr!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20);
 
 impl IntoFieldList for String {
     fn into_field_list(self) -> Vec<FieldIdent> {
@@ -522,46 +550,30 @@ impl IntoFieldList for String {
 }
 impl IntoFieldList for Vec<String> {
     fn into_field_list(mut self) -> Vec<FieldIdent> {
-        self.drain(..).map(|s| FieldIdent::Name(s)).collect()
+        self.drain(..).map(FieldIdent::Name).collect()
     }
 }
 macro_rules! impl_into_field_list_string_arr {
-    ($val:expr) => {
+    ($($val:expr),*) => {$(
         impl IntoFieldList for [String; $val] {
             fn into_field_list(self) -> Vec<FieldIdent> {
                 // clone necessary since we're moving to the heap
                 self.iter().map(|s| FieldIdent::Name(s.clone())).collect()
             }
         }
-    }
+    )*}
 }
-impl_into_field_list_string_arr!(1);
-impl_into_field_list_string_arr!(2);
-impl_into_field_list_string_arr!(3);
-impl_into_field_list_string_arr!(4);
-impl_into_field_list_string_arr!(5);
-impl_into_field_list_string_arr!(6);
-impl_into_field_list_string_arr!(7);
-impl_into_field_list_string_arr!(8);
-impl_into_field_list_string_arr!(9);
-impl_into_field_list_string_arr!(10);
-impl_into_field_list_string_arr!(11);
-impl_into_field_list_string_arr!(12);
-impl_into_field_list_string_arr!(13);
-impl_into_field_list_string_arr!(14);
-impl_into_field_list_string_arr!(15);
-impl_into_field_list_string_arr!(16);
-impl_into_field_list_string_arr!(17);
-impl_into_field_list_string_arr!(18);
-impl_into_field_list_string_arr!(19);
-impl_into_field_list_string_arr!(20);
+impl_into_field_list_string_arr!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20);
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use test_utils::*;
+
+    use super::{FieldIdent, Filter};
     use error::*;
-    use frame::{Filter, SortBy};
+    use data_types::standard::*;
+    use access::{DataIndex, DataIterator};
 
     #[test]
     fn merge() {
@@ -620,13 +632,13 @@ mod tests {
     fn rename() {
         let ds = sample_emp_table();
         let mut dv: DataView = ds.into();
-        println!("{}", dv);
+        // println!("{}", dv);
         assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
         dv.rename("DeptId", "Department Id").expect("rename failed");
-        println!("{}", dv);
+        // println!("{}", dv);
         assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "Department Id", "EmpName"]);
         dv.rename("Department Id", "DeptId").expect("rename failed");
-        println!("{}", dv);
+        // println!("{}", dv);
         assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
     }
 
@@ -634,7 +646,7 @@ mod tests {
     fn rename_field_collision() {
         let ds = sample_emp_table();
         let mut dv: DataView = ds.into();
-        println!("{}", dv);
+        // println!("{}", dv);
         assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
         match dv.rename("DeptId", "EmpId") {
             Ok(_) => { panic!("Rename expected to fail (field collision), but succeeded"); },
@@ -644,14 +656,14 @@ mod tests {
             },
             Err(e) => { panic!("Incorrect error: {:?}", e); }
         }
-        println!("{}", dv);
+        // println!("{}", dv);
     }
 
     #[test]
     fn rename_field_not_found() {
         let ds = sample_emp_table();
         let mut dv: DataView = ds.into();
-        println!("{}", dv);
+        // println!("{}", dv);
         assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
         match dv.rename("Department Id", "DepartmentId") {
             Ok(_) => { panic!("Rename expected to fail (field not found), but succeeded"); },
@@ -660,7 +672,7 @@ mod tests {
             },
             Err(e) => { panic!("Incorrect error: {:?}", e); }
         }
-        println!("{}", dv);
+        // println!("{}", dv);
     }
 
     #[test]
@@ -749,24 +761,24 @@ mod tests {
 
         // set filtering by department ID
         let mut dv1 = orig_dv.clone();
-        dv1.filter(&"DeptId".into(), |val: &u64| *val == 1).unwrap();
+        dv1.filter("DeptId", |val: &u64| *val == 1).unwrap();
         println!("{}", dv1);
         assert_eq!(dv1.nrows(), 3);
         text::assert_dv_sorted_eq(&dv1, &"EmpName".into(), vec!["Sally", "Bob", "Cara"]);
 
         // filter a second time
-        dv1.filter(&"EmpId".into(), |val: &u64| *val >= 6).unwrap();
+        dv1.filter("EmpId", |val: &u64| *val >= 6).unwrap();
         assert_eq!(dv1.nrows(), 1);
         text::assert_dv_sorted_eq(&dv1, &"EmpName".into(), vec!["Cara"]);
 
         // that same filter on the original DV has different results
         let mut dv2 = orig_dv.clone();
-        dv2.filter(&"EmpId".into(), |val: &u64| *val >= 6).unwrap();
+        dv2.filter("EmpId", |val: &u64| *val >= 6).unwrap();
         assert_eq!(dv2.nrows(), 4);
         text::assert_dv_sorted_eq(&dv2, &"EmpName".into(), vec!["Cara", "Louis", "Louise", "Ann"]);
 
         // let's try filtering by a different department on dv2
-        dv2.filter(&"DeptId".into(), |val: &u64| *val == 4).unwrap();
+        dv2.filter("DeptId", |val: &u64| *val == 4).unwrap();
         assert_eq!(dv2.nrows(), 2);
         text::assert_dv_sorted_eq(&dv2, &"EmpName".into(), vec!["Louise", "Ann"]);
     }
@@ -782,7 +794,8 @@ mod tests {
         text::assert_dv_eq_vec(&dv1, &"EmpName".into(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
         );
-        unsigned::assert_dv_eq_vec(&dv1, &"EmpId".into(), vec![10u64, 5, 6, 2, 8, 9, 0]);
+        unsigned::assert_dv_eq_vec(&dv1, &"EmpId".into(),
+            vec![10u64, 5, 6, 2, 8, 9, 0]);
 
         // re-sort by empid
         let mut dv2 = dv1.clone();
@@ -790,13 +803,15 @@ mod tests {
         text::assert_dv_eq_vec(&dv2, &"EmpName".into(),
             vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"]
         );
-        unsigned::assert_dv_eq_vec(&dv2, &"EmpId".into(), vec![0u64, 2, 5, 6, 8, 9, 10]);
+        unsigned::assert_dv_eq_vec(&dv2, &"EmpId".into(),
+            vec![0u64, 2, 5, 6, 8, 9, 10]);
 
         // make sure dv1 is still sorted by EmpName
         text::assert_dv_eq_vec(&dv1, &"EmpName".into(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
         );
-        unsigned::assert_dv_eq_vec(&dv1, &"EmpId".into(), vec![10u64, 5, 6, 2, 8, 9, 0]);
+        unsigned::assert_dv_eq_vec(&dv1, &"EmpId".into(),
+            vec![10u64, 5, 6, 2, 8, 9, 0]);
 
         // starting with sorted by name, sort by vacation hours
         let mut dv3 = dv1.clone();
@@ -804,7 +819,8 @@ mod tests {
         text::assert_dv_eq_vec(&dv3, &"EmpName".into(),
             vec!["Louis", "Louise", "Cara", "Ann", "Sally", "Jamie", "Bob"]
         );
-        unsigned::assert_dv_eq_vec(&dv3, &"EmpId".into(), vec![8u64, 9, 6, 10, 0, 2, 5]);
+        unsigned::assert_dv_eq_vec(&dv3, &"EmpId".into(),
+            vec![8u64, 9, 6, 10, 0, 2, 5]);
     }
 
     #[test]
@@ -814,7 +830,7 @@ mod tests {
 
         // start by filtering for employees with remaining vacation hours
         let mut dv1 = orig_dv.clone();
-        dv1.filter(&"VacationHrs".into(), |&val: &f64| val >= 0.0).unwrap();
+        dv1.filter("VacationHrs", |&val: &f64| val >= 0.0).unwrap();
         assert_eq!(dv1.nrows(), 6);
         // only Louis has negative hours, so rest of employees still remain
         text::assert_dv_eq_vec(&dv1, &"EmpName".into(),
@@ -830,7 +846,7 @@ mod tests {
 
         // filter by people in department 1
         let mut dv3 = dv2.clone();
-        dv3.filter(&"DeptId".into(), |&val: &u64| val == 1).unwrap();
+        dv3.filter("DeptId", |&val: &u64| val == 1).unwrap();
         assert_eq!(dv3.nrows(), 3);
         // should just be the people in department 1, in employee name order
         text::assert_dv_eq_vec(&dv3, &"EmpName".into(), vec!["Bob", "Cara", "Sally"]);
@@ -841,7 +857,7 @@ mod tests {
         );
 
         // ok, now filter dv1 by department 1
-        dv1.filter(&"DeptId".into(), |&val: &u64| val == 1).unwrap();
+        dv1.filter("DeptId", |&val: &u64| val == 1).unwrap();
         assert_eq!(dv1.nrows(), 3);
         // should be the people in department 1, but in original name order
         text::assert_dv_eq_vec(&dv1, &"EmpName".into(), vec!["Sally", "Bob", "Cara"]);
@@ -850,5 +866,43 @@ mod tests {
         text::assert_dv_eq_vec(&dv2, &"EmpName".into(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louise", "Sally"]
         );
+    }
+
+    #[test]
+    fn tmap_closure() {
+        let orig_dv = sample_merged_emp_table();
+
+        //FIXME: using a closure with tmap currently requires providing the type annotation for
+        // the value passed into the closure (a DataIndex trait object). I believe this is related
+        // to this issue: https://github.com/rust-lang/rust/issues/41078.
+        let has_jamie = orig_dv.tmap(
+            "EmpName",
+            |data: &dyn DataIndex<Types, DType=String>|
+                DataIterator::new(data).any(|emp_name| emp_name == "Jamie".to_string())
+        ).unwrap();
+        assert_eq!(has_jamie, true);
+
+        let has_james = orig_dv.tmap(
+            "EmpName",
+            |data: &dyn DataIndex<Types, DType=String>|
+                DataIterator::new(data).any(|emp_name| emp_name == "James".to_string())
+        ).unwrap();
+        assert_eq!(has_james, false);
+    }
+
+    #[test]
+    fn tmap_incorrect_field_type() {
+        let orig_dv = sample_merged_emp_table();
+
+        match orig_dv.tmap(
+            "EmpName",
+            |data: &dyn DataIndex<Types, DType=u64>|
+                DataIterator::new(data).any(|emp_id| emp_id == 1)
+        ) {
+            Err(AgnesError::IncompatibleTypes { .. }) => {},
+            Err(_) => { panic!["wrong error when calling tmap() with incorrect type"]; },
+            Ok(_) => { panic!["expected error when calling tmap() with incorrect type, but \
+                               received Ok"]; }
+        }
     }
 }

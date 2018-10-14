@@ -3,7 +3,7 @@ extern crate serde;
 #[macro_use] extern crate serde_json;
 extern crate csv_sniffer;
 
-use agnes::view::DataView;
+use agnes::data_types::csv::*;
 
 mod common;
 

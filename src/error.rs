@@ -10,8 +10,7 @@ use native_tls;
 use hyper;
 use csv_sniffer;
 
-use field::{FieldIdent, FieldType};
-use ops::{TypeError, FieldTypeError};
+use field::FieldIdent;
 
 /// General DataFrame error enum.
 #[derive(Debug)]
@@ -46,15 +45,21 @@ pub enum AgnesError {
         len: usize
     },
     /// Incompatible types error
-    IncompatibleTypes(FieldType, FieldType),
-    /// DataView operation type inference error
-    TypeInference(TypeError),
-    /// DataView operation field type inference error
-    FieldTypeInference(FieldTypeError),
+    IncompatibleTypes {
+        /// Expected / supported type
+        expected: String,
+        /// Type specified by caller
+        actual: String
+    },
     /// Invalid operation
     InvalidOp(String),
     /// Invalid type for an operation
-    InvalidType(FieldType, String)
+    InvalidType {
+        /// Type specified
+        ty: String,
+        /// Operation attempted
+        operation: String
+    }
 }
 
 /// Wrapper for DataFrame-based results.
@@ -80,14 +85,11 @@ impl fmt::Display for AgnesError {
             AgnesError::TypeMismatch(ref s) => write!(f, "Type collision: {}", s),
             AgnesError::IndexError { index, len } => write!(f,
                 "Index error: index {} exceeds data length {}", index, len),
-            AgnesError::IncompatibleTypes(ty1, ty2) => write!(f, "Incompatible types: {}, {}",
-                ty1, ty2),
-            AgnesError::TypeInference(ref err) => write!(f, "Type inference error: {}", err),
-            AgnesError::FieldTypeInference(ref err) => write!(f,
-                "Field type inference error: {}", err),
+            AgnesError::IncompatibleTypes { ref expected, ref actual  } =>
+                write!(f, "Incompatible types: expected {}, found {}", expected, actual),
             AgnesError::InvalidOp(ref s) => write!(f, "Invalid operation: {}", s),
-            AgnesError::InvalidType(ty, ref s) => write!(f, "Invalid type {} for method: {}",
-                ty, s),
+            AgnesError::InvalidType { ref ty, ref operation } =>
+                write!(f, "Invalid type {} for operation: {}", ty, operation),
         }
     }
 }
@@ -107,11 +109,9 @@ impl Error for AgnesError {
             AgnesError::FieldCollision(_) => "field collision",
             AgnesError::TypeMismatch(ref s) => s,
             AgnesError::IndexError { .. } => "indexing error",
-            AgnesError::IncompatibleTypes(_, _) => "incompatible types",
-            AgnesError::TypeInference(ref err) => err.description(),
-            AgnesError::FieldTypeInference(ref err) => err.description(),
+            AgnesError::IncompatibleTypes { .. } => "incompatible types",
             AgnesError::InvalidOp(ref s) => s,
-            AgnesError::InvalidType(_, _) => "invalid type for method"
+            AgnesError::InvalidType { .. } => "invalid type for operation"
         }
     }
 
@@ -129,11 +129,9 @@ impl Error for AgnesError {
             AgnesError::FieldCollision(_) => None,
             AgnesError::TypeMismatch(_) => None,
             AgnesError::IndexError { .. }  => None,
-            AgnesError::IncompatibleTypes(_, _) => None,
-            AgnesError::TypeInference(ref err) => Some(err),
-            AgnesError::FieldTypeInference(ref err) => Some(err),
+            AgnesError::IncompatibleTypes { .. } => None,
             AgnesError::InvalidOp(_) => None,
-            AgnesError::InvalidType(_, _) => None,
+            AgnesError::InvalidType { .. } => None,
         }
     }
 }
@@ -153,8 +151,11 @@ pub enum NetError {
 impl fmt::Display for NetError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            NetError::UnsupportedUriScheme(ref t) =>
-                write!(f, "Unsupported scheme: {}", t.clone().unwrap_or("none".to_string())),
+            NetError::UnsupportedUriScheme(ref t) => write!(
+                    f,
+                    "Unsupported scheme: {}",
+                    t.clone().unwrap_or_else(|| "none".to_string())
+            ),
             NetError::Tls(ref err) => write!(f, "TLS error: {}", err),
             NetError::Http(ref err) => write!(f, "HTTP error: {}", err),
             NetError::LocalFile => write!(f, "unable to access local file over HTTP")

@@ -7,6 +7,9 @@ license-file = "LICENSE"
 repository = "https://github.com/jblondin/agnes"
 exclude = ["tests/data/*"]
 
+[features]
+experimental = []
+
 [dependencies]
 csv = "1.0.0-beta.5"
 serde = "1.0"
@@ -24,6 +27,7 @@ prettytable-rs = "0.6"
 csv-sniffer = "0.1"
 tempfile = "3"
 num-traits = "0.2.5"
+mashup = "0.1"
 
 [dev-dependencies]
 serde_json = "1.0"

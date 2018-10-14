@@ -3,9 +3,9 @@ extern crate csv_sniffer;
 
 use std::path::Path;
 
-use agnes::DataView;
-use agnes::frame::Filter;
 use agnes::source::{CsvSource, CsvReader};
+use agnes::filter::Filter;
+use agnes::data_types::csv::*;
 use agnes::join::{Join, JoinKind};
 
 pub fn load_csv_file(filename: &str) -> CsvReader {
@@ -26,9 +26,9 @@ fn main() {
     let mut csv_rdr = load_csv_file("gdp/Metadata_Country_API_NY.GDP.MKTP.CD_DS2_en_csv_v2.csv");
     let mut dv_gdp_metadata = DataView::from(csv_rdr.read().unwrap())
         .v(["Country Code", "Region"]);
-    dv_gdp_metadata.filter(&"Region".into(), |_: &String| true).unwrap();
+    dv_gdp_metadata.filter("Region", |_: &String| true).unwrap();
 
-    let mut dv_gdp_joined: DataView = dv_gdp.join(&dv_gdp_metadata, Join::equal(
+    let mut dv_gdp_joined: DataView = dv_gdp.join::<String>(&dv_gdp_metadata, &Join::equal(
         JoinKind::Inner,
         "Country Code",
         "Country Code"
@@ -40,7 +40,7 @@ fn main() {
     dv_gdp_joined.rename("1983", "1983 GDP").unwrap();
     dv_life.rename("1983", "1983 Life Expectancy").unwrap();
 
-    let dv: DataView = dv_gdp_joined.join(&dv_life, Join::equal(
+    let dv: DataView = dv_gdp_joined.join::<String>(&dv_life, &Join::equal(
         JoinKind::Inner,
         "Country Code",
         "Country Code"
