@@ -6,9 +6,15 @@ authors = ["Jamie Blondin <jblondin@gmail.com>"]
 license-file = "LICENSE"
 repository = "https://github.com/jblondin/agnes"
 exclude = ["tests/data/*"]
+autoexamples = true
 
 [features]
 experimental = []
+
+[[example]]
+name = "exp_gdp_life"
+path = "exp_examples/gdp_life.rs"
+required-features = ["experimental"]
 
 [dependencies]
 csv = "1.0.0-beta.5"
