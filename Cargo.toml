@@ -7,6 +7,9 @@ license-file = "LICENSE"
 repository = "https://github.com/jblondin/agnes"
 exclude = ["tests/data/*"]
 
+[features]
+experimental = []
+
 [dependencies]
 csv = "1.0.0-beta.5"
 serde = "1.0"
