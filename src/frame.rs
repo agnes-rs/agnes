@@ -7,30 +7,30 @@ use std::sync::Arc;
 use std::marker::PhantomData;
 use serde::{Serialize, Serializer};
 
-use filter::{Filter, DataFilter};
-use store::DataStore;
-use data_types::*;
-use field::{FieldIdent};
+// use filter::{Filter, DataFilter};
+use store::{DataStore, AssocStorage};
+// use data_types::*;
+use field::{FieldIdent, Value};
 use access::{OwnedOrRef, DataIndex};
-use select::{SelectField, Field};
-use apply::sort::SortOrderFn;
+use select::{SelectField, FSelect};
+// use apply::sort::SortOrderFn;
+use fieldlist::FSelector;
 use error;
-use field::{Value};
+// use field::{Value};
 
 /// A data frame. A `DataStore` reference along with record-based filtering and sorting details.
 #[derive(Debug, Clone)]
-pub struct DataFrame<DTypes>
-    where DTypes: DTypeList
+pub struct DataFrame<Fields: AssocStorage>
 {
     pub(crate) permutation: Option<Vec<usize>>,
-    pub(crate) store: Arc<DataStore<DTypes>>,
+    pub(crate) store: Arc<DataStore<Fields>>,
 }
-impl<DTypes> DataFrame<DTypes>
-    where DTypes: DTypeList
+impl<Fields> DataFrame<Fields>
+    where Fields: AssocStorage
 {
     /// Number of rows that pass the filter in this frame.
     pub fn nrows(&self) -> usize
-        where DTypes::Storage: MaxLen<DTypes>
+        // where DTypes::Storage: MaxLen<DTypes>
     {
         self.len()
     }
@@ -38,11 +38,11 @@ impl<DTypes> DataFrame<DTypes>
     pub(crate) fn store_ref_count(&self) -> usize {
         Arc::strong_count(&self.store)
     }
-    /// Get the field type of a particular field in the underlying `DataStore`.
-    pub fn get_field_type(&self, ident: &FieldIdent) -> Option<DTypes::DType> {
-        self.store.get_field_type(ident)
-    }
-    pub(crate) fn has_same_store(&self, other: &DataFrame<DTypes>) -> bool {
+    // /// Get the field type of a particular field in the underlying `DataStore`.
+    // pub fn get_field_type(&self, ident: &FieldIdent) -> Option<DTypes::DType> {
+    //     self.store.get_field_type(ident)
+    // }
+    pub(crate) fn has_same_store(&self, other: &DataFrame<Fields>) -> bool {
         Arc::ptr_eq(&self.store, &other.store)
     }
     /// Returns `true` if this `DataFrame` contains this field.
@@ -60,110 +60,110 @@ impl<DTypes> DataFrame<DTypes>
         };
     }
 
-    /// Applies the provided `Func` to the data in the specified field. This `Func` must be
-    /// implemented for all types in `DTypes`.
-    ///
-    /// Fails if the specified identifier is not found in this `DataFrame`.
-    pub fn map<F, FOut>(&self, ident: &FieldIdent, f: F)
-        -> error::Result<FOut>
-        where DTypes::Storage: FramedMap<DTypes, F, FOut>,
-    {
-        self.store.map(ident, FramedFunc::new(self, f))
-    }
+    // /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+    // /// implemented for all types in `DTypes`.
+    // ///
+    // /// Fails if the specified identifier is not found in this `DataFrame`.
+    // pub fn map<F, FOut>(&self, ident: &FieldIdent, f: F)
+    //     -> error::Result<FOut>
+    //     where DTypes::Storage: FramedMap<DTypes, F, FOut>,
+    // {
+    //     self.store.map(ident, FramedFunc::new(self, f))
+    // }
 
-    /// Applies the provided `Func` to the data in the specified field. This `Func` must be
-    /// implemented for type `T`.
-    ///
-    /// Fails if the specified identifier is not found in this `DataFrame` or the incorrect type `T`
-    /// is used.
-    pub fn tmap<T, F>(&self, ident: &FieldIdent, f: F)
-        -> error::Result<F::Output>
-        where F: Func<DTypes, T>,
-              T: DataType<DTypes>,
-              DTypes::Storage: MaxLen<DTypes> + FramedTMap<DTypes, T, F>,
-    {
-        self.store.tmap(ident, FramedFunc::new(self, f))
-    }
+    // /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+    // /// implemented for type `T`.
+    // ///
+    // /// Fails if the specified identifier is not found in this `DataFrame` or the incorrect type `T`
+    // /// is used.
+    // pub fn tmap<T, F>(&self, ident: &FieldIdent, f: F)
+    //     -> error::Result<F::Output>
+    //     where F: Func<DTypes, T>,
+    //           T: DataType<DTypes>,
+    //           DTypes::Storage: MaxLen<DTypes> + FramedTMap<DTypes, T, F>,
+    // {
+    //     self.store.tmap(ident, FramedFunc::new(self, f))
+    // }
 
-    /// Applies the provided `FuncExt` to the data in the specified field. This `FuncExt` must be
-    /// implemented for all types in `DTypes`.
-    ///
-    /// Fails if the specified identifier is not found in this `DataFrame`.
-    pub fn map_ext<F, FOut>(&self, ident: &FieldIdent, f: F)
-        -> error::Result<FOut>
-        where DTypes::Storage: FramedMapExt<DTypes, F, FOut>,
-    {
-        self.store.map_ext(ident, FramedFunc::new(self, f))
-    }
+    // /// Applies the provided `FuncExt` to the data in the specified field. This `FuncExt` must be
+    // /// implemented for all types in `DTypes`.
+    // ///
+    // /// Fails if the specified identifier is not found in this `DataFrame`.
+    // pub fn map_ext<F, FOut>(&self, ident: &FieldIdent, f: F)
+    //     -> error::Result<FOut>
+    //     where DTypes::Storage: FramedMapExt<DTypes, F, FOut>,
+    // {
+    //     self.store.map_ext(ident, FramedFunc::new(self, f))
+    // }
 
-    /// Applies the provided `FuncPartial` to the data in the specified field.
-    ///
-    /// Fails if the specified identifier is not found in this `DataFrame`.
-    pub fn map_partial<F>(&self, ident: &FieldIdent, f: F)
-        -> error::Result<Option<F::Output>>
-        where DTypes::Storage: MapPartial<DTypes, F> + MaxLen<DTypes>,
-              F: FuncPartial<DTypes>
-    {
-        self.store.map_partial(ident, self, f)
-    }
+    // /// Applies the provided `FuncPartial` to the data in the specified field.
+    // ///
+    // /// Fails if the specified identifier is not found in this `DataFrame`.
+    // pub fn map_partial<F>(&self, ident: &FieldIdent, f: F)
+    //     -> error::Result<Option<F::Output>>
+    //     where DTypes::Storage: MapPartial<DTypes, F> + MaxLen<DTypes>,
+    //           F: FuncPartial<DTypes>
+    // {
+    //     self.store.map_partial(ident, self, f)
+    // }
 
-    /// Returns the permutation (list of indices in sorted order) of values in field identified
-    /// by `ident`.
-    ///
-    /// Fails if the field is not found in this `DataFrame`.
-    pub fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
-        where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>
-    {
-        let sort_order = self.sort_order_by(ident)?;
-        self.update_permutation(&sort_order);
-        Ok(sort_order)
-    }
+    // /// Returns the permutation (list of indices in sorted order) of values in field identified
+    // /// by `ident`.
+    // ///
+    // /// Fails if the field is not found in this `DataFrame`.
+    // pub fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
+    //     where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>
+    // {
+    //     let sort_order = self.sort_order_by(ident)?;
+    //     self.update_permutation(&sort_order);
+    //     Ok(sort_order)
+    // }
 
-    fn sort_order_by(&self, ident: &FieldIdent) -> error::Result<Vec<usize>>
-        where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>,
-    {
-        self.map(ident, SortOrderFn)
-    }
+    // fn sort_order_by(&self, ident: &FieldIdent) -> error::Result<Vec<usize>>
+    //     where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>,
+    // {
+    //     self.map(ident, SortOrderFn)
+    // }
 }
 
-/// Marker trait for a storage structure that implements [Map](../data_types/trait.Map.html), as
-/// accessed through a [DataFrame](struct.DataFrame.html).
-pub trait FramedMap<DTypes, F, FOut>:
-    for<'a> Map<DTypes, FramedFunc<'a, DTypes, F>, FOut>
-    where DTypes: AssocTypes
-{}
-impl<DTypes, F, FOut, T> FramedMap<DTypes, F, FOut> for T
-    where T: for<'a> Map<DTypes, FramedFunc<'a, DTypes, F>, FOut>,
-          DTypes: AssocTypes
-{}
+// /// Marker trait for a storage structure that implements [Map](../data_types/trait.Map.html), as
+// /// accessed through a [DataFrame](struct.DataFrame.html).
+// pub trait FramedMap<DTypes, F, FOut>:
+//     for<'a> Map<DTypes, FramedFunc<'a, DTypes, F>, FOut>
+//     where DTypes: AssocTypes
+// {}
+// impl<DTypes, F, FOut, T> FramedMap<DTypes, F, FOut> for T
+//     where T: for<'a> Map<DTypes, FramedFunc<'a, DTypes, F>, FOut>,
+//           DTypes: AssocTypes
+// {}
 
-/// Marker trait for a storage structure that implements [TMap](../data_types/trait.TMap.html), as
-/// accessed through a [DataFrame](struct.DataFrame.html).
-pub trait FramedTMap<DTypes, T, F>:
-    for<'a> TMap<DTypes, T, FramedFunc<'a, DTypes, F>>
-    where DTypes: AssocTypes,
-          T: DataType<DTypes>
-{}
-impl<DTypes, T, F, U> FramedTMap<DTypes, T, F> for U
-    where U: for<'a> TMap<DTypes, T, FramedFunc<'a, DTypes, F>>,
-          DTypes: AssocTypes,
-          T: DataType<DTypes>
-{}
+// /// Marker trait for a storage structure that implements [TMap](../data_types/trait.TMap.html), as
+// /// accessed through a [DataFrame](struct.DataFrame.html).
+// pub trait FramedTMap<DTypes, T, F>:
+//     for<'a> TMap<DTypes, T, FramedFunc<'a, DTypes, F>>
+//     where DTypes: AssocTypes,
+//           T: DataType<DTypes>
+// {}
+// impl<DTypes, T, F, U> FramedTMap<DTypes, T, F> for U
+//     where U: for<'a> TMap<DTypes, T, FramedFunc<'a, DTypes, F>>,
+//           DTypes: AssocTypes,
+//           T: DataType<DTypes>
+// {}
 
-/// Marker trait for a storage structure that implements [MapExt](../data_types/trait.MapExt.html),
-/// as accessed through a [DataFrame](struct.DataFrame.html).
-pub trait FramedMapExt<DTypes, F, FOut>:
-    for<'a> MapExt<DTypes, FramedFunc<'a, DTypes, F>, FOut>
-    where DTypes: AssocTypes
-{}
-impl<DTypes, F, FOut, T> FramedMapExt<DTypes, F, FOut> for T
-    where T: for<'a> MapExt<DTypes, FramedFunc<'a, DTypes, F>, FOut>,
-          DTypes: AssocTypes
-{}
+// /// Marker trait for a storage structure that implements [MapExt](../data_types/trait.MapExt.html),
+// /// as accessed through a [DataFrame](struct.DataFrame.html).
+// pub trait FramedMapExt<DTypes, F, FOut>:
+//     for<'a> MapExt<DTypes, FramedFunc<'a, DTypes, F>, FOut>
+//     where DTypes: AssocTypes
+// {}
+// impl<DTypes, F, FOut, T> FramedMapExt<DTypes, F, FOut> for T
+//     where T: for<'a> MapExt<DTypes, FramedFunc<'a, DTypes, F>, FOut>,
+//           DTypes: AssocTypes
+// {}
 
 /// Trait for a data structure that re-indexes data and provides methods for accessing that
 /// reorganized data.
-pub trait Reindexer<DTypes: DTypeList>: Debug {
+pub trait Reindexer: Debug {
     /// Returns the length of this field.
     fn len(&self) -> usize;
     /// Returns `true` if this field is empty.
@@ -173,7 +173,7 @@ pub trait Reindexer<DTypes: DTypeList>: Debug {
     /// Returns a [Reindexed](struct.Reindexed.html) structure implementing
     /// [DataIndex](../access/trait.DataIndex.html) that provides access to the reorganized data.
     fn reindex<'a, 'b, DI>(&'a self, data_index: &'b DI) -> Reindexed<'a,'b, Self, DI>
-        where DI: 'b + DataIndex<DTypes>,
+        where DI: 'b + DataIndex,
               Self: Sized
     {
         Reindexed {
@@ -184,8 +184,8 @@ pub trait Reindexer<DTypes: DTypeList>: Debug {
 }
 
 impl<DTypes> Reindexer<DTypes> for DataFrame<DTypes>
-    where DTypes: DTypeList,
-          DTypes::Storage: MaxLen<DTypes>
+    // where DTypes: DTypeList,
+    //       DTypes::Storage: MaxLen<DTypes>
 {
     fn len(&self) -> usize
     {
@@ -211,10 +211,9 @@ pub struct Reindexed<'a, 'b, R: 'a, DI: 'b>
     reindexer: &'a R,
     orig: &'b DI,
 }
-impl<'a, 'b, DI, R, DTypes> DataIndex<DTypes> for Reindexed<'a, 'b, R, DI>
-    where DTypes: DTypeList,
-          R: 'a + Reindexer<DTypes>,
-          DI: 'b + DataIndex<DTypes>,
+impl<'a, 'b, DI, R> DataIndex for Reindexed<'a, 'b, R, DI>
+    where R: 'a + Reindexer,
+          DI: 'b + DataIndex,
 {
     type DType = DI::DType;
     fn get_datum(&self, idx: usize) -> error::Result<Value<&Self::DType>> {
@@ -225,99 +224,102 @@ impl<'a, 'b, DI, R, DTypes> DataIndex<DTypes> for Reindexed<'a, 'b, R, DI>
     }
 }
 
-impl<'a, DTypes, T> SelectField<'a, T, DTypes>
-    for DataFrame<DTypes>
-    where DTypes: 'a + DTypeList,
-          DTypes::Storage: 'a + MaxLen<DTypes>,
-          T: 'static + DataType<DTypes>
-{
-    type Output = Framed<'a, DTypes, T>;
+impl<'a, Fields, Ident, FIdx> SelectField<'a, Ident, FIdx>
+    for DataFrame<Fields>
+    where Fields: FSelector<Ident, FIdx>
+          // DTypes: 'a + DTypeList,
+          // DTypes::Storage: 'a + MaxLen<DTypes>,
+          // T: 'a + DataType
 
-    fn select(&'a self, ident: FieldIdent)
-        -> error::Result<Framed<'a, DTypes, T>>
-        where DTypes::Storage: TypeSelector<DTypes, T>
+{
+    type Output = Framed<'a, Fields::DType>;
+
+    fn select_field(&'a self)
+        -> Framed<'a, Fields::DType>
+        // where DTypes::Storage: TypeSelector<T>
     {
-        Ok(Framed::new(&self, self.store.select(ident)?))
+        Ok(Framed::new(&self, self.store.select()?))
     }
 }
-impl<DTypes> Field<DTypes> for DataFrame<DTypes>
-    where DTypes: DTypeList
+impl<Fields> FSelect for DataFrame<Fields>
 {}
 
-/// Wrapper for a [Func](../data_types/trait.Func.html) that calls the underlying `Func` with the
-/// field data organized by this [DataFrame](struct.DataFrame.html).
-pub struct FramedFunc<'a, DTypes, F>
-    where DTypes: 'a + DTypeList,
-{
-    func: F,
-    frame: &'a DataFrame<DTypes>,
-}
-impl<'a, DTypes, F> FramedFunc<'a, DTypes, F>
-    where DTypes: 'a + DTypeList,
-{
-    fn new(frame: &'a DataFrame<DTypes>, func: F) -> FramedFunc<'a, DTypes, F> {
-        FramedFunc {
-            func,
-            frame,
-        }
-    }
-}
+// /// Wrapper for a [Func](../data_types/trait.Func.html) that calls the underlying `Func` with the
+// /// field data organized by this [DataFrame](struct.DataFrame.html).
+// pub struct FramedFunc<'a, DTypes, F>
+//     where DTypes: 'a + DTypeList,
+// {
+//     func: F,
+//     frame: &'a DataFrame<DTypes>,
+// }
+// impl<'a, DTypes, F> FramedFunc<'a, DTypes, F>
+//     where DTypes: 'a + DTypeList,
+// {
+//     fn new(frame: &'a DataFrame<DTypes>, func: F) -> FramedFunc<'a, DTypes, F> {
+//         FramedFunc {
+//             func,
+//             frame,
+//         }
+//     }
+// }
 
-impl<'a, DTypes, T, F> Func<DTypes, T> for FramedFunc<'a, DTypes, F>
-    where F: Func<DTypes, T>,
-          T: DataType<DTypes>,
-          DTypes: DTypeList,
-          DTypes::Storage: 'a + MaxLen<DTypes>
-{
-    type Output = F::Output;
-    fn call(
-        &mut self,
-        type_data: &dyn DataIndex<DTypes, DType=T>,
-    )
-        -> F::Output
-    {
-        self.func.call(&Framed::new(self.frame, OwnedOrRef::Ref(type_data)))
-    }
-}
+// impl<'a, DTypes, T, F> Func<DTypes, T> for FramedFunc<'a, DTypes, F>
+//     where F: Func<DTypes, T>,
+//           T: DataType<DTypes>,
+//           DTypes: DTypeList,
+//           DTypes::Storage: 'a + MaxLen<DTypes>
+// {
+//     type Output = F::Output;
+//     fn call(
+//         &mut self,
+//         type_data: &dyn DataIndex<DTypes, DType=T>,
+//     )
+//         -> F::Output
+//     {
+//         self.func.call(&Framed::new(self.frame, OwnedOrRef::Ref(type_data)))
+//     }
+// }
 
-impl<'a, DTypes, T, F> FuncExt<DTypes, T> for FramedFunc<'a, DTypes, F>
-    where F: FuncExt<DTypes, T>,
-          T: DataType<DTypes>,
-          DTypes: DTypeList,
-          DTypes::Storage: 'a + MaxLen<DTypes>
-{
-    type Output = F::Output;
-    fn call<L>(
-        &mut self,
-        type_data: &dyn DataIndex<DTypes, DType=T>,
-        locator: &L,
-            )
-        -> F::Output
-        where L: FieldLocator<DTypes>
-    {
-        self.func.call(&Framed::new(self.frame, OwnedOrRef::Ref(type_data)), locator)
-    }
-}
+// impl<'a, DTypes, T, F> FuncExt<DTypes, T> for FramedFunc<'a, DTypes, F>
+//     where F: FuncExt<DTypes, T>,
+//           T: DataType<DTypes>,
+//           DTypes: DTypeList,
+//           DTypes::Storage: 'a + MaxLen<DTypes>
+// {
+//     type Output = F::Output;
+//     fn call<L>(
+//         &mut self,
+//         type_data: &dyn DataIndex<DTypes, DType=T>,
+//         locator: &L,
+//             )
+//         -> F::Output
+//         where L: FieldLocator<DTypes>
+//     {
+//         self.func.call(&Framed::new(self.frame, OwnedOrRef::Ref(type_data)), locator)
+//     }
+// }
 
-impl<DTypes, T> Filter<DTypes, T> for DataFrame<DTypes>
-    where DTypes: DTypeList,
-          DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T>,
-          T: 'static + DataType<DTypes>,
-          Self: Field<DTypes>
-{
-    fn filter<I: Into<FieldIdent>, F: Fn(&T) -> bool>(&mut self, ident: I, pred:F)
-        -> error::Result<Vec<usize>>
-    {
-        let filter = self.field(ident)?.data_filter(pred);
-        self.update_permutation(&filter);
-        Ok(filter)
-    }
-}
+// impl<Fields> Filter for DataFrame<Fields>
+//     where
+//           // DTypes: DTypeList,
+//           // DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T>,
+//           // T: 'static + DataType<DTypes>,
+//           Self: FSelect<Fields>
+// {
+//     fn filter<Ident, FIdx, F>(&mut self, pred: F)
+//         -> error::Result<Vec<usize>>
+//         where Fields: FSelector<Ident, FIdx>,
+//               F: Fn(&Fields::DType) -> bool
+//     {
+//         let filter = self.field::<Ident, _>()?.data_filter(pred);
+//         self.update_permutation(&filter);
+//         Ok(filter)
+//     }
+// }
 
-impl<DTypes> From<DataStore<DTypes>> for DataFrame<DTypes>
-    where DTypes: DTypeList
+impl<Fields> From<DataStore<Fields>> for DataFrame<Fields>
 {
-    fn from(store: DataStore<DTypes>) -> DataFrame<DTypes> {
+    fn from(store: DataStore<Fields>) -> DataFrame<Fields> {
         DataFrame {
             permutation: None,
             store: Arc::new(store),
@@ -329,30 +331,30 @@ impl<DTypes> From<DataStore<DTypes>> for DataFrame<DTypes>
 /// that structure. Provides DataIndex for the underlying data structure, as viewed through the
 /// frame.
 #[derive(Debug)]
-pub struct Framed<'a, DTypes, T>
-    where T: 'a + DataType<DTypes>,
-          DTypes: 'a + DTypeList
+pub struct Framed<'a, Fields, T>
+    // where T: 'a + DataType<DTypes>,
+    //       DTypes: 'a + DTypeList
 {
-    frame: &'a DataFrame<DTypes>,
-    data: OwnedOrRef<'a, DTypes, T>,
-    dtype: PhantomData<T>,
+    frame: &'a DataFrame<Fields>,
+    data: OwnedOrRef<'a, T>,
+    // dtype: PhantomData<T>,
 }
-impl<'a, DTypes, T> Framed<'a, DTypes, T>
-    where DTypes: DTypeList,
-          T: DataType<DTypes>
+impl<'a, Fields, T> Framed<'a, Fields, T>
+    // where DTypes: DTypeList,
+    //       T: DataType<DTypes>
 {
     /// Create a new framed view of some data, as view through a particular `DataFrame`.
-    pub fn new(frame: &'a DataFrame<DTypes>, data: OwnedOrRef<'a, DTypes, T>)
-        -> Framed<'a, DTypes, T>
+    pub fn new(frame: &'a DataFrame<Fields>, data: OwnedOrRef<'a, Fields, T>)
+        -> Framed<'a, Fields, T>
     {
-        Framed { frame, data, dtype: PhantomData }
+        Framed { frame, data }
     }
 }
 
-impl<'a, DTypes, T> DataIndex<DTypes> for Framed<'a, DTypes, T>
-    where T: DataType<DTypes>,
-          DTypes: DTypeList,
-          DTypes::Storage: MaxLen<DTypes>
+impl<'a, Fields, T> DataIndex<Fields> for Framed<'a, Fields, T>
+    // where T: DataType<DTypes>,
+    //       DTypes: DTypeList,
+    //       DTypes::Storage: MaxLen<DTypes>
 {
     type DType = T;
 
@@ -365,26 +367,30 @@ impl<'a, DTypes, T> DataIndex<DTypes> for Framed<'a, DTypes, T>
     }
 }
 
-pub(crate) struct SerializedField<'a, DTypes>
-    where DTypes: 'a + DTypeList
+pub(crate) struct SerializedField<'a, Ident, FIdx, Fields>
+    // where DTypes: 'a + DTypeList
 {
-    ident: FieldIdent,
-    frame: &'a DataFrame<DTypes>,
+    _ident: PhantomData<Ident>,
+    _fidx: PhantomData<FIdx>,
+    frame: &'a DataFrame<Fields>,
 }
-impl<'a, DTypes> SerializedField<'a, DTypes>
-    where DTypes: DTypeList
+impl<'a, Ident, FIdx, Fields> SerializedField<'a, Ident, FIdx, Fields>
+    // where DTypes: DTypeList
 {
-    pub fn new(ident: FieldIdent, frame: &'a DataFrame<DTypes>) -> SerializedField<'a, DTypes> {
+    pub fn new(frame: &'a DataFrame<Fields>)
+        -> SerializedField<'a, Ident, FIdx, Fields>
+    {
         SerializedField {
-            ident,
+            _ident: PhantomData,
+            _fidx: PhantomData,
             frame,
         }
     }
 }
 
-impl<'a, DTypes> Serialize for SerializedField<'a, DTypes>
-    where DTypes: DTypeList,
-          DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>,
+impl<'a, Ident, FIdx, Fields> Serialize for SerializedField<'a, Ident, FIdx, Fields>
+    // where DTypes: DTypeList,
+    //       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer,
     {

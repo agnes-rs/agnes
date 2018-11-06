@@ -27,24 +27,27 @@ extern crate tempfile;
 #[cfg(test)] extern crate rand;
 
 #[macro_use] pub mod ops;
-#[macro_use] pub mod data_types;
+#[macro_use] pub mod cons;
+// #[macro_use] pub mod data_types;
+#[macro_use] pub mod features;
+#[macro_use] pub mod fieldlist;
 pub mod source;
 pub mod store;
 pub mod field;
 pub mod error;
 pub mod view;
-pub mod join;
+// pub mod join;
 pub mod frame;
 pub mod access;
-pub mod apply;
+// pub mod apply;
 pub mod select;
-pub mod view_stats;
-pub mod filter;
+// pub mod view_stats;
+// pub mod filter;
 // pub mod reshape;
-#[macro_use] pub mod unique;
+// #[macro_use] pub mod unique;
 
 #[cfg(feature = "experimental")]
 pub mod experimental;
 
-#[cfg(test)] pub(crate) mod test_utils;
-#[cfg(test)] pub(crate) mod test_gen_data;
+// #[cfg(test)] pub(crate) mod test_utils;
+// #[cfg(test)] pub(crate) mod test_gen_data;

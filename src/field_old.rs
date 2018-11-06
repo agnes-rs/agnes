@@ -3,7 +3,6 @@ Data structures and implementations for field information, both identifiers (`Fi
 field storage (`FieldData` and `Value`).
 */
 
-use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -12,14 +11,11 @@ use std::mem;
 
 use serde::ser::{Serialize, Serializer, SerializeSeq};
 
+use data_types::{DTypeList, DataType, TypeSelector, DTypeSelector, CreateStorage};
 use bit_vec::BitVec;
-// use store::{IntoDataStore, DataStore, WithDataFromIter};
+use store::{IntoDataStore, DataStore, WithDataFromIter};
 use access::{DataIndex, DataIndexMut};
 use error;
-
-/// Marker trait for types supporting common traits (such as being displayed).
-// pub trait DataType: Debug + Display {}
-// impl<T> DataType for T where T: Debug + Display {}
 
 /// (Possibly missing) data value container.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,11 +130,14 @@ impl<T> From<Option<T>> for Value<T> {
 /// To support NA types, a `FieldData` object is internally represented as a `Vec` of the
 /// appropriate type, along with a bit mask to denote valid / missing values.
 #[derive(Debug, Clone)]
-pub struct FieldData<T> {
+pub struct FieldData<DTypes: DTypeList, T: DataType<DTypes>> {
     mask: BitVec,
     data: Vec<T>,
+    _marker: PhantomData<DTypes>,
 }
-impl<T> FieldData<T>
+impl<DTypes, T> FieldData<DTypes, T>
+    where DTypes: DTypeList,
+          T: DataType<DTypes>
 {
     /// Returns the length of this data vector.
     pub fn len(&self) -> usize {
@@ -159,7 +158,8 @@ impl<T> FieldData<T>
         }
     }
     /// Interpret `FieldData` as a `Vec` of `Value` objects.
-    pub fn as_vec(&self) -> Vec<Value<&T>> where FieldData<T>: DataIndex<DType=T>
+    pub fn as_vec(&self) -> Vec<Value<&T>>
+        where FieldData<DTypes, T>: DataIndex<DTypes, DType=T>
     {
         self.data.iter().enumerate().map(|(idx, value)| {
             if self.mask[idx] {
@@ -170,30 +170,35 @@ impl<T> FieldData<T>
         }).collect()
     }
 }
-impl<T> Default for FieldData<T>
-    // where T: DataType,
+impl<DTypes, T> Default for FieldData<DTypes, T>
+    where DTypes: DTypeList,
+          T: DataType<DTypes>,
 {
-    fn default() -> FieldData<T> {
+    fn default() -> FieldData<DTypes, T> {
         FieldData {
             data: vec![],
             mask: BitVec::new(),
+            _marker: PhantomData,
         }
     }
 }
-impl<T> FieldData<T>
-    // where T: DataType
+impl<DTypes, T> FieldData<DTypes, T>
+    where DTypes: DTypeList,
+          T: DataType<DTypes>
 {
     /// Create a `FieldData` struct from a vector of non-NA values. Resulting `FieldData` struct
     /// will have no `Value::Na` values.
-    pub fn from_vec<U: Into<T>>(mut v: Vec<U>) -> FieldData<T> {
+    pub fn from_vec<U: Into<T>>(mut v: Vec<U>) -> FieldData<DTypes, T> {
         FieldData {
             mask: BitVec::from_elem(v.len(), true),
             data: v.drain(..).map(|value| value.into()).collect(),
+            _marker: PhantomData
         }
     }
 }
-impl<T> FieldData<T>
-    where T: Debug + Default + Clone
+impl<DTypes, T> FieldData<DTypes, T>
+    where DTypes: DTypeList,
+          T: DataType<DTypes> + Default + Clone
 {
     /// Add a new value (or an indication of a missing one) to the data vector.
     pub fn push_val(&mut self, value: Value<T>) {
@@ -222,7 +227,7 @@ impl<T> FieldData<T>
         }
     }
     /// Create a `FieldData` struct from a vector of field values.
-    pub fn from_field_vec(mut v: Vec<Value<T>>) -> FieldData<T> {
+    pub fn from_field_vec(mut v: Vec<Value<T>>) -> FieldData<DTypes, T> {
         let mut ret = FieldData::default();
         for elem in v.drain(..) {
             ret.push(elem);
@@ -230,8 +235,9 @@ impl<T> FieldData<T>
         ret
     }
 }
-impl<T> FromIterator<Value<T>> for FieldData<T>
-    where T: Debug + Default + Clone,
+impl<DTypes, T> FromIterator<Value<T>> for FieldData<DTypes, T>
+    where T: DataType<DTypes> + Default + Clone,
+          DTypes: DTypeList
 {
     fn from_iter<I: IntoIterator<Item=Value<T>>>(iter: I) -> Self {
         let mut data = FieldData::default();
@@ -241,8 +247,9 @@ impl<T> FromIterator<Value<T>> for FieldData<T>
         data
     }
 }
-impl<'a, T> FromIterator<Value<&'a T>> for FieldData<T>
-    where T: 'a + Debug + Default + Clone,
+impl<'a, DTypes, T> FromIterator<Value<&'a T>> for FieldData<DTypes, T>
+    where T: 'a + DataType<DTypes> + Default + Clone,
+          DTypes: DTypeList
 {
     fn from_iter<I: IntoIterator<Item=Value<&'a T>>>(iter: I) -> Self {
         let mut data = FieldData::default();
@@ -252,8 +259,9 @@ impl<'a, T> FromIterator<Value<&'a T>> for FieldData<T>
         data
     }
 }
-impl<T> FromIterator<T> for FieldData<T>
-    // where T: DataType
+impl<DTypes, T> FromIterator<T> for FieldData<DTypes, T>
+    where DTypes: DTypeList,
+          T: DataType<DTypes>
 {
     fn from_iter<I: IntoIterator<Item=T>>(iter: I) -> Self {
         let mut mask = BitVec::new();
@@ -265,19 +273,23 @@ impl<T> FromIterator<T> for FieldData<T>
         FieldData {
             data,
             mask,
+            _marker: PhantomData
         }
     }
 }
-impl<T, U> From<Vec<U>> for FieldData<T>
-    where U: Into<T>
+impl<DTypes, T, U> From<Vec<U>> for FieldData<DTypes, T>
+    where DTypes: DTypeList,
+          T: DataType<DTypes>,
+          U: Into<T>
 {
-    fn from(other: Vec<U>) -> FieldData<T> {
+    fn from(other: Vec<U>) -> FieldData<DTypes, T> {
         FieldData::from_vec(other)
     }
 }
 
-impl<T> DataIndex for FieldData<T>
-    where T: Debug
+impl<DTypes, T> DataIndex<DTypes> for FieldData<DTypes, T>
+    where DTypes: DTypeList,
+          T: DataType<DTypes>
 {
     type DType = T;
 
@@ -288,16 +300,18 @@ impl<T> DataIndex for FieldData<T>
         self.len()
     }
 }
-impl<T> DataIndexMut for FieldData<T>
-    where T: Debug + Default + Clone
+impl<DTypes, T> DataIndexMut<DTypes> for FieldData<DTypes, T>
+    where DTypes: DTypeList,
+          T: DataType<DTypes> + Default + Clone
 {
     fn push(&mut self, value: Value<Self::DType>) {
         self.push_val(value)
     }
 }
 
-impl<T> Serialize for FieldData<T>
-    where T: Serialize
+impl<DTypes, T> Serialize for FieldData<DTypes, T>
+    where DTypes: DTypeList,
+          T: DataType<DTypes> + Serialize
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let mut seq = serializer.serialize_seq(Some(self.data.len()))?;
@@ -312,13 +326,15 @@ impl<T> Serialize for FieldData<T>
     }
 }
 
-// impl<T> IntoDataStore for FieldData<T>
-//     where T: 'static + DataType + Default + Clone
-// {
-//     fn into_datastore<I: Into<FieldIdent>>(self, ident: I) -> error::Result<DataStore<DTypes>> {
-//         DataStore::empty().with_data_from_iter(ident, self.iter())
-//     }
-// }
+impl<DTypes, T> IntoDataStore<DTypes> for FieldData<DTypes, T>
+    where DTypes: DTypeList,
+          DTypes::Storage: CreateStorage + TypeSelector<DTypes, T> + DTypeSelector<DTypes, T>,
+          T: 'static + DataType<DTypes> + Default + Clone
+{
+    fn into_datastore<I: Into<FieldIdent>>(self, ident: I) -> error::Result<DataStore<DTypes>> {
+        DataStore::empty().with_data_from_iter(ident, self.iter())
+    }
+}
 
 /// Identifier for a field in the source.
 #[derive(Debug, Clone)]

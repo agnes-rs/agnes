@@ -112,36 +112,35 @@ pub(crate) fn dept_table_from_field(
 macro_rules! impl_assert_vec_eq_and_pred {
     ($dtype:ty) => {
 
-use select::Field;
+use select::FSelect;
 use filter::Matches;
 use field::Value;
 use access::DataIndex;
 use view::DataView;
-use data_types::{DataType, DTypeList, MaxLen, TypeSelector};
+use fieldlist::FSelector;
+// use data_types::{DataType, DTypeList, MaxLen, TypeSelector};
 
 #[allow(dead_code)]
-pub(crate) fn assert_dv_eq_vec<'a, DTypes, R>(
-    left: &DataView<DTypes>, ident: &'a FieldIdent, mut right: Vec<R>
+pub(crate) fn assert_dv_eq_vec<'a, Fields, Ident, FIdx, R>(
+    left: &DataView<Fields>, mut right: Vec<R>
 )
     where R: Into<$dtype>,
-          DTypes: DTypeList, $dtype: DataType<DTypes>,
-          DTypes::Storage: TypeSelector<DTypes, $dtype> + MaxLen<DTypes>
+          Fields: FSelector<Ident, FIdx, DType=$dtype>
 {
     let right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
     for (i, rval) in (0..right.len()).zip(right) {
-        assert!(left.field(ident).unwrap().matches(i, &rval).unwrap());
+        assert!(left.field::<Ident, FIdx>().unwrap().matches(i, &rval).unwrap());
     }
 }
 
 #[allow(dead_code)]
-pub(crate) fn assert_dv_pred<'a, DTypes, F>(
-    left: &DataView<DTypes>, ident: &'a FieldIdent, mut f: F
+pub(crate) fn assert_dv_pred<'a, Fields, Ident, FIdx, F>(
+    left: &DataView<Fields>, mut f: F
 )
     where F: FnMut(&$dtype) -> bool,
-          DTypes: DTypeList, $dtype: DataType<DTypes>,
-          DTypes::Storage: TypeSelector<DTypes, $dtype> + MaxLen<DTypes>,
+          Fields: FSelector<Ident, FIdx, DType=$dtype>
 {
-    assert!(left.field(ident).unwrap().iter().all(|val| {
+    assert!(left.field::<Ident, FIdx>().unwrap().iter().all(|val| {
         match val {
             Value::Exists(val) => f(val),
             Value::Na => false
@@ -158,19 +157,18 @@ macro_rules! impl_assert_sorted_eq {
 use apply::sort::sort_order;
 
 #[allow(dead_code)]
-pub(crate) fn assert_dv_sorted_eq<'a, DTypes, R>(
-    left: &DataView<DTypes>, ident: &'a FieldIdent, mut right: Vec<R>
+pub(crate) fn assert_dv_sorted_eq<'a, Fields, Ident, FIdx, R>(
+    left: &DataView<Fields>, mut right: Vec<R>
 )
     where R: Into<$dtype>,
-          DTypes: DTypeList, $dtype: DataType<DTypes>,
-          DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, $dtype>
+          Fields: FSelector<Ident, FIdx, DType=$dtype>
 {
-    let left_order = sort_order(&left.field::<$dtype, _>(ident).unwrap());
+    let left_order = sort_order(&left.field::<Ident, FIdx>().unwrap());
     let mut right: Vec<$dtype> = right.drain(..).map(|r| r.into()).collect();
     right.sort();
 
     for (lidx, rval) in left_order.iter().zip(right.iter()) {
-        assert!(left.field(ident).unwrap().matches(*lidx, &rval).unwrap());
+        assert!(left.field::<Ident, FIdx>().unwrap().matches(*lidx, &rval).unwrap());
     }
 }
 
@@ -181,7 +179,6 @@ macro_rules! impl_test_helpers {
     ($name:tt; $dtype:ty) => {
 
 pub(crate) mod $name {
-    use field::FieldIdent;
 
     impl_assert_vec_eq_and_pred!($dtype);
     impl_assert_sorted_eq!($dtype);
@@ -203,13 +200,11 @@ pub(crate) mod float {
     impl_assert_vec_eq_and_pred!(f64);
 
     #[allow(dead_code)]
-    pub(crate) fn assert_dv_sorted_eq<'a, DTypes, R>(
-        left: &DataView<DTypes>, ident: &'a FieldIdent, mut right: Vec<R>
+    pub(crate) fn assert_dv_sorted_eq<'a, Fields, Ident, FIdx, R>(
+        left: &DataView<Fields>, ident: &'a FieldIdent, mut right: Vec<R>
     )
         where R: Into<f64>,
-              DTypes: DTypeList,
-              f64: DataType<DTypes>,
-              DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, f64>
+              Fields: FSelector<Ident, FIdx, DType=f64>
     {
         let left_order = sort_order(&left.field::<f64, _>(ident).unwrap());
         let mut right: Vec<f64> = right.drain(..).map(|r| r.into()).collect();

@@ -196,6 +196,8 @@ pub enum ParseError {
     Bool(std::str::ParseBoolError),
     /// Floating-point
     Float(std::num::ParseFloatError),
+    /// String
+    Str(std::string::ParseError),
 }
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -203,6 +205,7 @@ impl fmt::Display for ParseError {
             ParseError::Int(ref err) => write!(f, "Integer parse error: {}", err),
             ParseError::Bool(ref err) => write!(f, "Boolean parse error: {}", err),
             ParseError::Float(ref err) => write!(f, "Float parse error: {}", err),
+            ParseError::Str(ref err) => write!(f, "String parse error: {}", err),
         }
     }
 }
@@ -212,6 +215,7 @@ impl Error for ParseError {
             ParseError::Int(ref err) => err.description(),
             ParseError::Bool(ref err) => err.description(),
             ParseError::Float(ref err) => err.description(),
+            ParseError::Str(ref err) => err.description(),
         }
     }
 
@@ -220,6 +224,7 @@ impl Error for ParseError {
             ParseError::Int(ref err) => Some(err),
             ParseError::Bool(ref err) => Some(err),
             ParseError::Float(ref err) => Some(err),
+            ParseError::Str(ref err) => Some(err),
         }
     }
 }
@@ -251,6 +256,16 @@ impl From<std::str::ParseBoolError> for ParseError {
 }
 impl From<std::str::ParseBoolError> for AgnesError {
     fn from(err: std::str::ParseBoolError) -> AgnesError {
+        AgnesError::Parse(err.into())
+    }
+}
+impl From<std::string::ParseError> for ParseError {
+    fn from(err: std::string::ParseError) -> ParseError {
+        ParseError::Str(err)
+    }
+}
+impl From<std::string::ParseError> for AgnesError {
+    fn from(err: std::string::ParseError) -> AgnesError {
         AgnesError::Parse(err.into())
     }
 }

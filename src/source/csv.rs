@@ -1,24 +1,29 @@
 //! CSV-based source and reader objects and implentation.
 
-use std::collections::HashMap;
+use std::str::FromStr;
+use std::fmt::Debug;
+use std::marker::PhantomData;
+use std::ops::Add;
+use std::collections::{HashMap};
 
-use csv;
-use csv_sniffer::{self, Sniffer};
+// use typenum::{Unsigned, Add1, B1};
+
+use csv_sniffer::Sniffer;
 use csv_sniffer::metadata::Metadata;
 
-use source::{LocalFileReader, FileLocator};
+use source::file::{LocalFileReader, FileLocator};
 use source::decode::decode;
 use error::*;
-use store::{DataStore};
-use data_types::{DataType};
-use field::Value;
-use field::{FieldIdent};
-
-use data_types::csv as dt_csv;
+use store::{StorageCons, AssocStorage, DataStore};
+use cons::*;
+use field::FieldIdent;
+use field::{Value};
+use fieldlist::{FieldPayload, FieldPayloadCons, FieldCons, FieldDesignator, SpecCons, AssocField,
+    Field, FieldTypes, Position, Next};
 
 /// CSV Data source. Contains location of data file, and computes CSV metadata. Can be turned into
 /// `CsvReader` object.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CsvSource {
     // File source object for the CSV file
     src: FileLocator,
@@ -48,193 +53,314 @@ impl CsvSource {
     }
 }
 
-/// Reader object responsible for converting a CSV file into a data store.
-#[derive(Debug)]
-pub struct CsvReader {
-    reader: csv::Reader<LocalFileReader>,
-    field_coll: FieldCollection
+// pub struct CsvSrcSpec<Field, FIdx, DType> {
+//     _field: PhantomData<Field>,
+//     _fidx: PhantomData<FIdx>,
+//     _dtype: PhantomData<DType>,
+//     src_idx: usize,
+// }
+
+// impl<Field, FIdx, DType> CsvSrcSpec<Field, FIdx, DType> {
+//     fn from_src_field_spec(src_idx: usize)
+//         -> Self
+//     {
+//         CsvSrcSpec {
+//             _field: PhantomData,
+//             _fidx: PhantomData,
+//             _dtype: PhantomData,
+//             src_idx,
+//         }
+//     }
+// }
+
+pub type CsvSrcSpecCons<Field, Tail> = FieldPayloadCons<Field, usize, Tail>;
+
+pub trait IntoCsvSrcSpec {
+    type CsvSrcSpec;
+
+    fn into_csv_src_spec(self, headers: &HashMap<String, usize>, num_fields: usize)
+        -> Result<Self::CsvSrcSpec>;
+}
+impl IntoCsvSrcSpec for Nil {
+    type CsvSrcSpec = Nil;
+
+    fn into_csv_src_spec(self, _headers: &HashMap<String, usize>, _num_fields: usize)
+        -> Result<Nil>
+    {
+        Ok(Nil)
+    }
 }
 
-impl CsvReader {
-    /// Create a new CSV reader from a CSV source specification. This will process header row (if
-    /// exists), and verify the fields specified in the `CsvSource` object exist in this CSV file.
-    pub fn new(src: &CsvSource) -> Result<CsvReader> {
-        let file_reader = LocalFileReader::new(&src.src)?;
-        let mut csv_reader = src.metadata.dialect.open_reader(file_reader)?;
-        let mut field_coll = FieldCollection::new();
+impl<Field, SrcFIdx, Tail> IntoCsvSrcSpec
+    for SpecCons<Field, SrcFIdx, Tail>
+    where SrcFIdx: Position,
+          Tail: IntoCsvSrcSpec,
+{
+    type CsvSrcSpec = CsvSrcSpecCons<Field, Tail::CsvSrcSpec>;
 
-        {
-            let headers = csv_reader.headers()?;
-            debug_assert_eq!(src.metadata.num_fields, src.metadata.types.len());
-            if src.metadata.dialect.header.has_header_row {
-                if headers.len() != src.metadata.num_fields {
-                    return Err(AgnesError::CsvDialect(
-                        "header row must match number of fields in CSV file".into()));
-                }
-                for (i, header) in headers.iter().enumerate() {
-                    field_coll.add(TypedFieldIdent::new(
-                        FieldIdent::Name(header.into()),
-                        src.metadata.types[i]
-                    ), i);
-                }
-            } else {
-                for i in 0..src.metadata.num_fields {
-                    field_coll.add(TypedFieldIdent::new(
-                        FieldIdent::Index(i),
-                        src.metadata.types[i]
-                    ), i);
-                }
+    fn into_csv_src_spec(
+        self,
+        headers: &HashMap<String, usize>,
+        num_fields: usize
+    )
+        -> Result<CsvSrcSpecCons<Field, Tail::CsvSrcSpec>>
+    {
+        let idx = match self.head.payload {
+            FieldDesignator::Expr(ref s) => *headers.get(s)
+                .ok_or(AgnesError::FieldNotFound(FieldIdent::Name(s.to_string())))?,
+            FieldDesignator::Idx(_) => {
+                let idx = SrcFIdx::POS;
+                if idx >= num_fields {
+                    return Err(AgnesError::IndexError { index: idx, len: num_fields });
+                };
+                idx
             }
-        }
-
-        Ok(CsvReader {
-            reader: csv_reader,
-            field_coll,
+        };
+        Ok(Cons {
+            head: idx.into(),
+            tail: self.tail.into_csv_src_spec(headers, num_fields)?
         })
     }
+}
 
-    /// Read a `CsvSource` into a `DataStore` object.
-    pub fn read(&mut self) -> Result<DataStore<dt_csv::Types>>
-    {
-        let mut ds = DataStore::empty();
-        for row in self.reader.byte_records() {
-            let record = row?;
-            for field in &self.field_coll.fields {
+
+
+// pub trait FromSpec<Spec> {
+//     fn from_spec(spec: Spec, headers: &HashMap<String, usize>, num_fields: usize)
+//         -> Result<Self>
+//         where Self: Sized;
+// }
+
+// impl<Spec> FromSpec<Spec> for Nil {
+//     fn from_spec(_spec: Spec, _headers: &HashMap<String, usize>, _num_fields: usize)
+//         -> Result<Nil>
+//     {
+//         Ok(Nil)
+//     }
+// }
+
+// impl<Field, SrcFIdx, CsvSrcSpecTail, SpecTail> FromSpec<SpecCons<Field, SrcFIdx, SpecTail>>
+//     for CsvSrcSpecCons<Field, CsvSrcSpecTail>
+//     where SrcFIdx: Position,
+//           CsvSrcSpecTail: FromSpec<SpecTail>
+// {
+//     fn from_spec(
+//         spec: SpecCons<Field, SrcFIdx, SpecTail>,
+//         headers: &HashMap<String, usize>,
+//         num_fields: usize
+//     )
+//         -> Result<CsvSrcSpecCons<Field, CsvSrcSpecTail>>
+//     {
+//         let idx = match spec.head.payload {
+//             FieldDesignator::Expr(ref s) => *headers.get(s)
+//                 .ok_or(AgnesError::FieldNotFound(FieldIdent::Name(s.to_string())))?,
+//             FieldDesignator::Idx(_) => {
+//                 let idx = SrcFIdx::POS;
+//                 if idx >= num_fields {
+//                     return Err(AgnesError::IndexError { index: idx, len: num_fields });
+//                 };
+//                 idx
+//             }
+//         };
+//         Ok(Cons {
+//             head: idx.into(),
+//             // head: CsvSrcSpec::from_src_field_spec(idx),
+//             tail: FromSpec::from_spec(spec.tail, headers, num_fields)?
+//         })
+//     }
+// }
+
+// pub trait AttachSrcPos {
+//     type WithSrcPos;
+//     fn attach(self, headers: &HashMap<String, usize>, num_fields: usize)
+//         -> Result<Self::WithSrcPos>;
+// }
+// impl AttachSrcPos for Nil {
+//     type WithSrcPos = Nil;
+//     fn attach(self, _headers: &HashMap<String, usize>, _num_fields: usize)
+//         -> Result<Nil>
+//     {
+//         Ok(Nil)
+//     }
+// }
+// impl<Field, FIdx, SrcFIdx, DType, Tail> AttachSrcPos
+//     for SpecCons<Field, FIdx, SrcFIdx, DType, Tail>
+//     where SrcFIdx: Unsigned,
+//           Tail: AttachSrcPos
+// {
+//     type WithSrcPos = Cons<CsvSrcSpec<Field, FIdx, DType>, Tail::WithSrcPos>;
+//     fn attach(self, headers: &HashMap<String, usize>, num_fields: usize)
+//         -> Result<Self::WithSrcPos>
+//     {
+//         let idx = match self.head.src_name {
+//             FieldDesignator::Expr(ref s) => *headers.get(s)
+//                 .ok_or(AgnesError::FieldNotFound(FieldIdent::Name(s.to_string())))?,
+//             FieldDesignator::Idx(_) => {
+//                 let idx = SrcFIdx::to_usize();
+//                 if idx >= num_fields {
+//                     return Err(AgnesError::IndexError { index: idx, len: num_fields });
+//                 };
+//                 idx
+//             }
+//         };
+//         Ok(Cons {
+//             head: CsvSrcSpec::from_src_field_spec(idx),
+//             tail: self.tail.attach(headers, num_fields)?
+//         })
+//     }
+
+// }
+
+// impl<Field, FIdx, DType, Payload, Tail> AssocFields
+//     for Cons<CsvSrcSpec<Field, FIdx, DType>, Tail>
+//     where Tail: AssocFields,
+// {
+//     type Fields = FieldCons<Field, FIdx, DType, Payload, Tail::Fields>;
+// }
+
+pub trait BuildDStore
+{
+    type OutputFields: AssocStorage;
+    fn build(&mut self, src: &CsvSource) -> Result<DataStore<Self::OutputFields>>;
+}
+impl BuildDStore for Nil {
+    type OutputFields = Nil;
+    fn build(&mut self, _src: &CsvSource) -> Result<DataStore<Nil>> {
+        Ok(DataStore::<Nil>::empty())
+    }
+}
+impl<Ident, DType, Tail> BuildDStore
+    for FieldPayloadCons<
+        Field<Ident, Next<<Tail::OutputFields as FieldTypes>::FIdx>, DType>,
+        usize,
+        Tail
+    >
+    // for Cons<
+    //     CsvSrcSpec<Field, Add1<<Tail::OutputFields as FieldIndex>::FIdx>, DType>,
+    //     Tail
+    // >
+    where
+          Tail: BuildDStore,
+          Tail::OutputFields: FieldTypes,
+    //       Tail::OutputFields: FieldIndex,
+    //       <Tail::OutputFields as FieldIndex>::FIdx: Add<B1>,
+          DType: FromStr + Debug + Default + Clone,
+          ParseError: From<<DType as FromStr>::Err>,
+{
+    // type OutputFields = StorageCons<
+    //     Field<Ident, Add1<<Tail::OutputFields as FieldIndex>::FIdx>, DType>,
+    //     Tail::OutputFields
+    // >;
+    type OutputFields = FieldCons<
+        Ident,
+        Next<<Tail::OutputFields as FieldTypes>::FIdx>,
+        DType,
+        Tail::OutputFields
+    >;
+    fn build(&mut self, src: &CsvSource) -> Result<DataStore<Self::OutputFields>> {
+        let file_reader = LocalFileReader::new(&src.src)?;
+        let mut csv_reader = src.metadata.dialect.open_reader(file_reader)?;
+        let ds = self.tail.build(src)?;
+
+        let values: Vec<Value<DType>> = csv_reader.byte_records()
+            .map(|row| {
+                let record = row?;
                 let value = decode(
-                    record.get(field.src_index).ok_or_else(||
-                        AgnesError::FieldNotFound(field.ty_ident.ident.clone())
+                    record.get(self.head.payload).ok_or_else(||
+                        AgnesError::FieldNotFound(FieldIdent::Name(stringify![Field].to_string()))
                     )?
                 )?;
-                insert(&mut ds, &field.ty_ident, &value)?;
-            }
-        }
+                Ok(value)
+            })
+            .map(|sresult| sresult.and_then(|s| {
+                let trimmed = s.trim();
+                if trimmed.is_empty() {
+                    Ok(Value::Na)
+                } else {
+                    trimmed.parse::<DType>()
+                        .map(|value| Value::Exists(value))
+                        .map_err(|e| AgnesError::Parse(e.into()))
+                }
+            }))
+            .collect::<Result<_>>()?;
+        let ds = ds.add_field_from_iter::<Ident, DType, _, _>(values);
+
         Ok(ds)
     }
 }
 
-// Insert a value (provided in unparsed string form) for specified field
-fn insert(
-    ds: &mut DataStore<dt_csv::Types>, ty_ident: &TypedFieldIdent, value_str: &str
-)
-    -> Result<()>
-{
-    let ident = ty_ident.ident.clone();
-    match ty_ident.ty {
-        csv_sniffer::Type::Unsigned => {
-            // ds.add_field::<u64>(TFieldIdent::new(ident));
-            ds.add::<u64, _>(ident, parse(value_str, parse_unsigned)?)?;
-        },
-        csv_sniffer::Type::Signed => {
-            // ds.add_field::<i64>(TFieldIdent::new(ident));
-            ds.add::<i64, _>(ident, parse(value_str, parse_signed)?)?;
-        },
-        csv_sniffer::Type::Text => {
-            // ds.add_field::<String>(TFieldIdent::new(ident));
-            ds.add::<String, _>(ident, parse(value_str, |s| Ok(s.to_string()))?)?;
-        },
-        csv_sniffer::Type::Boolean => {
-            // ds.add_field::<bool>(TFieldIdent::new(ident));
-            ds.add::<bool, _>(ident, parse(value_str, |val| Ok(val.parse::<bool>()?))?)?;
-        },
-        csv_sniffer::Type::Float => {
-            // ds.add_field::<f64>(TFieldIdent::new(ident));
-            ds.add::<f64, _>(ident, parse(value_str, |val| Ok(val.parse::<f64>()?))?)?;
-        }
-    }
-    Ok(())
+/// Reader object responsible for converting a CSV file into a data store.
+// #[derive(Debug)]
+// pub struct CsvReader<Spec: AttachSrcPos> {
+//     src: CsvSource,
+//     csv_src_spec: Spec::WithSrcPos,
+// }
+
+#[derive(Debug)]
+pub struct CsvReader<CsvSpec> {
+    src: CsvSource,
+    csv_src_spec: CsvSpec,
 }
 
-fn parse<T: DataType<dt_csv::Types>, F>(value_str: &str, f: F) -> Result<Value<T>>
-    where F: Fn(&str) -> Result<T>
+impl<CsvSrcSpec> CsvReader<CsvSrcSpec>
+    // where Spec: AttachSrcPos + AssocFields
 {
-    if value_str.trim().is_empty() {
-        Ok(Value::Na)
-    } else {
-        Ok(Value::Exists(f(value_str)?))
-    }
-}
-/// A forgiving unsigned integer parser. If normal unsigned integer parsing fails, tries to parse
-/// as a signed integer; if successful, assumes that the integer is negative and translates that
-/// to '0'. If that fails, tries to parse as a float; if successful, converts to unsigned integer
-/// (or '0' if negative)
-fn parse_unsigned(value_str: &str) -> Result<u64> {
-    Ok(value_str.parse::<u64>().or_else(|e| {
-        // try parsing as a signed int...if successful, it's negative, so just set it to 0
-        value_str.parse::<i64>().map(|_| 0u64).or_else(|_| {
-            // try parsing as a float
-            value_str.parse::<f64>().map(|f| {
-                if f < 0.0 { 0u64 } else { f as u64 }
-            }).or_else(|_| Err(e))
+    /// Create a new CSV reader from a CSV source specification. This will process header row (if
+    /// exists), and verify the fields specified in the `CsvSource` object exist in this CSV file.
+    // pub fn new<SrcFIdx, SpecTail>(src: &CsvSource, spec: SpecCons<Field, SrcFIdx, SpecTail>)
+    pub fn new<Spec>(src: &CsvSource, spec: Spec)
+        -> Result<CsvReader<Spec::CsvSrcSpec>>
+        where
+              Spec: IntoCsvSrcSpec<CsvSrcSpec=CsvSrcSpec>
+              // SrcFIdx: Position,
+              // Spec: AssocField<Field=Field>,
+              // SpecCons<Field, SrcFIdx, SpecTail>:
+              //   IntoCsvSrcSpec<CsvSrcSpec=CsvSrcSpecCons<Field, Tail>>,
+              // CsvSrcSpecCons<Field, Tail>: FromSpec<SpecCons<Field, SrcFIdx, SpecTail>>
+              // CsvSrcSpecCons<Field, Tail>: FromSpec<SpecCons<Field, SrcFIdx, SpecTail>>
+              // Tail: FromSpec<SpecTail>
+        // where Spec: Debug,
+    {
+        // println!("spec: {:?}", spec);
+        let file_reader = LocalFileReader::new(&src.src)?;
+        let mut csv_reader = src.metadata.dialect.open_reader(file_reader)?;
+
+        debug_assert_eq!(src.metadata.num_fields, src.metadata.types.len());
+
+        let headers = if src.metadata.dialect.header.has_header_row {
+            let headers = csv_reader.headers()?;
+            if headers.len() != src.metadata.num_fields {
+                return Err(AgnesError::CsvDialect(
+                    "header row does not match sniffed number of fields in CSV file".into()));
+            }
+            headers.iter().enumerate().map(|(i, s)| (s.to_string(), i)).collect::<HashMap<_, _>>()
+        } else {
+            HashMap::new()
+        };
+        let csv_src_spec = spec.into_csv_src_spec(&headers, src.metadata.num_fields)?;
+
+        Ok(CsvReader {
+            //TODO: remove source from here
+            src: src.clone(),
+            csv_src_spec
         })
-    })?)
-}
-/// A forgiving signed integer parser. If normal signed integer parsing fails, tries to parse as
-/// a float; if successful, converts to a signed integer.
-fn parse_signed(value_str: &str) -> Result<i64> {
-    Ok(value_str.parse::<i64>().or_else(|e| {
-        // try parsing as float
-        value_str.parse::<f64>().map(|f| f as i64).or_else(|_| Err(e))
-    })?)
-}
-
-
-#[derive(Debug, Clone)]
-struct IndexMap {
-    src: usize,
-    dest: usize,
-}
-impl IndexMap {
-    fn new(src: usize, dest: usize) -> IndexMap {
-        IndexMap { src, dest }
     }
-}
 
-#[derive(Debug, Clone)]
-struct TypedFieldIdent {
-    ident: FieldIdent,
-    ty: csv_sniffer::Type,
-}
-impl TypedFieldIdent {
-    fn new(ident: FieldIdent, ty: csv_sniffer::Type) -> TypedFieldIdent {
-        TypedFieldIdent {
-            ident,
-            ty
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct SrcField {
-    /// Field identifier and type
-    ty_ident: TypedFieldIdent,
-    /// Index of field within the original data file
-    src_index: usize,
-}
-impl SrcField {
-    /// Create a new `SrcField` object from specified typed field identifier obejct ans source
-    /// index.
-    fn from_ty_ident(ty_ident: TypedFieldIdent, src_index: usize) -> SrcField {
-        SrcField {
-            ty_ident,
-            src_index
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct FieldCollection {
-    pub fields: Vec<SrcField>,
-    pub field_map: HashMap<FieldIdent, IndexMap>
-}
-impl FieldCollection {
-    pub fn new() -> FieldCollection {
-        FieldCollection {
-            fields: vec![],
-            field_map: HashMap::new(),
-        }
-    }
-    pub fn add(&mut self, ty_ident: TypedFieldIdent, source_idx: usize) {
-        self.field_map.insert(ty_ident.ident.clone(), IndexMap::new(source_idx, self.fields.len()));
-        self.fields.push(SrcField::from_ty_ident(ty_ident, source_idx));
+    /// Read a `CsvSource` into a `DataStore` object.
+    pub fn read(&mut self)
+        -> Result<DataStore<CsvSrcSpec::OutputFields>>
+        where
+              // Cons<Field, Tail>: DataStorage,
+              CsvSrcSpec: BuildDStore,
+              // FieldPayloadCons<Field, usize, Tail>: BuildDStore<OutputFields=Cons<Field, Tail>>
+        // -> Result<DataStore<StorageCons<Field, Tail>>>
+        // where Field: FieldTypes
+    // pub fn read(&mut self) -> Result<DataStore<<Spec::WithSrcPos as AssocFields>::Fields>>
+        // where Spec::Fields: DataStorage,
+        //       Spec::WithSrcPos: AssocFields
+        //         + BuildDStore<OutputFields=<Spec::WithSrcPos as AssocFields>::Fields>,
+        //       <Spec::WithSrcPos as AssocFields>::Fields: DataStorage,
+    {
+        self.csv_src_spec.build(&self.src)
     }
 }

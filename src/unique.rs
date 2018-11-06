@@ -5,27 +5,28 @@
 use std::collections::HashSet;
 use std::hash::Hash;
 
-use data_types::*;
+// use data_types::*;
 use error::*;
-use select::Field;
+use select::FSelect;
 use access::DataIndex;
 use view::DataView;
 use field::FieldIdent;
 
-impl<'a, DTypes> DataView<DTypes>
-    where DTypes: DTypeList
+impl<'a, Fields> DataView<Fields>
+    // where DTypes: DTypeList
 {
     /// Returns a `Vec` of indices that point to the set of unique values of the specified
     /// identifier.
     ///
     /// Fails if identifier is not found in the `DataView` or the incorrect type `T` is specified.
-    pub fn unique_indices<T, I>(&self, ident: I) -> Result<Vec<usize>>
-        where DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T>,
-              T: 'static + DataType<DTypes> + Hash + Eq,
-              I: Into<FieldIdent>
+    pub fn unique_indices<Ident, DType>(&self) -> Result<Vec<usize>>
+        where
+              // DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T>,
+              DType: Hash + Eq,
+              // I: Into<FieldIdent>
     {
         let mut indices = vec![];
-        let field = self.field::<T, _>(ident)?;
+        let field = self.field::<Ident, _>()?;
         let mut set = HashSet::new();
         for i in 0..field.len() {
             let datum = field.get_datum(i).unwrap();
@@ -42,13 +43,13 @@ impl<'a, DTypes> DataView<DTypes>
     ///
     /// Fails if the identifier is not found in the `DataView` or the incorrect type `T` is
     /// specified.
-    pub fn unique<T, I>(&self, ident: I) -> Result<DataView<DTypes>>
-        where DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T>,
-              T: 'static + DataType<DTypes> + Hash + Eq,
-              I: Into<FieldIdent>
+    pub fn unique<Ident, DType>(&self) -> Result<DataView<Fields>>
+        // where DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T>,
+              // T: 'static + DataType<DTypes> + Hash + Eq,
+        where DType: Hash + Eq,
+              // I: Into<FieldIdent>
     {
-        let ident = ident.into();
-        let permutation = self.unique_indices::<T, _>(ident.clone())?;
+        let permutation = self.unique_indices::<Ident, _>()?;
         let mut subview = self.v(ident);
         for frame in &mut subview.frames {
             frame.update_permutation(&permutation);
@@ -64,8 +65,8 @@ macro_rules! composite_unique_indices {
     ($dv:expr, $([$id:expr]($ty:ty)),*$(,)*) => {{
         use std::collections::HashSet;
         use access::DataIndex;
-        use select::{Selection, Field};
-        use data_types::{Nil, Append};
+        use select::{Selection, FSelect};
+        use cons::{Nil, Append};
 
         let dv = &$dv;
         let get_fields = || -> $crate::error::Result<_> {
@@ -109,25 +110,25 @@ macro_rules! composite_unique {
 #[cfg(test)]
 mod tests {
     use field::Value;
-    use data_types::standard::*;
+    // use data_types::standard::*;
     use test_utils::*;
 
-    #[test]
-    fn unique() {
-        let dv: DataView = DataStore::empty().with_data_vec::<u64, _, _>("Foo", vec![
-                Value::Exists(0),
-                Value::Exists(5),
-                Value::Exists(5),
-                Value::Exists(0),
-                Value::Exists(3)
-        ]).unwrap().into();
-        let dv_unique_indices = dv.unique_indices::<u64, _>("Foo").unwrap();
-        assert_eq!(dv_unique_indices, vec![0, 1, 4]);
-        let dv_unique = dv.unique::<u64, _>("Foo").unwrap();
-        unsigned::assert_dv_eq_vec(&dv_unique, &"Foo".into(),
-            vec![0u64, 5, 3]
-        );
-    }
+    // #[test]
+    // fn unique() {
+    //     let dv: DataView = DataStore::empty().with_data_vec::<u64, _, _>("Foo", vec![
+    //             Value::Exists(0),
+    //             Value::Exists(5),
+    //             Value::Exists(5),
+    //             Value::Exists(0),
+    //             Value::Exists(3)
+    //     ]).unwrap().into();
+    //     let dv_unique_indices = dv.unique_indices::<u64, _>("Foo").unwrap();
+    //     assert_eq!(dv_unique_indices, vec![0, 1, 4]);
+    //     let dv_unique = dv.unique::<u64, _>("Foo").unwrap();
+    //     unsigned::assert_dv_eq_vec(&dv_unique, &"Foo".into(),
+    //         vec![0u64, 5, 3]
+    //     );
+    // }
 
     #[test]
     fn composite_unique() {

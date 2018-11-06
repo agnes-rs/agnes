@@ -1,17 +1,18 @@
+use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use rand::{self, StdRng,SeedableRng};
 use rand::distributions as rdists;
 use rand::distributions::Distribution;
 
-use data_types::{DTypeList, MaxLen, CreateStorage, DTypeSelector, TypeSelector,
-    DataType};
 use field::FieldIdent;
-use store::{AddDataVec, DataStore};
+use store::{DataStore, AddFieldFromIter};
 use field::Value;
 
-pub(crate) trait GenerateInto<DTypes: DTypeList> {
-    fn generate_into(&self, &mut DataStore<DTypes>, ident: FieldIdent, sz: usize, rng: &mut StdRng);
+pub(crate) trait GenerateInto<Fields, NewIdent, NewDType>: AddFieldFromIter<NewIdent, NewDType>
+{
+    fn generate_into(&self, &mut DataStore<Fields>, sz: usize, rng: &mut StdRng)
+        -> DataStore<Self::OutputFields>;
 }
 
 pub(crate) struct Normal<Out> {
@@ -25,66 +26,83 @@ impl<Out> Normal<Out> {
     }
 }
 
-impl<DTypes> GenerateInto<DTypes> for Normal<u64>
-    where DTypes: DTypeList,
-          u64: DataType<DTypes>,
-          DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, u64>,
-          DataStore<DTypes>: AddDataVec<u64, DTypes>
+impl<Fields, NewIdent> GenerateInto<Fields, NewIdent, u64> for Normal<u64>
+    // where DTypes: DTypeList,
+    //       u64: DataType<DTypes>,
+    //       DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, u64>,
+    //       DataStore<DTypes>: AddDataVec<u64, DTypes>
 {
-    fn generate_into(
-        &self, store: &mut DataStore<DTypes>, ident: FieldIdent, sz: usize, rng: &mut StdRng
-    )
+    fn generate_into(&self, store: &mut DataStore<Fields>, sz: usize, rng: &mut StdRng)
+        -> DataStore<Self::OutputFields>
     {
         let normal = rdists::Normal::new(self.mean, self.stdev);
-        let data: Vec<Value<u64>> =
+        // let data: Vec<Value<u64>> =
+        //     normal
+        //         .sample_iter(rng)
+        //         .map(|value| if value < 0.0 { 0 } else { value.round() as u64 })
+        //         .map(|value| Value::Exists(value))
+        //         .take(sz)
+        //         .collect();
+        // store.add_data_vec(ident, data.into()).expect("failure adding data while generating");
+        store.add_field_from_iter::<NewIdent, _, _, _>(
             normal
                 .sample_iter(rng)
                 .map(|value| if value < 0.0 { 0 } else { value.round() as u64 })
                 .map(|value| Value::Exists(value))
                 .take(sz)
-                .collect();
-        store.add_data_vec(ident, data.into()).expect("failure adding data while generating");
+        )
     }
 }
-impl<DTypes> GenerateInto<DTypes> for Normal<i64>
-    where DTypes: DTypeList,
-          i64: DataType<DTypes>,
-          DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, i64>,
-          DataStore<DTypes>: AddDataVec<i64, DTypes>
+impl<Fields, NewIdent> GenerateInto<Fields, NewIdent, i64> for Normal<i64>
+    // where DTypes: DTypeList,
+    //       i64: DataType<DTypes>,
+    //       DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, i64>,
+    //       DataStore<DTypes>: AddDataVec<i64, DTypes>
 {
-    fn generate_into(
-        &self, store: &mut DataStore<DTypes>, ident: FieldIdent, sz: usize, rng: &mut StdRng
-    )
+    fn generate_into(&self, store: &mut DataStore<Fields>, sz: usize, rng: &mut StdRng)
+        -> DataStore<Self::OutputFields>
     {
         let normal = rdists::Normal::new(self.mean, self.stdev);
-        let data: Vec<Value<i64>> =
+        // let data: Vec<Value<i64>> =
+        //     normal
+        //         .sample_iter(rng)
+        //         .map(|value| value.round() as i64)
+        //         .map(|value| Value::Exists(value))
+        //         .take(sz)
+        //         .collect();
+        // store.add_data_vec(ident, data.into()).expect("failure adding data while generating");
+        store.add_field_from_iter::<NewIdent, _, _, _>(
             normal
                 .sample_iter(rng)
                 .map(|value| value.round() as i64)
                 .map(|value| Value::Exists(value))
                 .take(sz)
-                .collect();
-        store.add_data_vec(ident, data.into()).expect("failure adding data while generating");
+        )
     }
 }
-impl<DTypes> GenerateInto<DTypes> for Normal<f64>
-    where DTypes: DTypeList,
-          f64: DataType<DTypes>,
-          DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, f64>,
-          DataStore<DTypes>: AddDataVec<f64, DTypes>
+impl<Fields, NewIdent> GenerateInto<Fields, NewIdent, f64> for Normal<f64>
+    // where DTypes: DTypeList,
+    //       f64: DataType<DTypes>,
+    //       DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, f64>,
+    //       DataStore<DTypes>: AddDataVec<f64, DTypes>
 {
-    fn generate_into(
-        &self, store: &mut DataStore<DTypes>, ident: FieldIdent, sz: usize, rng: &mut StdRng
-    )
+    fn generate_into(&self, store: &mut DataStore<Fields>, sz: usize, rng: &mut StdRng)
+        -> DataStore<Self::OutputFields>
     {
         let normal = rdists::Normal::new(self.mean, self.stdev);
-        let data: Vec<Value<f64>> =
+        // let data: Vec<Value<f64>> =
+        //     normal
+        //         .sample_iter(rng)
+        //         .map(|value| Value::Exists(value))
+        //         .take(sz)
+        //         .collect();
+        // store.add_data_vec(ident, data.into()).expect("failure adding data while generating");
+        store.add_field_from_iter::<NewIdent, _, _, _>(
             normal
                 .sample_iter(rng)
                 .map(|value| Value::Exists(value))
                 .take(sz)
-                .collect();
-        store.add_data_vec(ident, data.into()).expect("failure adding data while generating");
+        )
     }
 }
 
@@ -101,24 +119,29 @@ impl<T> Uniform<T> {
 macro_rules! impl_uniform_generate_into {
     ($($t:ty)*) => {$(
 
-impl<DTypes> GenerateInto<DTypes> for Uniform<$t>
-    where DTypes: DTypeList,
-          $t: DataType<DTypes>,
-          DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, $t>,
-          DataStore<DTypes>: AddDataVec<$t, DTypes>
+impl<Fields, NewIdent> GenerateInto<Fields, NewIdent, $t> for Uniform<$t>
+    // where DTypes: DTypeList,
+    //       $t: DataType<DTypes>,
+    //       DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, $t>,
+    //       DataStore<DTypes>: AddDataVec<$t, DTypes>
 {
-    fn generate_into(
-        &self, store: &mut DataStore<DTypes>, ident: FieldIdent, sz: usize, rng: &mut StdRng
-    )
+    fn generate_into(&self, store: &mut DataStore<Fields>, sz: usize, rng: &mut StdRng)
+        -> DataStore<Self::OutputFields>
     {
         let uniform = rdists::Uniform::new(self.low, self.high);
-        let data: Vec<Value<$t>> =
+        store.add_field_from_iter::<NewIdent, _, _, _>(
             uniform
                 .sample_iter(rng)
                 .map(|value| Value::Exists(value))
                 .take(sz)
-                .collect();
-        store.add_data_vec(ident, data.into()).expect("failure adding data while generating");
+        )
+        // let data: Vec<Value<$t>> =
+        //     uniform
+        //         .sample_iter(rng)
+        //         .map(|value| Value::Exists(value))
+        //         .take(sz)
+        //         .collect();
+        // store.add_data_vec(ident, data.into()).expect("failure adding data while generating");
     }
 }
 
@@ -137,28 +160,34 @@ impl<T> UniformChoice<T> {
 macro_rules! impl_uniform_choice_generate_into {
     ($($t:ty)*) => {$(
 
-impl<DTypes> GenerateInto<DTypes> for UniformChoice<$t>
-    where DTypes: DTypeList,
-          $t: DataType<DTypes>,
-          DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, $t>,
-          DataStore<DTypes>: AddDataVec<$t, DTypes>
+impl<Fields, NewIdent> GenerateInto<Fields, NewIdent, $t> for UniformChoice<$t>
+    // where DTypes: DTypeList,
+    //       $t: DataType<DTypes>,
+    //       DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, $t>,
+    //       DataStore<DTypes>: AddDataVec<$t, DTypes>
 
 {
     fn generate_into(
-        &self, store: &mut DataStore<DTypes>, ident: FieldIdent, sz: usize, rng: &mut StdRng
+        &self, store: &mut DataStore<Fields>, sz: usize, rng: &mut StdRng
     )
+        -> DataStore<Self::OutputFields>
     {
-
         let uniform = rdists::Uniform::new(0, self.choices.len());
-        let data: Vec<Value<$t>> =
-
+        // let data: Vec<Value<$t>> =
+        //     uniform
+        //     .sample_iter(rng)
+        //     .map(|idx| self.choices[idx].clone())
+        //     .map(|value| Value::Exists(value))
+        //     .take(sz)
+        //     .collect();
+        // store.add_data_vec(ident, data.into()).expect("failure adding data while generating");
+        store.add_field_from_iter::<NewIdent, _, _, _>(
             uniform
-            .sample_iter(rng)
-            .map(|idx| self.choices[idx].clone())
-            .map(|value| Value::Exists(value))
-            .take(sz)
-            .collect();
-        store.add_data_vec(ident, data.into()).expect("failure adding data while generating");
+                .sample_iter(rng)
+                .map(|idx| self.choices[idx].clone())
+                .map(|value| Value::Exists(value))
+                .take(sz)
+        )
     }
 }
 
@@ -172,70 +201,71 @@ impl<'a> From<Vec<&'a str>> for UniformChoice<String> {
     }
 }
 
-pub(crate) struct FieldGenerator<DTypes>(Box<dyn GenerateInto<DTypes>>);
-impl<DTypes> GenerateInto<DTypes> for FieldGenerator<DTypes>
-    where DTypes: DTypeList
+pub(crate) struct FieldGenerator<Fields, NewIdent, NewDType>(
+    Box<dyn GenerateInto<Fields, NewIdent, NewDType>>
+);
+impl<Fields, NewIdent, NewDType> GenerateInto<Fields, NewIdent, NewDType>
+    for FieldGenerator<Fields, NewIdent, NewDType>
+    // where DTypes: DTypeList
 {
-    fn generate_into(
-        &self, store: &mut DataStore<DTypes>, ident: FieldIdent, sz: usize, rng: &mut StdRng
-    )
+    fn generate_into(&self, store: &mut DataStore<Fields>, sz: usize, rng: &mut StdRng)
     {
-        self.0.generate_into(store, ident, sz, rng);
+        self.0.generate_into(store, sz, rng);
     }
 }
-impl<DTypes, T> From<Normal<T>> for FieldGenerator<DTypes>
-    where Normal<T>: 'static + GenerateInto<DTypes>,
-          DTypes: DTypeList
+impl<Fields, NewIdent, NewDType> From<Normal<NewDType>>
+    for FieldGenerator<Fields, NewIdent, NewDType>
+    where Normal<NewDType>: GenerateInto<Fields, NewIdent, NewDType>,
 {
-    fn from(normal: Normal<T>) -> FieldGenerator<DTypes> {
+    fn from(normal: Normal<NewDType>) -> FieldGenerator<Fields, NewIdent, NewDType> {
         FieldGenerator(Box::new(normal))
     }
 }
-impl<DTypes, T> From<Uniform<T>> for FieldGenerator<DTypes>
-    where Uniform<T>: 'static + GenerateInto<DTypes>,
-          DTypes: DTypeList
+impl<Fields, NewIdent, NewDType> From<Uniform<NewDType>>
+    for FieldGenerator<Fields, NewIdent, NewDType>
+    where Uniform<NewDType>: GenerateInto<Fields, NewIdent, NewDType>,
+          // DTypes: DTypeList
 {
-    fn from(uniform: Uniform<T>) -> FieldGenerator<DTypes> {
+    fn from(uniform: Uniform<NewDType>) -> FieldGenerator<Fields, NewIdent, NewDType> {
         FieldGenerator(Box::new(uniform))
     }
 }
-impl<DTypes, T> From<UniformChoice<T>> for FieldGenerator<DTypes>
-    where UniformChoice<T>: 'static + GenerateInto<DTypes>,
-          DTypes: DTypeList
+impl<Fields, NewIdent, NewDType> From<UniformChoice<NewDType>>
+    for FieldGenerator<Fields, NewIdent, NewDType>
+    where UniformChoice<NewDType>: GenerateInto<Fields, NewIdent, NewDType>,
+          // DTypes: DTypeList
 {
-    fn from(uc: UniformChoice<T>) -> FieldGenerator<DTypes> {
+    fn from(uc: UniformChoice<NewDType>) -> FieldGenerator<Fields, NewIdent, NewDType> {
         FieldGenerator(Box::new(uc))
     }
 }
 
 #[allow(dead_code)]
-pub(crate) struct FieldSpec<DTypes> {
-    ident: FieldIdent,
-    generator: FieldGenerator<DTypes>
+pub(crate) struct FieldSpec<Fields, NewIdent, NewDType> {
+    generator: FieldGenerator<Fields, NewIdent, NewDType>
 }
-impl<DTypes> FieldSpec<DTypes> {
+impl<Fields, NewIdent, NewDType> FieldSpec<Fields, NewIdent, NewDType> {
     #[allow(dead_code)]
-    pub(crate) fn new<I, G>(ident: I, generator: G)
-        -> FieldSpec<DTypes>
-        where I: Into<FieldIdent>, G: Into<FieldGenerator<DTypes>>
+    pub(crate) fn new<I, G>(generator: G)
+        -> FieldSpec<Fields, NewIdent, NewDType>
+        where G: Into<FieldGenerator<Fields, NewIdent, NewDType>>
     {
         FieldSpec {
-            ident: ident.into(),
             generator: generator.into()
         }
     }
 }
 #[allow(dead_code)]
-pub(crate) fn generate_random_datastore<I: Into<Option<u64>>, DTypes>(
-    fields: Vec<FieldSpec<DTypes>>,
+pub(crate) fn generate_random_datastore<Fields, NewIdent, NewDType, I: Into<Option<u64>>>(
+    fields: Vec<FieldSpec<Fields, NewIdent, NewDType>>,
     nrecords: usize,
     seed: I
 )
-    -> DataStore<DTypes>
-    where DTypes: DTypeList,
-          DTypes::Storage: MaxLen<DTypes> + CreateStorage
+    -> DataStore<GenerateInto<Fields, NewIdent, NewDType>::Output>
+    // where DTypes: DTypeList,
+    //       DTypes::Storage: MaxLen<DTypes> + CreateStorage
 {
-    let mut store = DataStore::<DTypes>::empty();
+    let mut store = DataStore::empty();
     let mut rng = match seed.into() {
         Some(seed) => {
             //TODO: switch to from_bytes when 1.29.0 hits stable
@@ -255,18 +285,18 @@ pub(crate) fn generate_random_datastore<I: Into<Option<u64>>, DTypes>(
 }
 
 #[allow(dead_code)]
-pub(crate) fn generate_sample_random_datastore<DTypes, I: Into<Option<u64>>>(
+pub(crate) fn generate_sample_random_datastore<Fields, NewIdent, NewDType, I: Into<Option<u64>>>(
     nrecords: usize, seed: I
 )
-    -> DataStore<DTypes>
-    where DTypes: DTypeList,
-          String: DataType<DTypes>, i64: DataType<DTypes>, f64: DataType<DTypes>,
-          u64: DataType<DTypes>,
-          DTypes::Storage: MaxLen<DTypes> + CreateStorage
-                  + DTypeSelector<DTypes, String> + TypeSelector<DTypes, String>
-                  + DTypeSelector<DTypes, i64> + TypeSelector<DTypes, i64>
-                  + DTypeSelector<DTypes, f64> + TypeSelector<DTypes, f64>
-                  + DTypeSelector<DTypes, u64> + TypeSelector<DTypes, u64>
+    -> DataStore<Fields>
+    // where DTypes: DTypeList,
+    //       String: DataType<DTypes>, i64: DataType<DTypes>, f64: DataType<DTypes>,
+    //       u64: DataType<DTypes>,
+    //       DTypes::Storage: MaxLen<DTypes> + CreateStorage
+    //               + DTypeSelector<DTypes, String> + TypeSelector<DTypes, String>
+    //               + DTypeSelector<DTypes, i64> + TypeSelector<DTypes, i64>
+    //               + DTypeSelector<DTypes, f64> + TypeSelector<DTypes, f64>
+    //               + DTypeSelector<DTypes, u64> + TypeSelector<DTypes, u64>
 {
     generate_random_datastore(
         vec![
