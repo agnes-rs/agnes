@@ -18,7 +18,9 @@ pub struct Selection<D: DataIndex>
     /// Underlying data structure for this selection. Contains the field identified by `ident`.
     data: D,
 }
-impl<D> Selection<D> {
+impl<D> Selection<D>
+    where D: DataIndex
+{
     /// Create a new `Selection` object from specified data and identifier.
     pub fn new(data: D) -> Selection<D> {
         Selection {
@@ -49,19 +51,19 @@ pub trait FSelect
     ///
     /// This method is a convenience method for calling the [select](trait.SelectField.html#select)
     /// method on the [SelectField](trait.SelectField.html) trait.
-    fn field<'a, Ident: 'a, FIdx: 'a>(&'a self)
-        -> Selection<<Self as SelectField<'a, Ident, FIdx>>::Output>
-        where Self: SelectField<'a, Ident, FIdx>,
+    fn field<'a, Ident: 'a>(&'a self)
+        -> Selection<<Self as SelectField<'a, Ident>>::Output>
+        where Self: SelectField<'a, Ident>,
     {
         Selection::new(SelectField::select(self))
     }
 }
 
 /// Trait implemented by data structures to provide access to data for a single field.
-pub trait SelectField<'a, Ident, FIdx>
+pub trait SelectField<'a, Ident>
 {
     /// The return type for the `select` method.
-    type Output: DataIndex<DType=Ident::DType>;
+    type Output: DataIndex;
 
     /// Returns an object that provides [DataIndex](../access/trait.DataIndex.html) access to the
     /// data in the field specified by `ident`.

@@ -9,6 +9,8 @@ exclude = ["tests/data/*"]
 autoexamples = true
 
 [features]
+default = ["serialize"]
+serialize = []
 experimental = []
 
 [[example]]

@@ -67,3 +67,19 @@ macro_rules! map {
     }}
 }
 
+pub trait Len {
+    const LEN: usize;
+
+    fn is_empty(&self) -> bool { Self::LEN == 0 }
+    fn len(&self) -> usize { Self::LEN }
+}
+
+impl Len for Nil {
+    const LEN: usize = 0;
+}
+impl<Head, Tail> Len
+    for Cons<Head, Tail>
+    where Tail: Len
+{
+    const LEN: usize = <Tail as Len>::LEN + 1;
+}

@@ -19,7 +19,7 @@ use cons::*;
 use field::FieldIdent;
 use field::{Value};
 use fieldlist::{FieldPayload, FieldPayloadCons, FieldCons, FieldDesignator, SpecCons, AssocField,
-    Field, FieldTypes, Position, Next};
+    Field, FieldTypes};
 
 /// CSV Data source. Contains location of data file, and computes CSV metadata. Can be turned into
 /// `CsvReader` object.
@@ -91,10 +91,9 @@ impl IntoCsvSrcSpec for Nil {
     }
 }
 
-impl<Field, SrcFIdx, Tail> IntoCsvSrcSpec
-    for SpecCons<Field, SrcFIdx, Tail>
-    where SrcFIdx: Position,
-          Tail: IntoCsvSrcSpec,
+impl<Field, Tail> IntoCsvSrcSpec
+    for SpecCons<Field, Tail>
+    where Tail: IntoCsvSrcSpec,
 {
     type CsvSrcSpec = CsvSrcSpecCons<Field, Tail::CsvSrcSpec>;
 
@@ -108,8 +107,7 @@ impl<Field, SrcFIdx, Tail> IntoCsvSrcSpec
         let idx = match self.head.payload {
             FieldDesignator::Expr(ref s) => *headers.get(s)
                 .ok_or(AgnesError::FieldNotFound(FieldIdent::Name(s.to_string())))?,
-            FieldDesignator::Idx(_) => {
-                let idx = SrcFIdx::POS;
+            FieldDesignator::Idx(idx) => {
                 if idx >= num_fields {
                     return Err(AgnesError::IndexError { index: idx, len: num_fields });
                 };
@@ -231,7 +229,7 @@ impl BuildDStore for Nil {
 }
 impl<Ident, DType, Tail> BuildDStore
     for FieldPayloadCons<
-        Field<Ident, Next<<Tail::OutputFields as FieldTypes>::FIdx>, DType>,
+        Field<Ident, DType>,
         usize,
         Tail
     >
@@ -242,6 +240,7 @@ impl<Ident, DType, Tail> BuildDStore
     where
           Tail: BuildDStore,
           Tail::OutputFields: FieldTypes,
+          Ident: Debug,
     //       Tail::OutputFields: FieldIndex,
     //       <Tail::OutputFields as FieldIndex>::FIdx: Add<B1>,
           DType: FromStr + Debug + Default + Clone,
@@ -253,7 +252,6 @@ impl<Ident, DType, Tail> BuildDStore
     // >;
     type OutputFields = FieldCons<
         Ident,
-        Next<<Tail::OutputFields as FieldTypes>::FIdx>,
         DType,
         Tail::OutputFields
     >;

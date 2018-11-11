@@ -1,9 +1,10 @@
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Add;
 use std::fmt;
 
 use cons::*;
-use fieldlist::{FieldCons, FieldPayloadCons, FieldTypes, Field, FieldPayload, FSelector, Next};
+use fieldlist::{FieldCons, FieldPayloadCons, FieldTypes, Field, FieldPayload, FSelector};
 use field::{Value, FieldData};
 use select::{SelectField};
 use access::{OwnedOrRef};
@@ -17,13 +18,15 @@ pub type StorageCons<Field, Tail>
     = FieldPayloadCons<Field, FieldData<<Field as FieldTypes>::DType>, Tail>;
 
 pub trait AssocStorage {
-    type Storage;
+    type Storage: Debug;
 }
 // impl<Field, FIdx, DType, Tail> AssocStorage for StorageCons<Field, FIdx, DType, Tail> {}
-impl<Ident, FIdx, DType, Tail> AssocStorage for FieldCons<Ident, FIdx, DType, Tail>
-    where Tail: AssocStorage
+impl<Ident, DType, Tail> AssocStorage for FieldCons<Ident, DType, Tail>
+    where Tail: AssocStorage,
+          Ident: Debug,
+          DType: Debug,
 {
-    type Storage = StorageCons<Field<Ident, FIdx, DType>, Tail::Storage>;
+    type Storage = StorageCons<Field<Ident, DType>, Tail::Storage>;
 }
 impl AssocStorage for Nil {
     type Storage = Nil;
@@ -50,15 +53,17 @@ impl<Fields> DataStore<Fields>
 // - field_mut::<Field>() -> DataIndexMut<Item=T>
 
 pub trait AddField<NewIdent, NewDType> {
-    type OutputFields;
+    type OutputFields: AssocStorage;
 
     fn add_field(self, data: FieldData<NewDType>)
         -> DataStore<Self::OutputFields>;
 }
 impl<PrevFields, NewIdent, NewDType> AddField<NewIdent, NewDType> for DataStore<PrevFields>
     where PrevFields: AssocStorage + FieldTypes,
+          NewIdent: Debug,
+          NewDType: Debug,
 {
-    type OutputFields = FieldCons<NewIdent, Next<PrevFields::FIdx>, NewDType, PrevFields>;
+    type OutputFields = FieldCons<NewIdent, NewDType, PrevFields>;
 
     fn add_field(self, data: FieldData<NewDType>)
         -> DataStore<Self::OutputFields>
@@ -73,7 +78,7 @@ impl<PrevFields, NewIdent, NewDType> AddField<NewIdent, NewDType> for DataStore<
 }
 
 pub trait AddFieldFromIter<NewIdent, NewDType> {
-    type OutputFields;
+    type OutputFields: AssocStorage;
 
     fn add_field_from_iter<IntoIter, Iter>(self, iter: IntoIter)
         -> DataStore<Self::OutputFields>
@@ -81,8 +86,10 @@ pub trait AddFieldFromIter<NewIdent, NewDType> {
               IntoIter: IntoIterator<IntoIter=Iter, Item=Value<NewDType>>;
 }
 impl<PrevFields, NewIdent, NewDType> AddFieldFromIter<NewIdent, NewDType> for DataStore<PrevFields>
+    where PrevFields: AssocStorage,
+          NewIdent: Debug, NewDType: Debug,
 {
-    type OutputFields = FieldCons<NewIdent, Next<PrevFields::FIdx>, NewDType, PrevFields>;
+    type OutputFields = FieldCons<NewIdent, NewDType, PrevFields>;
 
     fn add_field_from_iter<IntoIter, Iter>(self, iter: IntoIter)
         -> DataStore<Self::OutputFields>
@@ -99,14 +106,16 @@ impl<PrevFields, NewIdent, NewDType> AddFieldFromIter<NewIdent, NewDType> for Da
 }
 
 pub trait AddEmptyField<NewIdent, NewDType> {
-    type OutputFields;
+    type OutputFields: AssocStorage;
 
     fn add_empty_field(self)
         -> DataStore<Self::OutputFields>;
 }
 impl<PrevFields, NewIdent, NewDType> AddEmptyField<NewIdent, NewDType> for DataStore<PrevFields>
+    where PrevFields: AssocStorage,
+          NewIdent: Debug, NewDType: Debug,
 {
-    type OutputFields = FieldCons<NewIdent, Next<PrevFields::FIdx>, NewDType, PrevFields>;
+    type OutputFields = FieldCons<NewIdent, NewDType, PrevFields>;
 
     fn add_empty_field(self)
         -> DataStore<Self::OutputFields>
@@ -124,7 +133,7 @@ impl<PrevFields> DataStore<PrevFields>
     where PrevFields: AssocStorage + FieldTypes,
 {
     pub fn add_field<NewIdent, NewDType>(self, data: FieldData<NewDType>)
-        -> DataStore<Self::OutputFields>
+        -> DataStore<<Self as AddField<NewIdent, NewDType>>::OutputFields>
         // -> DataStore<StorageCons<Field<NewIdent, Add1<PrevFields::FIdx>, NewDType>, PrevFields>>
         where NewDType: fmt::Debug,
               Self: AddField<NewIdent, NewDType>
@@ -134,34 +143,45 @@ impl<PrevFields> DataStore<PrevFields>
 
     pub fn add_field_from_iter<NewIdent, NewDType, IntoIter, Iter>(self, iter: IntoIter)
         // -> DataStore<StorageCons<Field<NewIdent, Add1<PrevFields::FIdx>, NewDType>, PrevFields>>
-        -> DataStore<Self::OutputFields>
+        -> DataStore<<Self as AddFieldFromIter<NewIdent, NewDType>>::OutputFields>
         where Iter: Iterator<Item=Value<NewDType>>,
               IntoIter: IntoIterator<IntoIter=Iter, Item=Value<NewDType>>,
               NewDType: fmt::Debug + Default + Clone,
+              Self: AddFieldFromIter<NewIdent, NewDType>
     {
         AddFieldFromIter::add_field_from_iter(self, iter)
     }
 
     pub fn add_empty_field<NewIdent, NewDType>(self)
         // -> DataStore<StorageCons<Field<NewIdent, Add1<PrevFields::FIdx>, NewDType>, PrevFields>>
-        -> DataStore<Self::OutputFields>
+        -> DataStore<<Self as AddEmptyField<NewIdent, NewDType>>::OutputFields>
         where NewDType: fmt::Debug,
+              Self: AddEmptyField<NewIdent, NewDType>
     {
         AddEmptyField::add_empty_field(self)
     }
 }
 
+impl<Fields> DataStore<Fields>
+    where Fields: AssocStorage
+{
+    pub fn field<'a, Ident, FieldSearcher>(&'a self)
+        -> OwnedOrRef<'a, <Fields as FSelector<Ident, FieldSearcher>>::DType>
+        where Fields: FSelector<Ident, FieldSearcher>
+    {
+        self.data.select_field()
+    }
+}
 
-// impl<'a, T, Fields, Field, FIdx> SelectField<'a, Field, T>
+// impl<'a, Fields, Ident, FIdx> SelectField<'a, Ident>
 //     for DataStore<Fields>
-//     where T: fmt::Debug,
-//           Fields: FSelector<Field, FIdx>
+//     where Fields: FSelector<Ident, FIdx>
 // {
-//     type Output = OwnedOrRef<'a, T>;
+//     type Output = OwnedOrRef<'a, <Fields as FSelector<Ident, FIdx>>::DType>;
 
-//     fn select(&'a self) -> Result<OwnedOrRef<'a, T>>
+//     fn select_field(&'a self) -> Self::Output
 //     {
-//         <Fields as FieldSelector::<Field, FIdx>>
+//         self.data.select_field()
 //     }
 // }
 

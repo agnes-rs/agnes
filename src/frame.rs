@@ -20,7 +20,9 @@ use error;
 
 /// A data frame. A `DataStore` reference along with record-based filtering and sorting details.
 #[derive(Debug, Clone)]
-pub struct DataFrame<Fields: AssocStorage>
+pub struct DataFrame<Fields>
+    where Fields: AssocStorage,
+          Fields::Storage: Debug
 {
     pub(crate) permutation: Option<Vec<usize>>,
     pub(crate) store: Arc<DataStore<Fields>>,
@@ -183,7 +185,8 @@ pub trait Reindexer: Debug {
     }
 }
 
-impl<DTypes> Reindexer<DTypes> for DataFrame<DTypes>
+impl<Fields> Reindexer for DataFrame<Fields>
+    where Fields: AssocStorage + Debug
     // where DTypes: DTypeList,
     //       DTypes::Storage: MaxLen<DTypes>
 {
@@ -224,25 +227,26 @@ impl<'a, 'b, DI, R> DataIndex for Reindexed<'a, 'b, R, DI>
     }
 }
 
-impl<'a, Fields, Ident, FIdx> SelectField<'a, Ident, FIdx>
-    for DataFrame<Fields>
-    where Fields: FSelector<Ident, FIdx>
-          // DTypes: 'a + DTypeList,
-          // DTypes::Storage: 'a + MaxLen<DTypes>,
-          // T: 'a + DataType
 
-{
-    type Output = Framed<'a, Fields::DType>;
+// impl<'a, Fields, Ident, FIdx> SelectField<'a, Ident>
+//     for DataFrame<Fields>
+//     where Fields: FSelector<Ident, FIdx>
+//           // DTypes: 'a + DTypeList,
+//           // DTypes::Storage: 'a + MaxLen<DTypes>,
+//           // T: 'a + DataType
 
-    fn select_field(&'a self)
-        -> Framed<'a, Fields::DType>
-        // where DTypes::Storage: TypeSelector<T>
-    {
-        Ok(Framed::new(&self, self.store.select()?))
-    }
-}
-impl<Fields> FSelect for DataFrame<Fields>
-{}
+// {
+//     type Output = Framed<'a, Fields, Fields::DType>;
+
+//     fn select_field(&'a self)
+//         -> Framed<'a, Fields, Fields::DType>
+//         // where DTypes::Storage: TypeSelector<T>
+//     {
+//         Ok(Framed::new(&self, self.store.select()?))
+//     }
+// }
+// impl<Fields> FSelect for DataFrame<Fields>
+// {}
 
 // /// Wrapper for a [Func](../data_types/trait.Func.html) that calls the underlying `Func` with the
 // /// field data organized by this [DataFrame](struct.DataFrame.html).
@@ -318,6 +322,7 @@ impl<Fields> FSelect for DataFrame<Fields>
 // }
 
 impl<Fields> From<DataStore<Fields>> for DataFrame<Fields>
+    where Fields: AssocStorage
 {
     fn from(store: DataStore<Fields>) -> DataFrame<Fields> {
         DataFrame {
@@ -332,6 +337,9 @@ impl<Fields> From<DataStore<Fields>> for DataFrame<Fields>
 /// frame.
 #[derive(Debug)]
 pub struct Framed<'a, Fields, T>
+    where Fields: 'a + AssocStorage,
+          Fields::Storage: Debug,
+          T: 'a
     // where T: 'a + DataType<DTypes>,
     //       DTypes: 'a + DTypeList
 {
@@ -340,18 +348,22 @@ pub struct Framed<'a, Fields, T>
     // dtype: PhantomData<T>,
 }
 impl<'a, Fields, T> Framed<'a, Fields, T>
+    where Fields: AssocStorage,
+          Fields::Storage: Debug,
     // where DTypes: DTypeList,
     //       T: DataType<DTypes>
 {
     /// Create a new framed view of some data, as view through a particular `DataFrame`.
-    pub fn new(frame: &'a DataFrame<Fields>, data: OwnedOrRef<'a, Fields, T>)
+    pub fn new(frame: &'a DataFrame<Fields>, data: OwnedOrRef<'a, T>)
         -> Framed<'a, Fields, T>
     {
         Framed { frame, data }
     }
 }
 
-impl<'a, Fields, T> DataIndex<Fields> for Framed<'a, Fields, T>
+impl<'a, Fields, T> DataIndex for Framed<'a, Fields, T>
+    where Fields: AssocStorage + Debug,
+          T: Debug
     // where T: DataType<DTypes>,
     //       DTypes: DTypeList,
     //       DTypes::Storage: MaxLen<DTypes>
@@ -368,6 +380,7 @@ impl<'a, Fields, T> DataIndex<Fields> for Framed<'a, Fields, T>
 }
 
 pub(crate) struct SerializedField<'a, Ident, FIdx, Fields>
+    where Fields: 'a + AssocStorage
     // where DTypes: 'a + DTypeList
 {
     _ident: PhantomData<Ident>,
@@ -376,6 +389,7 @@ pub(crate) struct SerializedField<'a, Ident, FIdx, Fields>
 }
 impl<'a, Ident, FIdx, Fields> SerializedField<'a, Ident, FIdx, Fields>
     // where DTypes: DTypeList
+    where Fields: 'a + AssocStorage
 {
     pub fn new(frame: &'a DataFrame<Fields>)
         -> SerializedField<'a, Ident, FIdx, Fields>
@@ -391,9 +405,28 @@ impl<'a, Ident, FIdx, Fields> SerializedField<'a, Ident, FIdx, Fields>
 impl<'a, Ident, FIdx, Fields> Serialize for SerializedField<'a, Ident, FIdx, Fields>
     // where DTypes: DTypeList,
     //       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>,
+    where Fields: 'a + AssocStorage
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer,
     {
         self.frame.store.serialize_field(&self.ident, self.frame, serializer)
+    }
+}
+
+impl<Fields> DataFrame<Fields>
+    where Fields: AssocStorage
+{
+    pub fn field<'a, Ident, Searcher>(&'a self)
+        -> Framed<
+            'a,
+            Fields,
+            <Fields as FSelector<Ident, Searcher>>::DType
+        >
+        where Fields: FSelector<Ident, Searcher>
+    {
+        Framed::new(
+            self,
+            self.store.field()
+        )
     }
 }

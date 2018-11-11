@@ -29,24 +29,15 @@ pub trait IsImplemented<Feature> {
 pub type IsCapable<DType, Feature>
     = Capabilities<DType, Feature, <DType as IsImplemented<Feature>>::IsImpl>;
 
-// pub type FieldFeatureCons<Ident, FIdx, DType, Feature, Tail>
-//     = Cons<
-//         FieldMarker<
-//             Field<Ident, FIdx, DType>,
-//             IsCapable<DType, Feature>
-//         >,
-//         Tail
-//     >;
-
 pub trait PartialMap<F>
 {
     type Output;
-    fn map(f: F) -> Self::Output;
+    fn map(f: &mut F) -> Self::Output;
 }
 impl<F> PartialMap<F> for Nil
 {
     type Output = Nil;
-    fn map(f: F) -> Nil { Nil }
+    fn map(f: &mut F) -> Nil { Nil }
 }
 impl<Field, Feature, Tail, F> PartialMap<F>
     for FieldCapabilitiesCons<Field, Feature, Implemented, Tail>
@@ -56,32 +47,33 @@ impl<Field, Feature, Tail, F> PartialMap<F>
 {
     type Output = FieldPayloadCons<Field, F::Output, Tail::Output>;
 
-    fn map(f: F) -> Self::Output
+    fn map(f: &mut F) -> Self::Output
     {
         FieldPayloadCons {
             head: FieldPayload {
                 _field: PhantomData,
-                payload: f.call(),
+                payload: f.call::<Field>(),
             },
-            tail: Tail::map()
+            tail: Tail::map(f)
         }
     }
 }
 impl<Field, Feature, Tail, F> PartialMap<F>
-    for FieldCapabilitiesCons<Field, Feature, Implemented, Tail>
+    for FieldCapabilitiesCons<Field, Feature, Unimplemented, Tail>
     where Tail: PartialMap<F>,
+          Field: FieldTypes,
           F: FuncDefault
 {
     type Output = FieldPayloadCons<Field, F::Output, Tail::Output>;
 
-    fn map(f: F) -> Self::Output
+    fn map(f: &mut F) -> Self::Output
     {
         FieldPayloadCons {
             head: FieldPayload {
                 _field: PhantomData,
-                payload: f.call(),
+                payload: f.call::<Field>(),
             },
-            tail: Tail::map()
+            tail: Tail::map(f)
         }
     }
 
@@ -90,7 +82,7 @@ impl<Field, Feature, Tail, F> PartialMap<F>
 pub trait Func<DType> {
     type Output;
     fn call<Field>(&self) -> Self::Output
-        where Field: FieldTypes;
+        where Field: FieldTypes<DType=DType>;
 }
 
 pub trait FuncDefault {
@@ -109,13 +101,13 @@ pub trait DeriveCapabilities<Feature>
 impl<Feature> DeriveCapabilities<Feature> for Nil {
     type Output = Nil;
 }
-impl<Ident, FIdx, DType, Tail, Feature> DeriveCapabilities<Feature>
-    for FieldCons<Ident, FIdx, DType, Tail>
+impl<Ident, DType, Tail, Feature> DeriveCapabilities<Feature>
+    for FieldCons<Ident, DType, Tail>
     where Tail: DeriveCapabilities<Feature>,
           DType: IsImplemented<Feature>
 {
     type Output = Cons<
-        FieldMarker<Field<Ident, FIdx, DType>, IsCapable<DType, Feature>>,
+        FieldMarker<Field<Ident, DType>, IsCapable<DType, Feature>>,
         Tail::Output
     >;
 }
@@ -129,7 +121,7 @@ macro_rules! partial_map {
                     <$func as $crate::features::ReqFeature>::Feature
                 >
             >::Output as $crate::features::PartialMap<$func>
-        >::map()
+        >::map(<$func>::default())
     }}
 }
 
