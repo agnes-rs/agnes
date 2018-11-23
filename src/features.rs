@@ -1,7 +1,11 @@
 use std::marker::PhantomData;
 
+use access::DataIndex;
 use fieldlist::*;
 use cons::*;
+use label::{LVCons, TypedValue, Valued, SelfValued};
+use view::DataIndexCons;
+use select::{FieldSelect};
 
 #[derive(Debug, Clone)]
 pub struct Implemented;
@@ -11,16 +15,24 @@ pub struct Unimplemented;
 #[derive(Debug, Clone)]
 pub struct Capabilities<DType, Feature, IsImpl>
 {
-    _dtype: PhantomData<DType>,
-    _feature: PhantomData<Feature>,
-    _is_impl: PhantomData<IsImpl>,
+    _marker: PhantomData<(DType, Feature, IsImpl)>,
 }
 
-pub type FieldCapabilitiesCons<Field, Feature, IsImpl, Tail>
-    = Cons<
-        FieldMarker<Field, Capabilities<<Field as FieldTypes>::DType, Feature, IsImpl>>,
-        Tail
-    >;
+#[derive(Debug, Clone)]
+pub struct StorageCapabilities<DType, DI, Feature, IsImpl>
+    where DI: DataIndex<DType=DType>
+{
+    _marker: PhantomData<Capabilities<DType, Feature, IsImpl>>,
+    pub data: DI,
+}
+impl<'a, DType, DI, Feature, IsImpl> SelfValued
+    for StorageCapabilities<DType, DI, Feature, IsImpl>
+    where DI: DataIndex<DType=DType> {}
+
+// pub type FieldCapabilitiesCons<Label, DType, Feature, IsImpl, Tail>
+//     = LMCons<Label, Capabilities<DType, Feature, IsImpl>, Tail>;
+pub type StorageCapabilitiesCons<Label, DType, DI, Feature, IsImpl, Tail>
+    = LVCons<Label, StorageCapabilities<DType, DI, Feature, IsImpl>, Tail>;
 
 pub trait IsImplemented<Feature> {
     type IsImpl;
@@ -32,48 +44,57 @@ pub type IsCapable<DType, Feature>
 pub trait PartialMap<F>
 {
     type Output;
-    fn map(f: &mut F) -> Self::Output;
+    fn map(&self, f: &mut F) -> Self::Output;
 }
-impl<F> PartialMap<F> for Nil
+impl<'a, F> PartialMap<F> for Nil
 {
     type Output = Nil;
-    fn map(f: &mut F) -> Nil { Nil }
+    fn map(&self, _f: &mut F) -> Nil
+    {
+        Nil
+    }
 }
-impl<Field, Feature, Tail, F> PartialMap<F>
-    for FieldCapabilitiesCons<Field, Feature, Implemented, Tail>
+impl<'a, Label, DType, DI, Feature, Tail, F> PartialMap<F>
+    for StorageCapabilitiesCons<Label, DType, DI, Feature, Implemented, Tail>
+    // for FieldCapabilitiesCons<Label, DType, Feature, Implemented, Tail>
     where Tail: PartialMap<F>,
-          Field: FieldTypes,
-          F: Func<Field::DType>
-{
-    type Output = FieldPayloadCons<Field, F::Output, Tail::Output>;
+          F: Func<DType>,
+          // DType: Debug,
+          DI: DataIndex<DType=DType>,
+          // &'a DI: DataIndex<DType=DType>
 
-    fn map(f: &mut F) -> Self::Output
+
+          // Labeled<Label, TypedValue<DType,
+          //   MarkerValue<Capabilities<DType, Feature, Implemented>, Payload>>>: Valued,
+
+          // S: FieldSelect,
+          // for<'a> S: SelectFieldByLabel<Label>,
+          // for<'a> <S as SelectFieldByLabel<Label>>::Output: DataIndex<DType=DType>
+{
+    type Output = FieldPayloadCons<Label, DType, F::Output, Tail::Output>;
+
+    fn map(&self, f: &mut F) -> Self::Output
     {
         FieldPayloadCons {
-            head: FieldPayload {
-                _field: PhantomData,
-                payload: f.call::<Field>(),
-            },
-            tail: Tail::map(f)
+            head: TypedValue::from(f.call(&self.head.value_ref().data)).into(),
+            tail: self.tail.map(f)
         }
     }
 }
-impl<Field, Feature, Tail, F> PartialMap<F>
-    for FieldCapabilitiesCons<Field, Feature, Unimplemented, Tail>
+impl<'a, Label, DType, DI, Feature, Tail, F> PartialMap<F>
+    for StorageCapabilitiesCons<Label, DType, DI, Feature, Unimplemented, Tail>
+    // for FieldCapabilitiesCons<Label, DType, Feature, Unimplemented, Tail>
     where Tail: PartialMap<F>,
-          Field: FieldTypes,
+          DI: DataIndex<DType=DType>,
           F: FuncDefault
 {
-    type Output = FieldPayloadCons<Field, F::Output, Tail::Output>;
+    type Output = FieldPayloadCons<Label, DType, F::Output, Tail::Output>;
 
-    fn map(f: &mut F) -> Self::Output
+    fn map(&self, f: &mut F) -> Self::Output
     {
         FieldPayloadCons {
-            head: FieldPayload {
-                _field: PhantomData,
-                payload: f.call::<Field>(),
-            },
-            tail: Tail::map(f)
+            head: TypedValue::from(f.call()).into(),
+            tail: self.tail.map(f)
         }
     }
 
@@ -81,48 +102,89 @@ impl<Field, Feature, Tail, F> PartialMap<F>
 
 pub trait Func<DType> {
     type Output;
-    fn call<Field>(&self) -> Self::Output
-        where Field: FieldTypes<DType=DType>;
+    fn call<DI>(&mut self, data: &DI) -> Self::Output
+        where DI: DataIndex<DType=DType>;
 }
 
 pub trait FuncDefault {
     type Output;
-    fn call<Field>(&self) -> Self::Output;
+    fn call(&mut self) -> Self::Output;
 }
 
-pub trait ReqFeature {
-    type Feature;
-}
+// pub trait ReqFeature {
+//     type Feature;
+// }
+// pub type ReqFeatureOf<T> = <T as ReqFeature>::Feature;
 
-pub trait DeriveCapabilities<Feature>
+//TODONEXT: change to DeriveCapabilities<Func> instead of using the Feature stepping stone, and
+//add the PartialMap associated type constraint. Then we will know that the output must support
+//PartialMap<Func> and don't need to try to ensure it later
+pub trait DeriveCapabilities<F>
 {
-    type Output;
+    type Output: PartialMap<F>;
+    fn derive(self) -> Self::Output;
 }
-impl<Feature> DeriveCapabilities<Feature> for Nil {
+impl<F> DeriveCapabilities<F> for Nil
+{
     type Output = Nil;
+    fn derive(self) -> Nil { Nil }
 }
-impl<Ident, DType, Tail, Feature> DeriveCapabilities<Feature>
-    for FieldCons<Ident, DType, Tail>
-    where Tail: DeriveCapabilities<Feature>,
-          DType: IsImplemented<Feature>
+impl<Label, DType, DI, Tail, F> DeriveCapabilities<F>
+    for DataIndexCons<Label, DType, DI, Tail>
+    where //Label: 'a,
+          Tail: DeriveCapabilities<F>,
+          DI: DataIndex<DType=DType> + SelfValued,
+          DType: IsImplemented<F>,
+          StorageCapabilitiesCons<
+            Label, DType, DI, F,
+            <DType as IsImplemented<F>>::IsImpl,
+            <Tail as DeriveCapabilities<F>>::Output
+          >: PartialMap<F>,
 {
-    type Output = Cons<
-        FieldMarker<Field<Ident, DType>, IsCapable<DType, Feature>>,
-        Tail::Output
+    type Output = StorageCapabilitiesCons<
+        Label,
+        DType,
+        DI,
+        F,
+        <DType as IsImplemented<F>>::IsImpl,
+        <Tail as DeriveCapabilities<F>>::Output
     >;
+    fn derive(self) -> Self::Output
+    {
+        LVCons {
+            head: StorageCapabilities {
+                data: self.head.value(),
+                _marker: PhantomData,
+            }.into(),
+            tail: self.tail.derive()
+        }
+    }
 }
 
-#[macro_export]
-macro_rules! partial_map {
-    ($fields:ty, $func:ty) => {{
-        <
-            <
-                $fields as $crate::features::DeriveCapabilities<
-                    <$func as $crate::features::ReqFeature>::Feature
-                >
-            >::Output as $crate::features::PartialMap<$func>
-        >::map(<$func>::default())
-    }}
-}
+// pub type DerivePartialMap<Fields, Func>
+//     = <Fields as DeriveCapabilities<'a, <Func as ReqFeature>::Feature>>::Output;
 
-pub struct DisplayFeat;
+// pub trait Derivable<Fields, Func>
+//     where Func: ReqFeature,
+//           Fields: DeriveCapabilities<<Func as ReqFeature>::Feature> {}
+// impl<T, Fields, Func> Derivable<Fields, Func> for T
+//     where Func: ReqFeature,
+//           Fields: DeriveCapabilities<<Func as ReqFeature>::Feature> {}
+
+
+
+// #[macro_export]
+// macro_rules! partial_map {
+//     ($fields:ty, $func:ty) => {{
+//         DerivePartialMap<Fields, Func><
+//             <
+//                 $fields as $crate::features::DeriveCapabilities<
+//                     <$func as $crate::features::ReqFeature>::Feature
+//                 >
+//             >::Output as $crate::features::PartialMap<$func>
+//         >::map(<$func>::default())
+//     }}
+// }
+
+// #[derive(Debug, Clone)]
+// pub struct DisplayFeat;

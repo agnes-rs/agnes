@@ -1,71 +1,75 @@
-use std::fmt;
 use std::marker::PhantomData;
 
 // use typenum::{Unsigned, U0, B1};
 
 use cons::*;
+use label::{LMCons, LDVCons, SelfValued, TypedValue};
 // use data_types::{DTypeList, GetDType};
 
 
+// #[derive(Debug, Clone)]
+// pub struct Field<Ident, DType> {
+//     _ident: PhantomData<Ident>,
+//     _dtype: PhantomData<DType>,
+// }
+
+// pub trait FieldTypes {
+//     type Ident;
+//     type DType;
+// }
+// impl<Ident, DType> FieldTypes for Field<Ident, DType> {
+//     type Ident = Ident;
+//     type DType = DType;
+// }
+
 #[derive(Debug, Clone)]
-pub struct Field<Ident, DType> {
-    _ident: PhantomData<Ident>,
+pub struct TypedPayload<DType, Payload> {
     _dtype: PhantomData<DType>,
+    payload: Payload
 }
-
-pub trait FieldTypes {
-    type Ident;
-    type DType;
-}
-impl<Ident, DType> FieldTypes for Field<Ident, DType> {
-    type Ident = Ident;
-    type DType = DType;
-}
-
-#[derive(Debug, Clone)]
-pub struct FieldPayload<Field, Payload> {
-    _field: PhantomData<Field>,
-    pub payload: Payload
-}
-impl<Field, Payload> From<Payload> for FieldPayload<Field, Payload>
+impl<DType, Payload> From<Payload> for TypedPayload<DType, Payload>
 {
-    fn from(payload: Payload) -> FieldPayload<Field, Payload> {
-        FieldPayload {
-            _field: PhantomData,
+    fn from(payload: Payload) -> TypedPayload<DType, Payload> {
+        TypedPayload {
+            _dtype: PhantomData,
             payload
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct FieldMarker<Field, Marker> {
-    _field: PhantomData<Field>,
-    _marker: PhantomData<Marker>
-}
+// #[derive(Debug, Clone)]
+// pub struct FieldMarker<Field, Marker> {
+//     _field: PhantomData<Field>,
+//     _marker: PhantomData<Marker>
+// }
 
-pub type FieldCons<Ident, DType, Tail> = Cons<Field<Ident, DType>, Tail>;
-pub type FieldPayloadCons<Field, Payload, Tail> = Cons<FieldPayload<Field, Payload>, Tail>;
+/// Type alias for an `LVCons`-list which only contains the data type information for the identified
+/// field.
+pub type FieldCons<Label, DType, Tail> = LMCons<Label, DType, Tail>;
+pub type FieldPayloadCons<Label, DType, Payload, Tail> = LDVCons<Label, DType, Payload, Tail>;
+// pub type FieldPayloadMarkerCons<Label, DType, Payload, Marker, Tail>
+//     = LDMVCons<Label, DType, Marker, Payload, Tail>;
 
-impl<Ident, DType, Tail> FieldTypes for FieldCons<Ident, DType, Tail>
-{
-    type Ident = Ident;
-    type DType = DType;
-}
-impl FieldTypes for Nil
-{
-    type Ident = ();
-    type DType = ();
-}
+// impl<Ident, DType, Tail> FieldTypes for FieldCons<Ident, DType, Tail>
+// {
+//     type Ident = Ident;
+//     type DType = DType;
+// }
+// impl FieldTypes for Nil
+// {
+//     type Ident = ();
+//     type DType = ();
+// }
 
-pub trait AssocField {
-    type Field;
-}
-impl<Ident, DType, Tail> AssocField for FieldCons<Ident, DType, Tail> {
-    type Field = Field<Ident, DType>;
-}
-impl<Field, Payload, Tail> AssocField for FieldPayloadCons<Field, Payload, Tail> {
-    type Field = Field;
-}
+// pub trait AssocField {
+//     type Field;
+// }
+// impl<Label, DType, Tail> AssocField for FieldCons<Label, DType, Tail> {
+//     type Field = Field<Label, DType>;
+// }
+// impl<Field, Payload, Tail> AssocField for FieldPayloadCons<Field, Payload, Tail> {
+//     type Field = Field;
+// }
 
 // pub trait AssocFieldCons {
 //     type Fields;
@@ -91,17 +95,17 @@ pub enum FieldDesignator {
     Expr(String),
     Idx(usize),
 }
+impl SelfValued for FieldDesignator {}
 
-pub type SpecCons<Field, Tail> = FieldPayloadCons<Field, FieldDesignator, Tail>;
+pub type SpecCons<Label, DType, Tail> = FieldPayloadCons<Label, DType, FieldDesignator, Tail>;
 
-impl<Field, Tail> SpecCons<Field, Tail> {
-    pub fn new(src_designator: FieldDesignator, tail: Tail) -> SpecCons<Field, Tail>
+impl<Label, DType, Tail> SpecCons<Label, DType, Tail>
+{
+    pub fn new(src_designator: FieldDesignator, tail: Tail) -> SpecCons<Label, DType, Tail>
     {
-        SpecCons {
-            head: FieldPayload {
-                _field: PhantomData,
-                payload: src_designator,
-            },
+        SpecCons
+        {
+            head: TypedValue::from(src_designator).into(),
             tail
         }
     }
@@ -115,26 +119,22 @@ macro_rules! spec {
     }};
 
     // end points without trailing comma
-    (@step $field_ident:ident($field_name:expr): $field_ty:ty) => {{
-        use $crate::fieldlist::{FieldDesignator, SpecCons, Field};
+    (@step $field_label:ident($field_name:expr): $field_ty:ty) => {{
+        use $crate::fieldlist::{FieldDesignator, SpecCons};
         SpecCons::<
-            Field<
-                $field_ident,
-                $field_ty
-            >,
+            $field_label,
+            $field_ty,
             _
         >::new(
             FieldDesignator::Expr($field_name.to_string()),
             spec![@step ]
         )
     }};
-    (@step $field_ident:ident[$src_field_idx:expr]: $field_ty:ty) => {{
-        use $crate::fieldlist::{FieldDesignator, SpecCons, Field};
+    (@step $field_label:ident[$src_field_idx:expr]: $field_ty:ty) => {{
+        use $crate::fieldlist::{FieldDesignator, SpecCons};
         SpecCons::<
-            Field<
-                $field_ident,
-                $field_ty,
-            >,
+            $field_label,
+            $field_ty,
             _
         >::new(
             FieldDesignator::Idx($src_field_idx),
@@ -143,26 +143,22 @@ macro_rules! spec {
     }};
 
     // entry point / main recursion loop
-    (@step $field_ident:ident($field_name:expr): $field_ty:ty, $($rest:tt)*) => {{
-        use $crate::fieldlist::{FieldDesignator, SpecCons, Field};
+    (@step $field_label:ident($field_name:expr): $field_ty:ty, $($rest:tt)*) => {{
+        use $crate::fieldlist::{FieldDesignator, SpecCons};
         SpecCons::<
-            Field<
-                $field_ident,
-                $field_ty
-            >,
+            $field_label::Label,
+            $field_ty,
             _
         >::new(
             FieldDesignator::Expr($field_name.to_string()),
             spec![@step $($rest)*]
         )
     }};
-    (@step $field_ident:ident[$src_field_idx:expr]: $field_ty:ty, $($rest:tt)*) => {{
-        use $crate::fieldlist::{FieldDesignator, SpecCons, Field};
+    (@step $field_label:ident[$src_field_idx:expr]: $field_ty:ty, $($rest:tt)*) => {{
+        use $crate::fieldlist::{FieldDesignator, SpecCons};
         SpecCons::<
-            Field<
-                $field_ident,
-                $field_ty
-            >,
+            $field_label,
+            $field_ty,
             _
         >::new(
             FieldDesignator::Idx($src_field_idx),
@@ -173,42 +169,30 @@ macro_rules! spec {
         spec![@step $($body)*]
     }};
 
-    (@decl_fields ) => {};
-    (@decl_fields $field_ident:ident($field_name:expr): $field_ty:ty) => {
-        #[derive(Debug)]
-        struct $field_ident;
-        // impl $crate::fieldlist::Position for $field_ident {
-        //     type Pos = ::typenum::Add1<$pos>;
-        // }
-        spec![@decl_fields];
+    (@decl_fields($pos:ty) ) => {};
+    (@decl_fields($pos:ty) $field_label:ident($field_name:expr): $field_ty:ty) => {
+        // type $field_label = $crate::label::Label<$pos>;
+        label![$field_label, $pos];
+        spec![@decl_fields(::typenum::Add1<$pos>)];
     };
-    (@decl_fields $field_ident:ident[$field_name:ident]: $field_ty:ty) => {
-        #[derive(Debug)]
-        struct $field_ident;
-        // impl $crate::fieldlist::Position for $field_ident {
-        //     type Pos = ::typenum::Add1<$pos>;
-        // }
-        spec![@decl_fields];
+    (@decl_fields($pos:ty) $field_label:ident[$field_name:ident]: $field_ty:ty) => {
+        // type $field_label = $crate::label::Label<$pos>;
+        label![$field_label, $pos];
+        spec![@decl_fields(::typenum::Add1<$pos>)];
     };
-    (@decl_fields $field_ident:ident($field_name:expr): $field_ty:ty, $($rest:tt)*) => {
-        #[derive(Debug)]
-        struct $field_ident;
-        // impl $crate::fieldlist::Position for $field_ident {
-        //     type Pos = ::typenum::Add1<$pos>;
-        // }
-        spec![@decl_fields $($rest)*];
+    (@decl_fields($pos:ty) $field_label:ident($field_name:expr): $field_ty:ty, $($rest:tt)*) => {
+        // type $field_label = $crate::label::Label<$pos>;
+        label![$field_label, $pos];
+        spec![@decl_fields(::typenum::Add1<$pos>) $($rest)*];
     };
-    (@decl_fields $field_ident:ident[$field_name:ident]: $field_ty:ty, $($rest:tt)*) => {
-        #[derive(Debug)]
-        struct $field_ident;
-        // impl $crate::fieldlist::Position for $field_ident {
-        //     type Pos = ::typenum::Add1<$pos>;
-        // }
-        spec![@decl_fields $($rest)*];
+    (@decl_fields($pos:ty) $field_label:ident[$field_name:ident]: $field_ty:ty, $($rest:tt)*) => {
+        // type $field_label = $crate::label::Label<$pos>;
+        label![$field_label, $pos];
+        spec![@decl_fields(::typenum::Add1<$pos>) $($rest)*];
     };
-    // (@decl_fields $($body:tt)*) => {
-    //     spec![@decl_fields $($body)*];
-    // };
+    (@decl_fields $($body:tt)*) => {
+        spec![@decl_fields(::typenum::consts::U0) $($body)*];
+    };
 
     (let $spec:ident = { $($body:tt)* };) => {
         spec![@decl_fields $($body)*];
@@ -217,71 +201,66 @@ macro_rules! spec {
 
 }
 
-#[derive(Debug, Clone)]
-pub struct Match;
-#[derive(Debug, Clone)]
-pub struct NoMatch<Next> {
-    _marker: PhantomData<Next>,
-}
+// #[derive(Debug, Clone)]
+// pub struct Match;
+// #[derive(Debug, Clone)]
+// pub struct NoMatch<Next> {
+//     _marker: PhantomData<Next>,
+// }
 
-pub trait FSelector<Ident, Searcher> {
-    type DType;
-}
-impl<TargetIdent, NonTargetIdent, TargetInTail, DType, Tail>
-    FSelector<TargetIdent, NoMatch<TargetInTail>>
-    for FieldCons<NonTargetIdent, DType, Tail>
-    where Tail: FSelector<TargetIdent, TargetInTail>
-{
-    type DType = <Tail as FSelector<TargetIdent, TargetInTail>>::DType;
-}
-impl<TargetIdent, DType, Tail>
-    FSelector<TargetIdent, Match>
-    for FieldCons<TargetIdent, DType, Tail>
-{
-    type DType = DType;
-}
+// pub trait FSelector<Ident, Searcher> {
+//     type DType;
+// }
+// impl<TargetIdent, NonTargetIdent, TargetInTail, DType, Tail>
+//     FSelector<TargetIdent, NoMatch<TargetInTail>>
+//     for FieldCons<NonTargetIdent, DType, Tail>
+//     where Tail: FSelector<TargetIdent, TargetInTail>
+// {
+//     type DType = <Tail as FSelector<TargetIdent, TargetInTail>>::DType;
+// }
+// impl<TargetIdent, DType, Tail>
+//     FSelector<TargetIdent, Match>
+//     for FieldCons<TargetIdent, DType, Tail>
+// {
+//     type DType = DType;
+// }
 
-impl<TargetIdent, NonTargetIdent, TargetInTail, DType, Payload, Tail>
-    FSelector<TargetIdent, NoMatch<TargetInTail>>
-    for FieldPayloadCons<Field<NonTargetIdent, DType>, Payload, Tail>
-    where Tail: FSelector<TargetIdent, TargetInTail>
-{
-    type DType = <Tail as FSelector<TargetIdent, TargetInTail>>::DType;
-}
-impl<TargetIdent, DType, Payload, Tail> FSelector<TargetIdent, Match>
-    for FieldPayloadCons<Field<TargetIdent, DType>, Payload, Tail>
-{
-    type DType = DType;
-}
+// impl<TargetIdent, NonTargetIdent, TargetInTail, DType, Payload, Tail>
+//     FSelector<TargetIdent, NoMatch<TargetInTail>>
+//     for FieldPayloadCons<Field<NonTargetIdent, DType>, Payload, Tail>
+//     where Tail: FSelector<TargetIdent, TargetInTail>
+// {
+//     type DType = <Tail as FSelector<TargetIdent, TargetInTail>>::DType;
+// }
+// impl<TargetIdent, DType, Payload, Tail> FSelector<TargetIdent, Match>
+//     for FieldPayloadCons<Field<TargetIdent, DType>, Payload, Tail>
+// {
+//     type DType = DType;
+// }
 
 pub trait AttachPayload<Gen, DType>
 {
-    // type Field: FieldTypes<DType=DType>;
     type Output;
 
     fn attach_payload() -> Self::Output;
 }
 impl<Gen, DType> AttachPayload<Gen, DType> for Nil
 {
-    // type Field = Nil;
     type Output = Nil;
 
     fn attach_payload() -> Nil { Nil }
 }
-impl<Ident, DType, Tail, Gen> AttachPayload<Gen, DType>
-    for FieldCons<Ident, DType, Tail>
+impl<Label, DType, Tail, Gen> AttachPayload<Gen, DType>
+    for FieldCons<Label, DType, Tail>
     where Tail: AttachPayload<Gen, DType>,
           Gen: PayloadGenerator<DType>
 {
-    type Output = FieldPayloadCons<Field<Ident, DType>, Gen::Payload, Tail::Output>;
+    type Output = FieldPayloadCons<Label, DType, Gen::Payload, Tail::Output>;
 
     fn attach_payload() -> Self::Output
     {
         FieldPayloadCons {
-            head: FieldPayload {
-                _field: PhantomData,
-                payload: Gen::generate(),
-            },
+            head: TypedValue::from(Gen::generate()).into(),
             tail: Tail::attach_payload()
         }
     }

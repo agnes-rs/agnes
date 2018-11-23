@@ -13,422 +13,710 @@ object with all of the records of the two source `DataView`s.
 parameters.
 
 */
-use std::fmt::Debug;
 use std::rc::Rc;
 use std::marker::PhantomData;
 use std::fmt::{self, Display, Formatter};
-use std::iter::FromIterator;
 
-use indexmap::IndexMap;
-use indexmap::map::Keys;
+#[cfg(serialize)]
 use serde::ser::{self, Serialize, Serializer, SerializeMap};
 use prettytable as pt;
 
 use access::DataIndex;
-use frame::{DataFrame, Framed, SerializedField};
+use frame::{DataFrame, Framed, FrameFields, FrameFieldsOf};
+
+#[cfg(serialize)]
+use frame::{SerializedField};
 // use frame::{DataFrame, FramedMap, FramedTMap, FramedMapExt, Framed, FramedFunc, SerializedField};
 // use filter::Filter;
 use field::{Value};
 // use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list, MergedFields,
 //     MergeFields};
-use field::{FieldIdent, RFieldIdent};
-use fieldlist::{FSelector, FieldCons, FieldPayloadCons, Field, PayloadGenerator, AttachPayload,
-    FieldTypes, Match, NoMatch};
-use features::{Func, FuncDefault, ReqFeature, DisplayFeat, DeriveCapabilities};
+use fieldlist::{FieldCons, FieldPayloadCons};
+use features::{Func, FuncDefault, Implemented, Unimplemented, IsImplemented,
+    DeriveCapabilities, PartialMap};
 use cons::*;
-use error;
 // use store::{DataStore, CopyIntoFn};
-use store::{DataStore, AssocStorage};
+use store::{NRows, AssocStorage};
 // use data_types::*;
 // use apply::sort::{DtOrd, SortOrderFn};
-use select::{SelectField, FSelect};
+use select::{SelectFieldByLabel, FieldSelect};
+use label::*;
 
-#[derive(Debug, Clone)]
-pub struct ViewField<Ident, DType, FrameFields>
+pub type FrameLookupCons<Label, FrameLabel, Tail> = LMCons<Label, FrameLabel, Tail>;
+pub type ViewFrameCons<FrameLabel, FrameFields, Tail>
+    = LVCons<FrameLabel, Rc<DataFrame<FrameFields>>, Tail>;
+
+/// Allow `DataFrame`s to be pulled from `LVCons` as `Value`s
+impl<FrameFields> SelfValued for DataFrame<FrameFields>
+    where FrameFields: AssocStorage {}
+
+// `Labels` is `FrameLookupCons` cons-list. `Frames` is `ViewFrameCons` cons-list.
+#[derive(Debug, Clone, Default)]
+pub struct DataView<Labels, Frames>
+{
+    _labels: PhantomData<Labels>,
+    frames: Frames,
+}
+
+pub trait HasLabels<LabelList>
+{}
+impl<T> HasLabels<Nil> for T
+{}
+impl<NeedleLbl, NeedleTail, Haystack> HasLabels<LabelCons<NeedleLbl, NeedleTail>>
+    for Haystack
+    where Haystack: Member<NeedleLbl, IsMember=True>,
+          Haystack: HasLabels<NeedleTail>,
+{}
+
+
+impl<FrameLabel, FrameFields, Tail> NRows
+    for ViewFrameCons<FrameLabel, FrameFields, Tail>
     where FrameFields: AssocStorage,
-          FrameFields::Storage: Debug,
-{
-    _ident: PhantomData<Ident>,
-    _dtype: PhantomData<DType>,
-    frame: Rc<DataFrame<FrameFields>>,
-}
-
-pub type ViewFieldCons<Ident, DType, FrameFields, Tail>
-    = Cons<ViewField<Ident, DType, FrameFields>, Tail>;
-
-pub trait FrameSelector<Ident, Searcher> {
-    type FrameFields: AssocStorage;
-    type DType;
-
-    fn select_frame(&self) -> Rc<DataFrame<Self::FrameFields>>;
-}
-impl<Ident, NonIdent, TargetInTail, DType, FrameFields, Tail>
-    FrameSelector<Ident, NoMatch<TargetInTail>>
-    for ViewFieldCons<NonIdent, DType, FrameFields, Tail>
-    where Tail: FrameSelector<Ident, TargetInTail>,
-          FrameFields: AssocStorage
-{
-    type FrameFields = <Tail as FrameSelector<Ident, TargetInTail>>::FrameFields;
-    type DType = <Tail as FrameSelector<Ident, TargetInTail>>::DType;
-
-    fn select_frame(&self) -> Rc<DataFrame<Self::FrameFields>>
-    {
-        self.tail.select_frame().clone()
-    }
-}
-impl<Ident, DType, FrameFields, Tail>
-    FrameSelector<Ident, Match>
-    for ViewFieldCons<Ident, DType, FrameFields, Tail>
-    where FrameFields: AssocStorage,
-{
-    type FrameFields = FrameFields;
-    type DType = DType;
-
-    fn select_frame(&self) -> Rc<DataFrame<FrameFields>>
-    {
-        self.head.frame.clone()
-    }
-}
-
-pub trait SelectIdents<IdentList, SearcherPool>
-{
-    type Output;
-
-    fn select_idents(&self) -> Self::Output;
-}
-impl<T> SelectIdents<Nil, Nil> for T {
-    type Output = Nil;
-
-    fn select_idents(&self) -> Nil { Nil }
-}
-impl<Ident, IdTail, VFIdent, DType, VFFrameFields, VFTail, Searcher, SearchTail>
-    SelectIdents<IdentCons<Ident, IdTail>, Cons<Searcher, SearchTail>>
-    for ViewFieldCons<VFIdent, DType, VFFrameFields, VFTail>
-    where VFFrameFields: AssocStorage,
-          ViewFieldCons<VFIdent, DType, VFFrameFields, VFTail>: FrameSelector<Ident, Searcher>,
-          VFTail: SelectIdents<IdTail, SearchTail>
-{
-    type Output = ViewFieldCons<
-        Ident,
-        <ViewFieldCons<VFIdent, DType, VFFrameFields, VFTail>
-            as FrameSelector<Ident, Searcher>>::DType,
-        <ViewFieldCons<VFIdent, DType, VFFrameFields, VFTail>
-            as FrameSelector<Ident, Searcher>>::FrameFields,
-        <VFTail as SelectIdents<IdTail, SearchTail>>::Output
-    >;
-
-    fn select_idents(&self) -> Self::Output
-    {
-        Cons {
-            head: ViewField {
-                _ident: PhantomData,
-                _dtype: PhantomData,
-                frame: self.select_frame().clone()
-            },
-            tail: self.tail.select_idents()
-        }
-    }
-}
-
-pub trait NRows
-{
-    fn nrows(&self) -> usize;
-}
-impl NRows for Nil {
-    fn nrows(&self) -> usize { 0 }
-}
-impl<Ident, DType, FrameFields, Tail> NRows
-    for ViewFieldCons<Ident, DType, FrameFields, Tail>
-    where FrameFields: AssocStorage
+          DataFrame<FrameFields>: NRows,
 {
     fn nrows(&self) -> usize {
-        self.head.frame.nrows()
+        self.head.value_ref().nrows()
     }
 }
 
-// 'Fields' is 'ViewFields' cons-list.
-#[derive(Debug, Clone, Default)]
-pub struct DataView2<ViewFields>
+impl<Labels, Frames> DataView<Labels, Frames>
 {
-    fields: ViewFields,
-}
-
-impl<ViewFields> DataView2<ViewFields>
-{
-    /// Generate a new subview of this DataView. IdentList is an IdentCons.
-    pub fn v<IdentList, SearcherPool>(&self)
-        -> DataView2<<ViewFields as SelectIdents<IdentList, SearcherPool>>::Output>
-        where ViewFields: SelectIdents<IdentList, SearcherPool>
+    pub fn new(frames: Frames) -> DataView<Labels, Frames>
     {
-        DataView2 {
-            fields: self.fields.select_idents(),
+        DataView {
+            _labels: PhantomData,
+            frames,
         }
     }
-    pub fn subview<IdentList, SearcherPool>(&self)
-        -> DataView2<<ViewFields as SelectIdents<IdentList, SearcherPool>>::Output>
-        where ViewFields: SelectIdents<IdentList, SearcherPool>
+}
+
+impl<Labels, Frames> DataView<Labels, Frames>
+    where Frames: Clone
+{
+    /// Generate a new subview of this DataView. LabelList is an LabelCons.
+    pub fn v<LabelList>(&self)
+        -> DataView<Labels, Frames>
+        where Labels: HasLabels<LabelList>
     {
-        self.v::<IdentList, SearcherPool>()
+        DataView {
+            //TODO: this doesn't actually do anything yet (does not subview)
+            _labels: PhantomData,
+            //TODO: trim this frame list down based on labels
+            frames: self.frames.clone(),
+        }
+    }
+    pub fn subview<LabelList>(&self)
+        -> DataView<Labels, Frames>
+        where Labels: HasLabels<LabelList>
+    {
+        self.v::<LabelList>()
     }
 }
 
-impl<ViewFields> DataView2<ViewFields>
-    where ViewFields: NRows
+impl<Labels, Frames> DataView<Labels, Frames>
+    where Frames: NRows
 {
     /// Number of rows in this data view
     pub fn nrows(&self) -> usize
     {
-        self.fields.nrows()
+        self.frames.nrows()
     }
 }
 
-impl<ViewFields> DataView2<ViewFields>
-    where ViewFields: Len
+impl<Labels, Frames> DataView<Labels, Frames>
+    where Frames: Len
 {
     /// Returns `true` if the DataView is empty (has no rows or has no fields)
     pub fn is_empty(&self) -> bool
     {
-        self.fields.is_empty()
+        self.frames.is_empty()
     }
     /// Number of fields in this data view
     pub fn nfields(&self) -> usize
     {
-        ViewFields::LEN
+        Frames::LEN
     }
 }
 
-impl<ViewFields> DataView2<ViewFields>
+// /// Returns a DataFrame<Fields> for a frame label (stored in FrameLookupCons)
+// pub trait LookupFrameByFrameLabel<'a, FrameLabel>
+// {
+//     type Frame;
+//     fn select_frame(&'a self) -> &'a Self::Frame;
+// }
+// impl<'a, FrameLabel, Frames> LookupFrameByFrameLabel<'a, FrameLabel>
+//     for Frames
+//     where Frames: LookupElemByLabel<FrameLabel>,
+//           ElemOf<Frames, FrameLabel>: Valued
+// {
+//     type Frame = ValueOfElemOf<Frames, FrameLabel>;
+
+//     fn select_frame(&'a self) -> &'a Self::Frame
+//     {
+//         LookupElemByLabel::<FrameLabel>::elem(self).value_ref()
+//     }
+// }
+
+// impl<Labels, Frames> DataView<Labels, Frames>
+// {
+//     /// Returns a DataFrame<Fields> for a specific `FrameLabel`.
+//     pub fn select_frame_by_frame_label<'a, FrameLabel>(&self)
+//         -> &<Frames as LookupFrameByFrameLabel<'a, FrameLabel>>::Frame
+//         where Frames: LookupFrameByFrameLabel<'a, FrameLabel>,
+//     {
+//         <Frames as LookupFrameByFrameLabel<FrameLabel>>::select_frame(&self.frames)
+//     }
+// }
+
+// pub type FrameByFrameLabelOf<'a, Frames, FrameLabel> =
+//     <Frames as LookupFrameByFrameLabel<'a, FrameLabel>>::Frame;
+
+
+// /// Returns a DataFrame<Fields> given a Field Label.
+// pub trait LookupFrameByLabel<'a, Labels, Label>
+// {
+//     type Frame;
+//     fn select_frame(&'a self) -> &'a Self::Frame;
+// }
+// impl<'a, Label, Labels, Frames> LookupFrameByLabel<'a, Labels, Label>
+//     for Frames
+//     where Labels: LookupElemByLabel<Label>,
+//           ElemOf<Labels, Label>: Marked,
+//           Frames: LookupFrameByFrameLabel<'a, MarkerOfElemOf<Labels, Label>>
+// {
+//     type Frame = <Frames as LookupFrameByFrameLabel<'a, MarkerOfElemOf<Labels, Label>>>::Frame;
+
+//     fn select_frame(&'a self) -> &'a Self::Frame
+//     {
+//         LookupFrameByFrameLabel::<MarkerOfElemOf<Labels, Label>>::select_frame(self)
+//     }
+// }
+
+// impl<Labels, Frames> DataView<Labels, Frames>
+// {
+//     pub fn select_frame_by_label<'a, Label>(&'a self)
+//         -> &'a <Frames as LookupFrameByLabel<'a, Labels, Label>>::Frame
+//         where Frames: LookupFrameByLabel<'a, Labels, Label>,
+//               Label: 'a
+//     {
+//         <Frames as LookupFrameByLabel<'a, Labels, Label>>::select_frame(&self.frames)
+//     }
+// }
+
+// pub type FrameOf<'a, Labels, Frames, Label> =
+//     <Frames as LookupFrameByLabel<'a, Labels, Label>>::Frame;
+
+// pub trait SelectFieldFromFrames<'a, Labels, Label>
+// {
+//     type Output;
+//     fn select_field(&'a self) -> Self::Output;
+// }
+
+// impl<'a, Labels, Frames, Label>
+//     SelectFieldFromFrames<'a, Labels, Label>
+//     for Frames
+//     where
+//           // Frame support `Label`-based lookup
+//           Label: 'a,
+//           Frames: 'a + LookupFrameByLabel<'a, Labels, Label>,
+//           FrameOf<'a, Labels, Frames, Label>:
+//             SelectFieldByLabel<'a, Label> + FieldSelect + FrameFields,
+
+//           // `Fields` type parameter of `DataFrame` has associated storage which supports
+//           // `Label`-based lookup
+//           // FrameFieldsOf<FrameOf<'a, Labels, Frames, Label>>: AssocStorage,
+//           // DataStore<FrameFieldsOf<FrameOf<'a, Labels, Frames, Label>>>:
+//           //   SelectFieldByLabel<'a, Label>,
+
+//           // <FrameFieldsOf<FrameOf<'a, Labels, Frames, Label>> as AssocStorage>::Storage:
+//           //   LookupElemByLabel<Label>,
+//           // ElemOf<
+//           //   <FrameFieldsOf<FrameOf<'a, Labels, Frames, Label>> as AssocStorage>::Storage, Label
+//           // >:
+//           //   Valued + Typed,
+//           // ValueOfElemOf<
+//           //   <FrameFieldsOf<FrameOf<'a, Labels, Frames, Label>> as AssocStorage>::Storage, Label
+//           // >:
+//           //   DataIndex<
+//           //       DType=TypeOfElemOf<
+//           //           <FrameFieldsOf<FrameOf<'a, Labels, Frames, Label>> as AssocStorage>::Storage,
+//           //           Label
+//           //       >
+//           //   >
+// {
+//     type Output = <FrameOf<'a, Labels, Frames, Label> as SelectFieldByLabel<'a, Label>>::Output;
+
+//     fn select_field(&'a self) -> Self::Output
+//     {
+//         Frames::select_frame(self).field::<Label>()
+//     }
+
+// }
+
+pub type FieldOf<Frames, Labels, Label> =
+    <ValueOfElemOf<Frames, MarkerOfElemOf<Labels, Label>> as SelectFieldByLabel<Label>>::Output;
+
+pub trait SelectFieldFromLabels<Labels, Label>
 {
-    pub fn field<'a, Ident, FrameSearcher, Searcher>(&'a self)
-        -> Framed<
-            'a,
-            <ViewFields as FrameSelector<Ident, FrameSearcher>>::FrameFields,
-            <<ViewFields as FrameSelector<Ident, FrameSearcher>>::FrameFields
-                as FSelector<Ident, Searcher>>::DType
-        >
-        where ViewFields: FrameSelector<Ident, FrameSearcher>,
-              <ViewFields as FrameSelector<Ident, FrameSearcher>>::FrameFields:
-                FSelector<Ident, Searcher>
+    type Output: DataIndex;
+    fn select_field(&self) -> Self::Output;
+}
+impl<Labels, Frames, Label> SelectFieldFromLabels<Labels, Label>
+    for Frames
+    where
+        // Allows looking up frame index by label
+        Labels: LookupElemByLabel<Label>,
+        // Makes sure we can get the frame index
+        ElemOf<Labels, Label>: Marked,
+        // Looks up the frame by frame index
+        Frames: LookupElemByLabel<MarkerOfElemOf<Labels, Label>>,
+        // Get the value of frame itself
+        ElemOf<Frames, MarkerOfElemOf<Labels, Label>>: Valued,
+        // Requires us to select the field by label from the selected frame
+        ValueOfElemOf<Frames, MarkerOfElemOf<Labels, Label>>: SelectFieldByLabel<Label>,
+        // Makes sure the field has a type, value, and can be cloned
+        FieldOf<Frames, Labels, Label>: Typed + SelfValued + Clone,
+        // Makes sure the type of field is debug-printable
+        TypeOf<FieldOf<Frames, Labels, Label>>: fmt::Debug,
+{
+    // type Output = Framed<TypeOf<FieldOf<Frames, Labels, Label>>>;
+    type Output = FieldOf<Frames, Labels, Label>;
+
+    fn select_field(&self) -> Self::Output
     {
-        self.fields.select_frame().field::<Ident, _>()
+        SelectFieldByLabel::<Label>::select_field(
+            LookupElemByLabel::<MarkerOfElemOf<Labels, Label>>::elem(self).value_ref()
+        ).clone()
     }
 }
 
-pub trait FromFields<Fields, AllFields> where AllFields: AssocStorage
+impl<Labels, Frames, Label> SelectFieldByLabel<Label>
+    for DataView<Labels, Frames>
+    where
+          Frames: SelectFieldFromLabels<Labels, Label>,
 {
-    fn from_fields(frame: &Rc<DataFrame<AllFields>>) -> Self;
-}
-impl<AllFields> FromFields<Nil, AllFields> for Nil where AllFields: AssocStorage
-{
-    fn from_fields(_frame: &Rc<DataFrame<AllFields>>) -> Nil
+    type Output = <Frames as SelectFieldFromLabels<Labels, Label>>::Output;
+
+    fn select_field(&self) -> Self::Output
     {
-        Nil
-    }
-}
-impl<Ident, DType, FTail, VFTail, AllFields>
-    FromFields<FieldCons<Ident, DType, FTail>, AllFields>
-    for ViewFieldCons<Ident, DType, AllFields, VFTail>
-    where AllFields: AssocStorage,
-          VFTail: FromFields<FTail, AllFields>
-{
-    fn from_fields(frame: &Rc<DataFrame<AllFields>>)
-        -> ViewFieldCons<Ident, DType, AllFields, VFTail>
-    {
-        ViewFieldCons {
-            head: ViewField {
-                _ident: PhantomData,
-                _dtype: PhantomData,
-                frame: frame.clone()
-            },
-            tail: VFTail::from_fields(frame)
-        }
+        SelectFieldFromLabels::<Labels, Label>::select_field(&self.frames)
     }
 }
 
-impl<Fields, ViewFields> From<DataStore<Fields>> for DataView2<ViewFields>
-    where Fields: AssocStorage,
-          ViewFields: FromFields<Fields, Fields>
-{
-    fn from(store: DataStore<Fields>) -> DataView2<ViewFields> {
-        let frame_rc: Rc<DataFrame<Fields>> = Rc::new(store.into());
-        DataView2 {
-            fields: ViewFields::from_fields(&frame_rc)
-        }
-    }
-}
+impl<Labels, Frames> FieldSelect for DataView<Labels, Frames> {}
 
-pub trait AssocFields
+// pub trait AssocFieldCons<Frames>
+// {
+//     type Output;
+// }
+
+// impl<'a, Frames> AssocFieldCons<Frames> for Nil
+// {
+//     type Output = Nil;
+// }
+// impl<Label, FrameLabel, LookupTail, Frames> AssocFieldCons<Frames>
+//     for FrameLookupCons<Label, FrameLabel, LookupTail>
+//     where Frames: LookupElemByLabel<FrameLabel>,
+//           ElemOf<Frames, FrameLabel>: Valued,
+//           ValueOfElemOf<Frames, FrameLabel>: FrameFields,
+//           FrameFieldsOf<ValueOfElemOf<Frames, FrameLabel>>: LookupElemByLabel<Label>,
+//           ElemOf<FrameFieldsOf<ValueOfElemOf<Frames, FrameLabel>>, Label>: Marked,
+//           LookupTail: AssocFieldCons<Frames>,
+//           // Frames: LookupFrameByLabel<Label>,
+//           // <Frames as LookupFrameByLabel<Label>>::Frame: LookupElemByLabel<Label>,
+//           // <<Frames as LookupFrameByLabel<Label>>::Frame as LookupElemByLabel<Label>>::Elem:
+//           //   Typed
+// {
+//     type Output = FieldCons<
+//         Label,
+//         MarkerOf<ElemOf<FrameFieldsOf<ValueOfElemOf<Frames, FrameLabel>>, Label>>,
+//         <LookupTail as AssocFieldCons<Frames>>::Output
+//     >;
+//     // type Output = FieldCons<
+//     //     Label,
+//     //     TypeOf<ElemOf<<Frames as LookupFrameByLabel<Label>>::Frame, Label>>,
+//     //     <LookupTail as AssocFieldCons<Frames>>::Output
+//     // >;
+// }
+
+// pub type AssocFieldsOf<L, F> = <L as AssocFieldCons<F>>::Output;
+
+//TODONEXT: give up and switch to Rc-based tracking of DataIndex structs; we're overeager with
+// out preoptimizations here
+pub type DataIndexCons<Label, DType, DI, Tail> = FieldPayloadCons<Label, DType, DI, Tail>;
+
+pub trait AssocDataIndexCons<Labels>
 {
     type Output;
+    fn assoc_data(&self) -> Self::Output;
 }
-
-impl AssocFields for Nil
+impl<Frames> AssocDataIndexCons<Nil> for Frames
 {
     type Output = Nil;
+    fn assoc_data(&self) -> Nil { Nil }
 }
-
-impl<Ident, DType, Fields, Tail> AssocFields
-    for ViewFieldCons<Ident, DType, Fields, Tail>
-    where Fields: AssocStorage
+impl<Label, FrameLabel, LookupTail, Frames>
+    AssocDataIndexCons<FrameLookupCons<Label, FrameLabel, LookupTail>>
+    for Frames
+    where
+          Self: SelectFieldFromLabels<FrameLookupCons<Label, FrameLabel, LookupTail>, Label>
+            + AssocDataIndexCons<LookupTail>,
+          <Self as SelectFieldFromLabels<FrameLookupCons<Label, FrameLabel, LookupTail>, Label>>
+            ::Output: Typed
+          // Self: 'a + LookupFrameByFrameLabel<'a, FrameLabel> + AssocDataIndexCons<LookupTail>,
+          // FrameByFrameLabelOf<'a, Frames, FrameLabel>: SelectFieldByLabel<Label> + FieldSelect,
+          // FindField<'a, Frames, FrameLabel, Label>: Typed + SelfValued,
+          // FindField<'a, Frames, FrameLabel, Label>:
+          //   DataIndex<DType=FindFieldType<'a, Frames, FrameLabel, Label>>,
 {
-    type Output = FieldCons<Ident, DType, Tail>;
+    type Output = DataIndexCons<
+        Label,
+        TypeOf<
+            <Frames as SelectFieldFromLabels<FrameLookupCons<Label, FrameLabel, LookupTail>, Label>>
+                ::Output
+        >,
+        <Frames as SelectFieldFromLabels<FrameLookupCons<Label, FrameLabel, LookupTail>, Label>>
+            ::Output,
+        <Frames as AssocDataIndexCons<LookupTail>>::Output
+    >;
+    fn assoc_data(&self) -> Self::Output
+    {
+        DataIndexCons
+        {
+            head: TypedValue::from(
+                SelectFieldFromLabels::<FrameLookupCons<Label, FrameLabel, LookupTail>, Label>
+                    ::select_field(self)
+            ).into(),
+            tail: AssocDataIndexCons::<LookupTail>::assoc_data(self)
+        }
+    }
 }
 
-impl<'a, 'b, ViewFields>
-    Display
-    for DataView2<ViewFields>
-    where ViewFields: Len + NRows,
-          ViewFields: AssocFields,
-          <ViewFields as AssocFields>::Output:
-            DeriveCapabilities<<AddCellToRowFn<'a, 'b, <ViewFields as AssocFields>::Output>
-                as ReqFeature>::Feature>,
+pub type AssocDataIndexConsOf<Frames, Labels> = <Frames as AssocDataIndexCons<Labels>>::Output;
 
+
+// pub trait AssocPartialMappable<Labels, F>
+// {
+//     type Output: DeriveCapabilities<F>;
+//     fn fields_data(&self) -> Self::Output;
+// }
+// impl<'a, Frames, F> AssocPartialMappable<Nil, F> for Frames
+// {
+//     type Output = Nil;
+//     fn fields_data(&self) -> Nil { Nil }
+// }
+// impl<'a, Label, FrameLabel, LookupTail, Frames, F>
+//     AssocPartialMappable<FrameLookupCons<Label, FrameLabel, LookupTail>, F>
+//     for Frames
+//     where
+//           Frames: LookupFrameByFrameLabel<FrameLabel> + AssocPartialMappable<LookupTail, F>,
+//           FrameByFrameLabelOf<Frames, FrameLabel>: SelectFieldByLabel<Label> + FieldSelect,
+//           <FrameByFrameLabelOf<Frames, FrameLabel> as SelectFieldByLabel<Label>>::Output:
+//             'a + Typed + SelfValued,
+//           DataIndexCons<
+//             Label,
+//             TypeOf<
+//                 <FrameByFrameLabelOf<Frames, FrameLabel> as SelectFieldByLabel<Label>>
+//                     ::Output
+//             >,
+//             <FrameByFrameLabelOf<Frames, FrameLabel> as SelectFieldByLabel<Label>>::Output,
+//             <Frames as AssocPartialMappable<LookupTail, F>>::Output
+//           >: DeriveCapabilities<F>
+//             // + DataIndex<DType=TypeOf<
+//             //     <FrameByFrameLabelOf<Frames, FrameLabel>
+//             //         as SelectFieldByLabel<Label>>::Output
+//             // >>
+//           ,
+
+//           // Frames: LookupElemByLabel<FrameLabel> + AssocPartialMappable<LookupTail>,
+//           // ElemOf<Frames, FrameLabel>: Valued,
+//           // ValueOfElemOf<Frames, FrameLabel>: FrameFields + SelectFieldByLabel<Label>
+//           //   + FieldSelect,
+//           // FrameFieldsOf<ValueOfElemOf<Frames, FrameLabel>>: LookupElemByLabel<Label>,
+//           // ElemOf<FrameFieldsOf<ValueOfElemOf<Frames, FrameLabel>>, Label>: 'a + Typed,
+// {
+//     type Output = DataIndexCons<
+//         Label,
+//         // TypeOf<ElemOf<FrameFieldsOf<ValueOfElemOf<Frames, FrameLabel>>, Label>>,
+//         TypeOf<
+//             <FrameByFrameLabelOf<Frames, FrameLabel> as SelectFieldByLabel<Label>>::Output
+//         >,
+//         <FrameByFrameLabelOf<Frames, FrameLabel> as SelectFieldByLabel<Label>>::Output,
+//         <Frames as AssocPartialMappable<LookupTail, F>>::Output
+//     >;
+//     fn fields_data(&self) -> Self::Output
+//     {
+//         DataIndexCons
+//         {
+//             head: TypedValue::from(
+//                 LookupFrameByFrameLabel::<FrameLabel>::select_frame(self).field::<Label>()
+//             ).into(),
+//             tail: AssocPartialMappable::<LookupTail, F>::fields_data(self),
+//         }
+//     }
+// }
+
+// impl<Labels, Frames> DataView<Labels, Frames>
+// {
+//     fn assoc_fields_data<'a, F>(&'a self) -> <Frames as AssocPartialMappable<'a, Labels, F>>::Output
+//         where Frames: AssocPartialMappable<'a, Labels, F>
+//     {
+//         AssocPartialMappable::<Labels, F>::fields_data(&self.frames)
+//     }
+// }
+
+// pub type AssocPartialMappableOf<'a, Fields, Labels, F> =
+//     <Fields as AssocPartialMappable<'a, Labels, F>>::Output;
+
+// impl Display
+//     for Nil
+// {
+//     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error>
+//     {
+//         writeln!(f, "Nil")
+//     }
+// }
+// impl<'a, Label, DType, DI, Feature, Impl, Tail>
+//     Display
+//     for StorageCapabilitiesCons<'a, Label, DType, DI, Feature, Impl, Tail>
+//     where Self: PartialMap<AddCellToRowFn>,
+//           DI: DataIndex<DType=DType>,
+// {
+//     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error>
+//     {
+
+//     }
+// }
+// impl<Label, DType, DI, Tail>
+//     Display
+//     for DataIndexCons<Label, DType, DI, Tail>
+//     where for<'a> Self: DeriveCapabilities<'a, DisplayFeat>,
+//         for<'a> <Self as DeriveCapabilities<'a, DisplayFeat>>::Output: Display,
+//         // DType: Debug,
+//         DI: DataIndex<DType=DType> + SelfValued
+// {
+//     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error>
+//     {
+//         write!(f, "{}", self.derive())
+//     }
+// }
+
+const MAX_DISP_ROWS: usize = 1000;
+
+// pub trait CapableOf<Labels, F>:
+//     AssocPartialMappable<Labels, F>
+//     where <Self as AssocPartialMappable<Labels, F>>::Output: DeriveCapabilities<F>
+// {}
+// impl<Frames, Labels, F> CapableOf<Labels, F>
+//     for Frames
+//     where Frames: AssocPartialMappable<Labels, F>,
+//           <Frames as AssocPartialMappable<Labels, F>>::Output: DeriveCapabilities<F>
+// {}
+
+// pub type FindFieldFromFrames<Frames, Labels, Label> =
+    // <Frames as FindFieldFromFrames<Labels, Label>>::Output;
+
+// pub type FindField<'a, Frames, FrameLabel, Label> =
+//     <FrameByFrameLabelOf<'a, Frames, FrameLabel> as SelectFieldByLabel<Label>>::Output;
+// pub type FindFieldType<'a, Frames, FrameLabel, Label> =
+//     TypeOf<FindField<'a, Frames, FrameLabel, Label>>;
+
+// pub trait PMap<'a, Labels, F>
+// {
+//     type Output;
+//     fn pmap(&'a self, f: &mut F) -> Self::Output;
+// }
+// impl<'a, Frames, Impl, F> PMap<'a, Nil, F> for (Frames, Impl)
+// {
+//     type Output = Nil;
+//     fn pmap(&self, _f: &mut F) -> Nil { Nil }
+// }
+// impl<'a, Frames, Label, FrameLabel, LookupTail, F>
+//     PMap<'a, FrameLookupCons<Label, FrameLabel, LookupTail>, F>
+//     for (Frames, Implemented)
+//     where Frames: PMap<'a, LookupTail, F>,
+//           Frames: LookupFrameByFrameLabel<'a, FrameLabel>,
+//           FrameByFrameLabelOf<'a, Frames, FrameLabel>: SelectFieldByLabel<Label> + FieldSelect,
+//           FindField<'a, Frames, FrameLabel, Label>: Typed + SelfValued,
+//           FindField<'a, Frames, FrameLabel, Label>:
+//             DataIndex<DType=FindFieldType<'a, Frames, FrameLabel, Label>>,
+//           FindFieldType<'a, Frames, FrameLabel, Label>: IsImplemented<F, IsImpl=Implemented>,
+//           F: Func<FindFieldType<'a, Frames, FrameLabel, Label>>
+// {
+//     type Output = ();
+//     fn pmap(&self, f: &mut F) -> ()
+//     {
+//         f.call(&self.0.select_frame().field::<Label>());
+//     }
+// }
+// impl<'a, Frames, Label, FrameLabel, LookupTail, F>
+//     PMap<'a, FrameLookupCons<Label, FrameLabel, LookupTail>, F>
+//     for (Frames, Unimplemented)
+//     where Frames: PMap<'a, LookupTail, F>,
+//           Frames: LookupFrameByFrameLabel<'a, FrameLabel>,
+//           FrameByFrameLabelOf<'a, Frames, FrameLabel>: SelectFieldByLabel<Label> + FieldSelect,
+//           FindField<'a, Frames, FrameLabel, Label>: Typed + SelfValued,
+//           FindField<'a, Frames, FrameLabel, Label>:
+//             DataIndex<DType=FindFieldType<'a, Frames, FrameLabel, Label>>,
+//           FindFieldType<'a, Frames, FrameLabel, Label>: IsImplemented<F, IsImpl=Unimplemented>,
+//           F: FuncDefault
+// {
+//     type Output = ();
+//     fn pmap(&self, f: &mut F) -> ()
+//     {
+//         f.call();
+//     }
+// }
+
+impl<Labels, Frames>
+    Display
+    for DataView<Labels, Frames>
+    where Frames: Len + NRows + AssocDataIndexCons<Labels>,
+          AssocDataIndexConsOf<Frames, Labels>: DeriveCapabilities<AddCellToRowFn>,
+          Labels: StrLabels,
+          // (Frames, )
+          // for<'a> Frames: CapableOf<'a, Labels, AddCellToRowFn>
+          // for<'a> Frames: AssocPartialMappable<Labels, AddCellToRowFn>,
+          // for<'a> <Frames as AssocPartialMappable<'a, Labels, AddCellToRowFn>>::Output:
+          //   DeriveCapabilities<'a, AddCellToRowFn>
+
+          // for<'a> Frames: AssocDataIndexCons<'a, Labels>,
+          // for<'a> AssocDataIndexConsOf<'a, Frames, Labels>: DeriveCapabilities<'a, AddCellToRowFn>,
+
+          // for<'a> <Frames as AssocDataIndexCons<'a, Labels>>::Output: Display
+
+          //AssocDataIndexConsOf<'a, Frames, Labels>: Display
+          // AddCellToRowFn: ReqFeature,
+          // for<'a> AssocDataIndexConsOf<'a, Frames, Labels>:
+          //    DeriveCapabilities<'a, ReqFeatureOf<AddCellToRowFn>>,
+
+          // for<'a, 'b> AssocDataIndexConsOf<'a, Frames, Labels>: DeriveCapabilities<'b, DisplayFeat>,
+          // for<'a, 'b> <AssocDataIndexConsOf<'a, Frames, Labels>
+          //   as DeriveCapabilities<'b, DisplayFeat>>::Output:
+          //       PartialMap<AddCellToRowFn>
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        if self.fields.is_empty() {
+        if self.frames.is_empty() {
             return write!(f, "Empty DataView");
         }
-        let nrows = self.fields.nrows();
-        let mut rows = vec![pt::row::Row::empty(); nrows.min(MAX_DISP_ROWS)];
-        partial_map![<ViewFields as AssocFields>::Output, AddCellToRowFn<ViewFields>];
-        // <Self as AssocFieldCons<_, _>>::Fields::aidjofa();
+        let mut table = pt::Table::new();
 
-        for view_field in self.fields.values() {
-            match self.frames[view_field.frame_idx].map(
-                &view_field.rident.ident,
-                AddCellToRowFn {
-                    rows: &mut rows,
-                },
-            ) {
-                Ok(_) => {},
-                Err(e) => { return write!(f, "view display error: {}", e); },
+        let nrows = self.nrows();
+        {
+            // let afd = AssocPartialMappable::<Labels, AddCellToRowFn>::fields_data(&self.frames);
+            // let afd = self.assoc_fields_data();
+            let afd = AssocDataIndexCons::<Labels>::assoc_data(&self.frames);
+            let derived = DeriveCapabilities::<AddCellToRowFn>::derive(afd);
+            let mut func = AddCellToRowFn {
+                rows: vec![pt::row::Row::empty(); nrows.min(MAX_DISP_ROWS)]
+            };
+            derived.map(&mut func);
+            for row in func.rows.drain(..) {
+                table.add_row(row);
             }
         }
-        let mut table = pt::Table::new();
-        table.set_titles(self.fields.keys().into());
-        for row in rows.drain(..) {
-            table.add_row(row);
-        }
+
+        table.set_titles(<Labels as StrLabels>::labels().into());
         table.set_format(*pt::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+
         Display::fmt(&table, f)
+
+
+        // write!(f, "{}", self.assoc_fields_data())
+        // let nrows = self.frames.nrows();
+        // let mut func = AddCellToRowFn {
+        //     rows: vec![pt::row::Row::empty(); nrows.min(MAX_DISP_ROWS)]
+        // };
+        // // let afd = self.assoc_fields_data();
+        // // let derived = afd.derive();
+        // // derived.map(&mut func);
+        // let mut table = pt::Table::new();
+        // // <DerivePartialMap<AssocFieldsOf<Labels, Frames>, AddCellToRowFn>
+        // //     as PartialMap<Self, AddCellToRowFn>>::map(self, &mut func);
+
+        // // partial_map![<Self as AssocFieldCons>::Output, AddCellToRowFn<Labels, Frames>];
+        // // <Self as AssocFieldCons<_, _>>::Fields::aidjofa();
+        // for row in func.rows.drain(..) {
+        //     table.add_row(row);
+        // }
+
+        // table.set_titles(<Labels as StrLabels>::str_labels().into());
+        // table.set_format(*pt::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+
+        // Display::fmt(&table, f)
     }
 }
 
 /// Function (implementing [Func](../data_types/trait.Func.html)) that adds cells to
 /// `prettytable::row::Row`.
-pub struct AddCellToRowFn<'a, 'b, Fields>
-    where Fields: 'b
+pub struct AddCellToRowFn
 {
-    rows: &'a mut Vec<pt::row::Row>,
-    dv: &'b DataView2<Fields>
+    rows: Vec<pt::row::Row>,
 }
-impl<'a, 'b, DType, Fields> Func<DType> for AddCellToRowFn<'a, 'b, Fields>
+impl<DType> Func<DType> for AddCellToRowFn
+    where for<'a> Value<&'a DType>: ToString,
 {
     type Output = ();
-    fn call<Field>(&self) -> Self::Output
-        where Field: FieldTypes<DType=DType>
+    fn call<DI>(&mut self, data: &DI) -> Self::Output
+        where DI: DataIndex<DType=DType>
     {
-        let type_data = self.dv.field::<Field::Ident, _, _>();
-        for i in 0..type_data.len().min(MAX_DISP_ROWS) {
-            self.rows[i].add_cell(cell!(type_data.get_datum(i).unwrap()));
+        debug_assert!(data.len() >= self.rows.len());
+        for i in 0..self.rows.len() {
+            // println!("{}", data.get_datum(i).unwrap());
+            self.rows[i].add_cell(cell!(data.get_datum(i).unwrap()));
         }
     }
 }
-impl<'a, 'b, Fields> FuncDefault for AddCellToRowFn<'a, 'b, Fields>
+impl FuncDefault for AddCellToRowFn
 {
     type Output = ();
-    fn call<Field>(&self) -> Self::Output
+    fn call(&mut self) -> Self::Output
     {
-        let type_data = self.dv.field::<Field::Ident, _, _>();
-        for i in 0..type_data.len().min(MAX_DISP_ROWS) {
+        // let type_data = self.dv.field::<Label>();
+        for i in 0..self.rows.len() {
             self.rows[i].add_cell(cell!());
         }
     }
 }
-impl<'a, 'b, Fields> ReqFeature for AddCellToRowFn<'a, 'b, Fields>
-{
-    type Feature = DisplayFeat;
+impl IsImplemented<AddCellToRowFn> for String {
+    type IsImpl = Implemented;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#[derive(Debug, Clone)]
-pub struct Frame<FrameFields, FrameIdx>
-    where FrameFields: AssocStorage
-{
-    frame: DataFrame<FrameFields>,
-    _frame_idx: PhantomData<FrameIdx>
+impl IsImplemented<AddCellToRowFn> for f64 {
+    type IsImpl = Implemented;
 }
+// impl ReqFeature for AddCellToRowFn
+// {
+//     type Feature = DisplayFeat;
+// }
 
-pub type FrameCons<FrameFields, FrameIdx, Tail> = Cons<Frame<FrameFields, FrameIdx>, Tail>;
 
-impl<FrameFields, FrameIdx, Tail> NRows
-    for FrameCons<FrameFields, FrameIdx, Tail>
-    where FrameFields: AssocStorage
-{
-    fn nrows(&self) -> usize {
-        self.head.frame.nrows()
-    }
-}
 
-pub struct Frame0;
-pub struct NextFrame<FIdx> {
-    _fidx: PhantomData<FIdx>
-}
 
-/// Ident and it's corresponding FrameIdx
-#[derive(Debug, Clone)]
-pub struct IdentFrameIdx<Ident, FrameIdx> {
-    _ident: PhantomData<Ident>,
-    _frameidx: PhantomData<FrameIdx>
-}
-/// Cons-list of IdentFrameIdxs
-pub type IdentFrameIdxCons<Ident, FrameIdx, Tail> = Cons<IdentFrameIdx<Ident, FrameIdx>, Tail>;
-/// Cons-list of Idents
-pub type IdentCons<Ident, Tail> = Cons<PhantomData<Ident>, Tail>;
 
-/// Trait for finding the associated FrameIdx for a field Ident.
-pub trait FrameIdxSelector<Ident, Searcher> {
-    type FrameIdx;
-}
-impl<TargetIdent, NonTargetIdent, TargetInTail, FrameIdx, Tail>
-    FrameIdxSelector<TargetIdent, NoMatch<TargetInTail>>
-    for IdentFrameIdxCons<NonTargetIdent, FrameIdx, Tail>
-    where Tail: FrameIdxSelector<TargetIdent, TargetInTail>
-{
-    type FrameIdx = Tail::FrameIdx;
-}
-impl<TargetIdent, FrameIdx, Tail>
-    FrameIdxSelector<TargetIdent, Match>
-    for IdentFrameIdxCons<TargetIdent, FrameIdx, Tail>
-{
-    type FrameIdx = FrameIdx;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// #[derive(Debug, Clone)]
 
 // impl<Ident, FrameIdx, Tail> IdentFrameIdxCons<Ident, FrameIdx, Tail>
 // {
@@ -492,138 +780,140 @@ impl<TargetIdent, FrameIdx, Tail>
 //     }
 // }
 
-pub trait AssocFieldCons<FrameS, FieldS>
-{
-    type Fields;
-}
-impl<FrameS, FieldS, Frames>
-    AssocFieldCons<FrameS, FieldS>
-    for (Nil, Frames)
-{
-    type Fields = Nil;
-}
-impl<Frames, Ident, FIdx, ICTail, FrameS, FieldS>
-    AssocFieldCons<FrameS, FieldS>
-    for (IdentFrameIdxCons<Ident, FIdx, ICTail>, Frames)
-    where Frames: FrameSelector<
-            FIdx,
-            FrameS
-          >,
-          Frames::FrameFields: FSelector<Ident, FieldS>,
-          (ICTail, Frames): AssocFieldCons<FrameS, FieldS>
-{
-    type Fields = FieldCons<
-        Ident,
-        <Frames::FrameFields as FSelector<Ident, FieldS>>::DType,
-        <(ICTail, Frames) as AssocFieldCons<FrameS, FieldS>>::Fields
-    >;
-}
+// pub trait AssocFieldCons<FrameS, FieldS>
+// {
+//     type Fields;
+// }
+// impl<FrameS, FieldS, Frames>
+//     AssocFieldCons<FrameS, FieldS>
+//     for (Nil, Frames)
+// {
+//     type Fields = Nil;
+// }
+// impl<Frames, Ident, FIdx, ICTail, FrameS, FieldS>
+//     AssocFieldCons<FrameS, FieldS>
+//     for (IdentFrameIdxCons<Ident, FIdx, ICTail>, Frames)
+//     where Frames: FrameSelector<
+//             FIdx,
+//             FrameS
+//           >,
+//           Frames::FrameFields: FSelector<Ident, FieldS>,
+//           (ICTail, Frames): AssocFieldCons<FrameS, FieldS>
+// {
+//     type Fields = FieldCons<
+//         Ident,
+//         <Frames::FrameFields as FSelector<Ident, FieldS>>::DType,
+//         <(ICTail, Frames) as AssocFieldCons<FrameS, FieldS>>::Fields
+//     >;
+// }
 
-impl<FrameS, FieldS, Idents, Frames>
-    AssocFieldCons<FrameS, FieldS>
-    for DataView<Idents, Frames>
-    where (Idents, Frames): AssocFieldCons<FrameS, FieldS>
-{
-    type Fields = <(Idents, Frames) as AssocFieldCons<FrameS, FieldS>>::Fields;
-}
+// impl<FrameS, FieldS, Idents, Frames>
+//     AssocFieldCons<FrameS, FieldS>
+//     for DataView<Idents, Frames>
+//     where (Idents, Frames): AssocFieldCons<FrameS, FieldS>
+// {
+//     type Fields = <(Idents, Frames) as AssocFieldCons<FrameS, FieldS>>::Fields;
+// }
 
 #[macro_export]
-macro_rules! Idents {
-    (@idents()) => { Nil };
-    (@idents($fident:ty, $($rest:ty,)*)) => {
+macro_rules! Labels {
+    (@labels()) => { Nil };
+    (@labels($fident:ty, $($rest:ty,)*)) => {
         IdentCons {
             head: PhantomData::<$fident>,
-            tail: Idents![@idents($($rest)*)]
+            tail: Labels![@labels($($rest)*)]
         }
     };
     ($($fident:ty),*$(,)*) => {
-        Idents![@idents($($fident,)*)]
+        Labels![@labels($($fident,)*)]
     }
 }
 
-// Idents is a 'IdentFrameIdxCons', Frames is a 'FrameCons'.
-#[derive(Debug, Clone, Default)]
-pub struct DataView<Idents, Frames>
-{
-    /// A cons-list of field identifiers and their associated frame indices
-    frame_indices: PhantomData<Idents>,
-    /// A cons-list of DataFrames
-    frames: Frames,
-}
+// // Idents is a 'IdentFrameIdxCons', Frames is a 'FrameCons'.
+// #[derive(Debug, Clone, Default)]
+// pub struct DataView<Idents, Frames>
+// {
+//     /// A cons-list of field identifiers and their associated frame indices
+//     frame_indices: PhantomData<Idents>,
+//     /// A cons-list of DataFrames
+//     frames: Frames,
+// }
 
 
-impl<Idents, Frames> DataView<Idents, Frames>
-    // where DTypes: DTypeList
-{
-    /// Generate a new subview of this DataView. IdentList is an IdentCons.
-    pub fn v<IdentList, SearcherPool>(&self)
-        -> DataView<<Idents as SelectIdents<IdentList, SearcherPool>>::Output, Frames>
-        where Idents: SelectIdents<IdentList, SearcherPool>
-    {
-        // select_idents builds a new IdentFrameIdxCons sublist from a IdentFrameIdxCons only
-        // containins the idents specified in the IdentList.
-        DataView {
-            // frame_indices: self.frame_indices.select_idents::<IdentList>(),
-            frame_indices: PhantomData,
-            frames: self.frames,
-        }
+// impl<Idents, Frames> DataView<Idents, Frames>
+//     // where DTypes: DTypeList
+// {
+//     /// Generate a new subview of this DataView. IdentList is an IdentCons.
+//     pub fn v<IdentList, SearcherPool>(&self)
+//         -> DataView<<Idents as SelectIdents<IdentList, SearcherPool>>::Output, Frames>
+//         where Idents: SelectIdents<IdentList, SearcherPool>
+//     {
+//         // select_idents builds a new IdentFrameIdxCons sublist from a IdentFrameIdxCons only
+//         // containins the idents specified in the IdentList.
+//         DataView {
+//             // frame_indices: self.frame_indices.select_idents::<IdentList>(),
+//             frame_indices: PhantomData,
+//             frames: self.frames,
+//         }
 
-        // let mut sub_fields = IndexMap::new();
-        // for ident in &s.into_field_list() {
-        //     if let Some(field) = self.fields.get(ident) {
-        //         sub_fields.insert(ident.clone(), field.clone());
-        //     }
-        // }
-        // DataView {
-        //     frames: self.frames.clone(),
-        //     fields: sub_fields,
-        // }
-    }
-    pub fn subview<IdentList, SearcherPool>(&self)
-        -> DataView<<Idents as SelectIdents<IdentList, SearcherPool>>::Output, Frames>
-        where Idents: SelectIdents<IdentList, SearcherPool>
-    {
-        self.v::<IdentList, SearcherPool>()
-    }
-    // /// Generate a new subview of this DataView, generating an error if a specified field does
-    // /// not exist.
-    // pub fn subview<L: IntoFieldList>(&self, s: L) -> error::Result<DataView<Fields>> {
-    //     let mut sub_fields = IndexMap::new();
-    //     for ident in &s.into_field_list() {
-    //         if let Some(field) = self.fields.get(ident) {
-    //             sub_fields.insert(ident.clone(), field.clone());
-    //         } else {
-    //             return Err(error::AgnesError::FieldNotFound(ident.clone()));
-    //         }
-    //     }
-    //     Ok(DataView {
-    //         frames: self.frames.clone(),
-    //         fields: sub_fields,
-    //     })
-    // }
-    /// Number of rows in this data view
-    pub fn nrows(&self) -> usize
-        where Frames: NRows,
-        // where DTypes::Storage: MaxLen<DTypes>
-    {
-        self.frames.nrows()
-        // if self.frames.is_empty() { 0 } else { self.frames[0].nrows() }
-    }
-    /// Returns `true` if the DataView is empty (has no rows or has no fields)
-    pub fn is_empty(&self) -> bool
-        where Frames: Len
-        // where DTypes::Storage: MaxLen<DTypes>
-    {
-        self.frames.is_empty()
-        // self.nrows() == 0
-    }
-    /// Number of fields in this data view
-    pub fn nfields(&self) -> usize
-        where Idents: Len
-    {
-        Idents::LEN
-        // self.fields.len()
-    }
+//         // let mut sub_fields = IndexMap::new();
+//         // for ident in &s.into_field_list() {
+//         //     if let Some(field) = self.fields.get(ident) {
+//         //         sub_fields.insert(ident.clone(), field.clone());
+//         //     }
+//         // }
+//         // DataView {
+//         //     frames: self.frames.clone(),
+//         //     fields: sub_fields,
+//         // }
+//     }
+//     pub fn subview<IdentList, SearcherPool>(&self)
+//         -> DataView<<Idents as SelectIdents<IdentList, SearcherPool>>::Output, Frames>
+//         where Idents: SelectIdents<IdentList, SearcherPool>
+//     {
+//         self.v::<IdentList, SearcherPool>()
+//     }
+//     // /// Generate a new subview of this DataView, generating an error if a specified field does
+//     // /// not exist.
+//     // pub fn subview<L: IntoFieldList>(&self, s: L) -> error::Result<DataView<Fields>> {
+//     //     let mut sub_fields = IndexMap::new();
+//     //     for ident in &s.into_field_list() {
+//     //         if let Some(field) = self.fields.get(ident) {
+//     //             sub_fields.insert(ident.clone(), field.clone());
+//     //         } else {
+//     //             return Err(error::AgnesError::FieldNotFound(ident.clone()));
+//     //         }
+//     //     }
+//     //     Ok(DataView {
+//     //         frames: self.frames.clone(),
+//     //         fields: sub_fields,
+//     //     })
+//     // }
+//     /// Number of rows in this data view
+//     pub fn nrows(&self) -> usize
+//         where Frames: NRows,
+//         // where DTypes::Storage: MaxLen<DTypes>
+//     {
+//         self.frames.nrows()
+//         // if self.frames.is_empty() { 0 } else { self.frames[0].nrows() }
+//     }
+//     /// Returns `true` if the DataView is empty (has no rows or has no fields)
+//     pub fn is_empty(&self) -> bool
+//         where Frames: Len
+//         // where DTypes::Storage: MaxLen<DTypes>
+//     {
+//         self.frames.is_empty()
+//         // self.nrows() == 0
+//     }
+//     /// Number of fields in this data view
+//     pub fn nfields(&self) -> usize
+//         where Idents: Len
+//     {
+//         Idents::LEN
+//         // self.fields.len()
+//     }
+// }
+
     // /// Field names in this data view
     // pub fn fieldnames(&self) -> Vec<&FieldIdent> {
     //     self.fields.keys().collect()
@@ -817,26 +1107,25 @@ impl<Idents, Frames> DataView<Idents, Frames>
     //         None => Err(error::AgnesError::FieldNotFound(ident.clone()))
     //     }
     // }
-}
 
 
-impl<Idents, Frames> DataView<Idents, Frames>
-{
-    pub fn field<'a, Ident, FrameSearcher, Searcher>(&'a self)
-        -> Framed<
-            'a,
-            <Frames as FrameSelector<Ident, FrameSearcher>>::FrameFields,
-            <<Frames as FrameSelector<Ident, FrameSearcher>>::FrameFields
-                as FSelector<Ident, Searcher>>::DType
-        >
-        where Frames: FrameSelector<Ident, FrameSearcher>,
-              <Frames as FrameSelector<Ident, FrameSearcher>>::FrameFields:
-                FSelector<Ident, Searcher>
-    {
-        self.frames.select_frame().field::<Ident, _>()
-    }
+// impl<Idents, Frames> DataView<Idents, Frames>
+// {
+//     pub fn field<'a, Ident, FrameSearcher, Searcher>(&'a self)
+//         -> Framed<
+//             'a,
+//             <Frames as FrameSelector<Ident, FrameSearcher>>::FrameFields,
+//             <<Frames as FrameSelector<Ident, FrameSearcher>>::FrameFields
+//                 as FSelector<Ident, Searcher>>::DType
+//         >
+//         where Frames: FrameSelector<Ident, FrameSearcher>,
+//               <Frames as FrameSelector<Ident, FrameSearcher>>::FrameFields:
+//                 FSelector<Ident, Searcher>
+//     {
+//         self.frames.select_frame().field::<Ident, _>()
+//     }
 
-}
+// }
 
 // impl<Idents, Frames> FSelect for DataView<Idents, Frames>
 // {}
@@ -912,104 +1201,104 @@ impl<Idents, Frames> DataView<Idents, Frames>
 //     }
 // }
 
-impl<Idents, Fields> From<DataStore<Fields>> for DataView<Idents, FrameCons<Fields, Frame0, Nil>>
-    where Fields: AssocStorage,
-{
-    fn from(store: DataStore<Fields>) -> DataView<Idents, FrameCons<Fields, Frame0, Nil>> {
+// impl<Idents, Fields> From<DataStore<Fields>> for DataView<Idents, FrameCons<Fields, Frame0, Nil>>
+//     where Fields: AssocStorage,
+// {
+//     fn from(store: DataStore<Fields>) -> DataView<Idents, FrameCons<Fields, Frame0, Nil>> {
 
-        // let mut fields = IndexMap::new();
-        // for ident in store.fields() {
-        //     fields.insert(ident.clone(), ViewField {
-        //         rident: RFieldIdent {
-        //             ident: ident.clone(),
-        //             rename: None
-        //         },
-        //         frame_idx: 0,
-        //     });
-        // }
+//         // let mut fields = IndexMap::new();
+//         // for ident in store.fields() {
+//         //     fields.insert(ident.clone(), ViewField {
+//         //         rident: RFieldIdent {
+//         //             ident: ident.clone(),
+//         //             rename: None
+//         //         },
+//         //         frame_idx: 0,
+//         //     });
+//         // }
 
-        DataView {
-            frames: FrameCons {
-                head: Frame {
-                    frame: store.into(),
-                    _frame_idx: PhantomData,
-                },
-                tail: Nil
-            },
-            frame_indices: PhantomData
-        }
-        // DataView {
-        //     frames: vec![store.into()],
-        //     frame_indices: <Fields as AttachPayload<GenerateViewCons, _>>::attach_payload(),
-        // }
-    }
-}
+//         DataView {
+//             frames: FrameCons {
+//                 head: Frame {
+//                     frame: store.into(),
+//                     _frame_idx: PhantomData,
+//                 },
+//                 tail: Nil
+//             },
+//             frame_indices: PhantomData
+//         }
+//         // DataView {
+//         //     frames: vec![store.into()],
+//         //     frame_indices: <Fields as AttachPayload<GenerateViewCons, _>>::attach_payload(),
+//         // }
+//     }
+// }
 
-impl<Idents, Frames> DataView<Idents, Frames>
-{
-    fn add_to_rows<FrameSearcher, FieldSearcher>(rows: &mut Vec<pt::row::Row>)
-        where Self: AddToRows<FrameSearcher, FieldSearcher>
-    {
-        AddToRows::add_to_rows_(rows)
-    }
-}
-trait AddToRows<FrameSearcher, FieldSearcher> {
-    fn add_to_rows_(rows: &mut Vec<pt::row::Row>);
-}
-impl<Idents, Frames, FrameSearcher, FieldSearcher>
-    AddToRows<FrameSearcher, FieldSearcher>
-    for DataView<Idents, Frames>
-    where DataView<Idents, Frames>: AssocFieldCons<FrameSearcher, FieldSearcher>
-{
-    fn add_to_rows_(rows: &mut Vec<pt::row::Row>) {
-        <Self as AssocFieldCons<_, _>>::Fields::adifjoa();
-    }
-}
+// impl<Idents, Frames> DataView<Idents, Frames>
+// {
+//     fn add_to_rows<FrameSearcher, FieldSearcher>(rows: &mut Vec<pt::row::Row>)
+//         where Self: AddToRows<FrameSearcher, FieldSearcher>
+//     {
+//         AddToRows::add_to_rows_(rows)
+//     }
+// }
+// trait AddToRows<FrameSearcher, FieldSearcher> {
+//     fn add_to_rows_(rows: &mut Vec<pt::row::Row>);
+// }
+// impl<Idents, Frames, FrameSearcher, FieldSearcher>
+//     AddToRows<FrameSearcher, FieldSearcher>
+//     for DataView<Idents, Frames>
+//     where DataView<Idents, Frames>: AssocFieldCons<FrameSearcher, FieldSearcher>
+// {
+//     fn add_to_rows_(rows: &mut Vec<pt::row::Row>) {
+//         <Self as AssocFieldCons<_, _>>::Fields::adifjoa();
+//     }
+// }
 
-const MAX_DISP_ROWS: usize = 1000;
-// impl<Idents, Frames> Display for DataView<Idents, Frames>
+// const MAX_DISP_ROWS: usize = 1000;
+// // impl<Idents, Frames> Display for DataView<Idents, Frames>
+// //     where Frames: Len + NRows,
+//     // where DTypes: DTypeList,
+//     //       DTypes::Storage: MaxLen<DTypes>
+//     //               + for<'a, 'b> Map<DTypes, FramedFunc<'a, DTypes, AddCellToRowFn<'b>>, ()>
+// impl<Idents, Frames>
+//     Display
+//     for DataView<Idents, Frames>
 //     where Frames: Len + NRows,
-    // where DTypes: DTypeList,
-    //       DTypes::Storage: MaxLen<DTypes>
-    //               + for<'a, 'b> Map<DTypes, FramedFunc<'a, DTypes, AddCellToRowFn<'b>>, ()>
-impl<Idents, Frames>
-    Display
-    for DataView<Idents, Frames>
-    where Frames: Len + NRows,
-{
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        if self.frames.is_empty() {
-            return write!(f, "Empty DataView");
-        }
-        // if self.frames.is_empty() || self.fields.is_empty() {
-        //     return write!(f, "Empty DataView");
-        // }
-        let nrows = self.frames.nrows();
-        let mut rows = vec![pt::row::Row::empty(); nrows.min(MAX_DISP_ROWS)];
-        Self::add_to_rows::<_, _>(&mut rows);
-        // <Self as AssocFieldCons<_, _>>::Fields::aidjofa();
+// {
+//     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+//         if self.frames.is_empty() {
+//             return write!(f, "Empty DataView");
+//         }
+//         // if self.frames.is_empty() || self.fields.is_empty() {
+//         //     return write!(f, "Empty DataView");
+//         // }
+//         let nrows = self.frames.nrows();
+//         let mut rows = vec![pt::row::Row::empty(); nrows.min(MAX_DISP_ROWS)];
+//         Self::add_to_rows::<_, _>(&mut rows);
+//         // <Self as AssocFieldCons<_, _>>::Fields::aidjofa();
 
-        partial_map![Self::Fields, AddCellToRowFn];
-        for view_field in self.fields.values() {
-            match self.frames[view_field.frame_idx].map(
-                &view_field.rident.ident,
-                AddCellToRowFn {
-                    rows: &mut rows,
-                },
-            ) {
-                Ok(_) => {},
-                Err(e) => { return write!(f, "view display error: {}", e); },
-            }
-        }
-        let mut table = pt::Table::new();
-        table.set_titles(self.fields.keys().into());
-        for row in rows.drain(..) {
-            table.add_row(row);
-        }
-        table.set_format(*pt::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-        Display::fmt(&table, f)
-    }
-}
+//         partial_map![Self::Fields, AddCellToRowFn];
+//         for view_field in self.fields.values() {
+//             match self.frames[view_field.frame_idx].map(
+//                 &view_field.rident.ident,
+//                 AddCellToRowFn {
+//                     rows: &mut rows,
+//                 },
+//             ) {
+//                 Ok(_) => {},
+//                 Err(e) => { return write!(f, "view display error: {}", e); },
+//             }
+//         }
+//         let mut table = pt::Table::new();
+//         table.set_titles(self.fields.keys().into());
+//         for row in rows.drain(..) {
+//             table.add_row(row);
+//         }
+//         table.set_format(*pt::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+//         Display::fmt(&table, f)
+//     }
+// }
 
 
 // /// Function (implementing [Func](../data_types/trait.Func.html)) that adds cells to
@@ -1207,10 +1496,111 @@ impl<Idents, Frames> DataView<Idents, Frames>
 mod tests {
     // use test_utils::*;
 
+    use std::path::Path;
+
+    use typenum::uint::UTerm;
+    use csv_sniffer::metadata::Metadata;
+
+    use source::csv::{CsvSource, CsvReader, IntoCsvSrcSpec};
+    use super::*;
+
     // use super::{DataView, Filter};
     use error::*;
     // use data_types::standard::*;
     use access::{DataIndex, DataIterator};
+
+    fn load_csv_file<Spec>(filename: &str, spec: Spec)
+        -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
+        where Spec: IntoCsvSrcSpec
+    {
+        let data_filepath = Path::new(file!()) // start as this file
+            .parent().unwrap()                 // navigate up to src directory
+            .parent().unwrap()                 // navigate up to root directory
+            .join("tests")                     // navigate into integration tests directory            .join("data")                      // navigate into data directory
+            .join("data")                      // navigate into data directory
+            .join(filename);                   // navigate to target file
+
+        let source = CsvSource::new(data_filepath.into()).unwrap();
+        (CsvReader::new(&source, spec).unwrap(), source.metadata().clone())
+    }
+
+    #[test]
+    fn lookup_frame()
+    {
+        spec![
+            let gdp_spec = {
+                CountryName("Country Name"): String,
+                CountryCode("Country Code"): String,
+                Year1983("1983"): f64,
+            };
+        ];
+
+        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
+        let ds = csv_rdr.read().unwrap();
+        let view = ds.into_view();
+
+        // println!("{:?}", view.select_frame_by_frame_label::<UTerm>());
+        // println!("{:?}", view.select_frame_by_label::<CountryName>());
+    }
+
+    #[test]
+    fn lookup_field()
+    {
+        spec![
+            let gdp_spec = {
+                CountryName("Country Name"): String,
+                CountryCode("Country Code"): String,
+                Year1983("1983"): f64,
+            };
+        ];
+
+        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
+        let ds = csv_rdr.read().unwrap();
+        let view = ds.into_view();
+
+        println!("{:?}", SelectFieldByLabel::<CountryName::Label>::select_field(&view));
+        println!("{:?}", view.field::<CountryName::Label>());
+    }
+
+    #[test]
+    fn generate_dataindex_cons()
+    {
+        spec![
+            let gdp_spec = {
+                CountryName("Country Name"): String,
+                CountryCode("Country Code"): String,
+                Year1983("1983"): f64,
+            };
+        ];
+
+        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
+        let ds = csv_rdr.read().unwrap();
+        let view = ds.into_view();
+
+        // works fine:
+        // println!("{}", view.assoc_fields_data().derive());
+
+        // doesn't work:
+        // println!("{}", (&view).assoc_fields_data());
+
+        // doesn't work:
+        println!("{}", view);
+
+        // let nrows = view.nrows();
+        // let mut func = AddCellToRowFn {
+        //     rows: vec![pt::row::Row::empty(); nrows]
+        // };
+        // view.assoc_fields_data().derive().map(&mut func);
+        // let mut table = pt::Table::new();
+        // for row in func.rows.drain(..) {
+        //     table.add_row(row);
+        // }
+
+        // table.set_format(*pt::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+        // print!("{}", table);
+
+        // println!("{:?}", view.assoc_fields_data().derive());
+    }
 
     // #[test]
     // fn merge() {

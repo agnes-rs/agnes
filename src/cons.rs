@@ -1,4 +1,3 @@
-
 /// The end of a heterogeneous type list.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Nil;
@@ -28,9 +27,6 @@ pub trait Prepend {
 }
 impl<H, T> Prepend for Cons<H, T> {}
 impl Prepend for Nil {}
-
-pub trait ConsMap: Prepend {}
-impl<T> ConsMap for T where T: Prepend {}
 
 /// Trait for adding a new element to the end of a [heterogeneous list](struct.Cons.html).
 pub trait Append<U> {

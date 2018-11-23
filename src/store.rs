@@ -1,39 +1,43 @@
+use std::rc::Rc;
 use std::fmt::Debug;
-use std::marker::PhantomData;
 use std::ops::Add;
 use std::fmt;
 
+use typenum::{
+    bit::B1,
+    uint::UTerm
+};
+
 use cons::*;
-use fieldlist::{FieldCons, FieldPayloadCons, FieldTypes, Field, FieldPayload, FSelector};
+use fieldlist::{FieldCons, FieldPayloadCons};
 use field::{Value, FieldData};
-use select::{SelectField};
-use access::{OwnedOrRef};
+use select::{SelectFieldByLabel, FieldSelect};
+use access::{DataIndex};
+use label::*;
+use view::{DataView, ViewFrameCons, FrameLookupCons};
+use frame::{DataFrame};
+
+pub type StorageCons<Label, DType, Tail>
+    = FieldPayloadCons<Label, DType, Rc<FieldData<DType>>, Tail>;
 
 #[derive(Debug)]
 pub struct DataStore<Fields: AssocStorage> {
     data: Fields::Storage,
 }
 
-pub type StorageCons<Field, Tail>
-    = FieldPayloadCons<Field, FieldData<<Field as FieldTypes>::DType>, Tail>;
-
 pub trait AssocStorage {
     type Storage: Debug;
 }
-// impl<Field, FIdx, DType, Tail> AssocStorage for StorageCons<Field, FIdx, DType, Tail> {}
-impl<Ident, DType, Tail> AssocStorage for FieldCons<Ident, DType, Tail>
+impl<Label, DType, Tail> AssocStorage for FieldCons<Label, DType, Tail>
     where Tail: AssocStorage,
-          Ident: Debug,
+          Label: Debug,
           DType: Debug,
 {
-    type Storage = StorageCons<Field<Ident, DType>, Tail::Storage>;
+    type Storage = StorageCons<Label, DType, Tail::Storage>;
 }
 impl AssocStorage for Nil {
     type Storage = Nil;
 }
-
-
-// NEXT: do I need a new selection type for StorageCons?
 
 impl<Fields> DataStore<Fields>
     where Fields: AssocStorage
@@ -46,38 +50,79 @@ impl<Fields> DataStore<Fields>
     }
 }
 
+pub trait NRows
+{
+    fn nrows(&self) -> usize;
+}
+impl NRows for Nil {
+    fn nrows(&self) -> usize { 0 }
+}
+impl<Label, DType, Tail> NRows for StorageCons<Label, DType, Tail>
+{
+    fn nrows(&self) -> usize {
+        self.head.value_ref().len()
+    }
+}
+
+impl<Fields> NRows
+    for DataStore<Fields>
+    where Fields: AssocStorage,
+          Fields::Storage: NRows,
+{
+    fn nrows(&self) -> usize
+    {
+        self.data.nrows()
+    }
+}
+
 // ways to add:
 // - add_field(FieldData) -> DataStore<...>
 // - add_field_from_iter(Iterator<Item=T>) -> DataStore<...>
 // - new_field::<Field>() -> DataStore<...>
 // - field_mut::<Field>() -> DataIndexMut<Item=T>
 
-pub trait AddField<NewIdent, NewDType> {
+pub trait AddLabeledField<NewLabel, NewDType>
+{
     type OutputFields: AssocStorage;
 
     fn add_field(self, data: FieldData<NewDType>)
         -> DataStore<Self::OutputFields>;
 }
-impl<PrevFields, NewIdent, NewDType> AddField<NewIdent, NewDType> for DataStore<PrevFields>
-    where PrevFields: AssocStorage + FieldTypes,
-          NewIdent: Debug,
+impl<PrevFields, NewLabel, NewDType> AddLabeledField<NewLabel, NewDType>
+    for DataStore<PrevFields>
+    where PrevFields: AssocStorage,
+          NewLabel: Debug,
           NewDType: Debug,
 {
-    type OutputFields = FieldCons<NewIdent, NewDType, PrevFields>;
+    type OutputFields = FieldCons<NewLabel, NewDType, PrevFields>;
 
     fn add_field(self, data: FieldData<NewDType>)
         -> DataStore<Self::OutputFields>
     {
         DataStore {
             data: StorageCons{
-                head: data.into(),
+                head: TypedValue::from(Rc::new(data)).into(),
                 tail: self.data
             }
         }
     }
 }
 
-pub trait AddFieldFromIter<NewIdent, NewDType> {
+// pub trait AddField<NewDType>
+// {
+//     type OutputFields: AssocStorage;
+//     type LabelIdx;
+// }
+
+// impl<PrevFields, NewDType> AddField<NewDType>
+//     for DataStore<PrevFields>
+//     where PrevFields: AssocStorage,
+//           NewDType: Debug,
+// {
+//     type OutputField = FieldCons<
+// }
+
+pub trait AddLabeledFieldFromIter<NewLabel, NewDType> {
     type OutputFields: AssocStorage;
 
     fn add_field_from_iter<IntoIter, Iter>(self, iter: IntoIter)
@@ -85,11 +130,13 @@ pub trait AddFieldFromIter<NewIdent, NewDType> {
         where Iter: Iterator<Item=Value<NewDType>>,
               IntoIter: IntoIterator<IntoIter=Iter, Item=Value<NewDType>>;
 }
-impl<PrevFields, NewIdent, NewDType> AddFieldFromIter<NewIdent, NewDType> for DataStore<PrevFields>
+impl<PrevFields, NewLabel, NewDType> AddLabeledFieldFromIter<NewLabel, NewDType>
+    for DataStore<PrevFields>
     where PrevFields: AssocStorage,
-          NewIdent: Debug, NewDType: Debug,
+          NewDType: Default + Clone,
+          NewLabel: Debug, NewDType: Debug,
 {
-    type OutputFields = FieldCons<NewIdent, NewDType, PrevFields>;
+    type OutputFields = FieldCons<NewLabel, NewDType, PrevFields>;
 
     fn add_field_from_iter<IntoIter, Iter>(self, iter: IntoIter)
         -> DataStore<Self::OutputFields>
@@ -98,80 +145,232 @@ impl<PrevFields, NewIdent, NewDType> AddFieldFromIter<NewIdent, NewDType> for Da
     {
         DataStore {
             data: StorageCons {
-                head: iter.into_iter().collect::<FieldData<NewDType>>().into(),
+                head: TypedValue::from(Rc::new(iter.into_iter().collect::<FieldData<NewDType>>()))
+                    .into(),
                 tail: self.data
             }
         }
     }
 }
 
-pub trait AddEmptyField<NewIdent, NewDType> {
+pub trait AddLabeledEmptyField<NewLabel, NewDType> {
     type OutputFields: AssocStorage;
 
     fn add_empty_field(self)
         -> DataStore<Self::OutputFields>;
 }
-impl<PrevFields, NewIdent, NewDType> AddEmptyField<NewIdent, NewDType> for DataStore<PrevFields>
+impl<PrevFields, NewLabel, NewDType> AddLabeledEmptyField<NewLabel, NewDType>
+    for DataStore<PrevFields>
     where PrevFields: AssocStorage,
-          NewIdent: Debug, NewDType: Debug,
+          NewLabel: Debug, NewDType: Debug,
 {
-    type OutputFields = FieldCons<NewIdent, NewDType, PrevFields>;
+    type OutputFields = FieldCons<NewLabel, NewDType, PrevFields>;
 
     fn add_empty_field(self)
         -> DataStore<Self::OutputFields>
     {
         DataStore {
             data: StorageCons {
-                head: FieldData::default().into(),
+                head: TypedValue::from(Rc::new(FieldData::default())).into(),
                 tail: self.data
             }
         }
     }
 }
 
-impl<PrevFields> DataStore<PrevFields>
-    where PrevFields: AssocStorage + FieldTypes,
+
+pub trait NextLabel
 {
-    pub fn add_field<NewIdent, NewDType>(self, data: FieldData<NewDType>)
-        -> DataStore<<Self as AddField<NewIdent, NewDType>>::OutputFields>
-        // -> DataStore<StorageCons<Field<NewIdent, Add1<PrevFields::FIdx>, NewDType>, PrevFields>>
+    type Natural;
+    type Output;
+
+    fn next_label(self) -> Self::Output;
+}
+// impl NextLabel for DataStore<FieldCons<Label, DType, Tail>>
+//     where Label: Natural
+// {
+//     type Natural = Add1<<Label as Natural>::Nat>;
+//     type Output = DataStore<FieldCons<;
+
+//     fn next_label(self) -> Self::Output
+//     {
+
+//     }
+// }
+
+#[macro_export]
+macro_rules! add_field {
+    ($ds:ident<$fields:ty>.$new_label:ident = $data:expr;) => {
+        pub type $new_label = $crate::label::Label<
+            typenum::Add1<<$fields as $crate::label::Natural>::Nat>
+        >;
+        let $ds = $ds.add_field::<$new_label, _>($data);
+    }
+}
+#[macro_export]
+macro_rules! add_field_from_iter {
+    ($ds:ident<$fields:ty>.$new_label:ident = $iter:expr;) => {
+        pub type $new_label = $crate::label::Label<
+            typenum::Add1<<$fields as $crate::label::Natural>::Nat>
+        >;
+        let $ds = $ds.add_field_from_iter::<$new_label, _>($iter);
+    }
+}
+
+impl<PrevFields> DataStore<PrevFields> where PrevFields: AssocStorage
+{
+    pub fn add_labeled_field<NewLabel, NewDType>(self, data: FieldData<NewDType>)
+        -> DataStore<<Self as AddLabeledField<NewLabel, NewDType>>::OutputFields>
         where NewDType: fmt::Debug,
-              Self: AddField<NewIdent, NewDType>
+              Self: AddLabeledField<NewLabel, NewDType>
     {
-        AddField::add_field(self, data)
+        AddLabeledField::add_field(self, data)
     }
 
-    pub fn add_field_from_iter<NewIdent, NewDType, IntoIter, Iter>(self, iter: IntoIter)
-        // -> DataStore<StorageCons<Field<NewIdent, Add1<PrevFields::FIdx>, NewDType>, PrevFields>>
-        -> DataStore<<Self as AddFieldFromIter<NewIdent, NewDType>>::OutputFields>
+    pub fn add_labeled_field_from_iter<NewLabel, NewDType, IntoIter, Iter>(self, iter: IntoIter)
+        -> DataStore<<Self as AddLabeledFieldFromIter<NewLabel, NewDType>>::OutputFields>
         where Iter: Iterator<Item=Value<NewDType>>,
               IntoIter: IntoIterator<IntoIter=Iter, Item=Value<NewDType>>,
               NewDType: fmt::Debug + Default + Clone,
-              Self: AddFieldFromIter<NewIdent, NewDType>
+              Self: AddLabeledFieldFromIter<NewLabel, NewDType>
     {
-        AddFieldFromIter::add_field_from_iter(self, iter)
+        AddLabeledFieldFromIter::add_field_from_iter(self, iter)
     }
 
-    pub fn add_empty_field<NewIdent, NewDType>(self)
-        // -> DataStore<StorageCons<Field<NewIdent, Add1<PrevFields::FIdx>, NewDType>, PrevFields>>
-        -> DataStore<<Self as AddEmptyField<NewIdent, NewDType>>::OutputFields>
+    pub fn add_labeled_empty_field<NewLabel, NewDType>(self)
+        -> DataStore<<Self as AddLabeledEmptyField<NewLabel, NewDType>>::OutputFields>
         where NewDType: fmt::Debug,
-              Self: AddEmptyField<NewIdent, NewDType>
+              Self: AddLabeledEmptyField<NewLabel, NewDType>
     {
-        AddEmptyField::add_empty_field(self)
+        AddLabeledEmptyField::add_empty_field(self)
     }
 }
+
+impl<PrevFields> DataStore<PrevFields>
+    where PrevFields: AssocStorage + LabelIndex,
+          <PrevFields as LabelIndex>::Idx: Add<B1>
+{
+    pub fn add_field<NewDType>(self, data: FieldData<NewDType>)
+        -> DataStore<<Self as AddLabeledField<NextLabelIndex<PrevFields>, NewDType>>::OutputFields>
+        where NewDType: fmt::Debug,
+              Self: AddLabeledField<NextLabelIndex<PrevFields>, NewDType>
+    {
+        AddLabeledField::add_field(self, data)
+    }
+
+    pub fn add_field_from_iter<NewDType, IntoIter, Iter>(self, iter: IntoIter)
+        -> DataStore<
+            <Self as AddLabeledFieldFromIter<NextLabelIndex<PrevFields>, NewDType>>::OutputFields
+        >
+        where Iter: Iterator<Item=Value<NewDType>>,
+              IntoIter: IntoIterator<IntoIter=Iter, Item=Value<NewDType>>,
+              NewDType: fmt::Debug + Default + Clone,
+              Self: AddLabeledFieldFromIter<NextLabelIndex<PrevFields>, NewDType>
+    {
+        AddLabeledFieldFromIter::add_field_from_iter(self, iter)
+    }
+
+    pub fn add_empty_field<NewDType>(self)
+        -> DataStore<
+            <Self as AddLabeledEmptyField<NextLabelIndex<PrevFields>, NewDType>>::OutputFields
+        >
+        where NewDType: fmt::Debug,
+              Self: AddLabeledEmptyField<NextLabelIndex<PrevFields>, NewDType>
+    {
+        AddLabeledEmptyField::add_empty_field(self)
+    }
+}
+
+// impl<Fields> DataStore<Fields>
+//     where Fields: AssocStorage
+// {
+//     pub fn field<'a, Label>(&'a self)
+//         -> OwnedOrRef<'a, <<Fields::Storage as LookupElemByLabel<Label>>::Elem as Typed>::DType>
+//         where Fields::Storage: LookupElemByLabel<Label>,
+//               ElemOf<Fields::Storage, Label>: 'a + Typed + Valued,
+//               ValueOf<ElemOf<Fields::Storage, Label>>:
+//                 DataIndex<DType=TypeOf<ElemOf<Fields::Storage, Label>>>,
+//               // <Fields::Storage as LookupElemByLabel<Label>>::Elem: 'a + Typed + Valued,
+//               // <<Fields::Storage as LookupElemByLabel<Label>>::Elem as Valued>::Value:
+//               //   DataIndex<DType=<<Fields::Storage as LookupElemByLabel<Label>>::Elem
+//               //       as Typed>::DType>
+//     {
+//         OwnedOrRef::Ref(LookupElemByLabel::<Label>::elem(&self.data).value_ref())
+//     }
+// }
+
+impl<Label, Fields> SelectFieldByLabel<Label> for DataStore<Fields>
+    where Fields: AssocStorage,
+          Fields::Storage: LookupElemByLabel<Label>,
+          ElemOf<Fields::Storage, Label>: Typed,
+          ElemOf<Fields::Storage, Label>:
+            Valued<Value=Rc<FieldData<TypeOfElemOf<Fields::Storage, Label>>>>,
+          TypeOfElemOf<Fields::Storage, Label>: Debug,
+          // ValueOf<ElemOf<Fields::Storage, Label>>:
+          //   DataIndex<DType=TypeOf<ElemOf<Fields::Storage, Label>>>,
+          // TypeOf<ElemOf<Fields::Storage, Label>>: Debug
+{
+    type Output =
+        Rc<FieldData<<<Fields::Storage as LookupElemByLabel<Label>>::Elem as Typed>::DType>>;
+
+    fn select_field(&self) -> Self::Output
+    {
+        Rc::clone(LookupElemByLabel::<Label>::elem(&self.data).value_ref())
+    }
+}
+impl<Fields> FieldSelect for DataStore<Fields> where Fields: AssocStorage {}
+
+pub trait AssocFrameLookup
+{
+    type Output;
+}
+impl AssocFrameLookup for Nil
+{
+    type Output = Nil;
+}
+impl<Label, Value, Tail> AssocFrameLookup
+    for LVCons<Label, Value, Tail>
+    where Tail: AssocFrameLookup
+{
+    type Output = FrameLookupCons<Label, UTerm, <Tail as AssocFrameLookup>::Output>;
+}
+
 
 impl<Fields> DataStore<Fields>
-    where Fields: AssocStorage
+    where Fields: AssocStorage + AssocFrameLookup
 {
-    pub fn field<'a, Ident, FieldSearcher>(&'a self)
-        -> OwnedOrRef<'a, <Fields as FSelector<Ident, FieldSearcher>>::DType>
-        where Fields: FSelector<Ident, FieldSearcher>
+    pub fn into_view(self)
+        -> DataView<<Fields as AssocFrameLookup>::Output, ViewFrameCons<UTerm, Fields, Nil>>
     {
-        self.data.select_field()
+        DataView::new(
+            ViewFrameCons
+            {
+                head: Rc::new(DataFrame::from(self)).into(),
+                tail: Nil
+            }
+        )
     }
 }
+
+// impl<Fields, NewLabel> From<DataStore<Fields>>
+//     for DataView<<Fields as AssocLabels>::Labels, ViewFrameCons<NewLabel, Fields, Nil>>
+//     where Fields: AssocStorage + AssocLabels,
+// {
+//     fn from(store: DataStore<Fields>)
+//         -> DataView<<Fields as AssocLabels>::Labels, ViewFrameCons<NewLabel, Fields, Nil>>
+//     {
+//         // let frame_rc: Rc<DataFrame<Fields>> = Rc::new(store.into());
+//         DataView {
+//             _labels: PhantomData,
+//             frames: ViewFrameCons {
+//             // fields: ViewFields::from_fields(&frame_rc)
+//                 head: DataFrame::from(store).into(),
+//                 tail: Nil,
+//             }
+//         }
+//     }
+// }
+
 
 // impl<'a, Fields, Ident, FIdx> SelectField<'a, Ident>
 //     for DataStore<Fields>
@@ -254,10 +453,12 @@ mod tests {
 
     use source::csv::{CsvSource, CsvReader, IntoCsvSrcSpec};
     use field::Value;
-    use fieldlist::FSelector;
     // use data_types::csv::*;
+    use select::FieldSelect;
     use super::DataStore;
     use cons::*;
+    use view::DataView;
+    use label::{LookupElemByLabel};
 
     fn load_csv_file<Spec>(filename: &str, spec: Spec)
         -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
@@ -283,11 +484,11 @@ mod tests {
         let ds = DataStore::<Nil>::empty();
         #[derive(Debug)]
         struct Test;
-        let ds = ds.add_field_from_iter::<Test, _, _, _>(
+        let ds = ds.add_labeled_field_from_iter::<Test, _, _, _>(
             vec![Value::Exists(4u64), Value::Exists(1), Value::Na, Value::Exists(3),
                  Value::Exists(7), Value::Exists(8), Value::Na]
         );
-        println!("{:?}", ds);
+        // println!("{:?}", ds);
 
         spec![
             let gdp_spec = {
@@ -304,8 +505,18 @@ mod tests {
         let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec);
         let ds = csv_rdr.read().unwrap();
 
-        println!("{:?}", ds);
-        println!("{:?}", ds.data.select::<CountryName, _>());
+        // LookupElemByLabel::<CountryName>::elem(&ds.data).adjfiaoj();
+
+        // println!("{:?}", ds);
+        println!("{:?}", ds.field::<CountryName::Label>());
+
+        // let dv = ds.into_view();
+        // use view::LookupFrameByLabel;
+        // use typenum::UTerm;
+        // use label::Label;
+        // dv.select_frame_by_label::<Label<UTerm>>();
+
+        // println!("{}", dv);
         // println!("{:?}", csv_rdr);
         // println!("{:?}", metadata);
 

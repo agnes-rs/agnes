@@ -3,13 +3,15 @@ Data structures and implementations for field information, both identifiers (`Fi
 field storage (`FieldData` and `Value`).
 */
 
-use std::fmt::{Debug, Display};
+use std::rc::Rc;
+use std::fmt::{Debug};
 use std::marker::PhantomData;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::mem;
 
+#[cfg(serialize)]
 use serde::ser::{Serialize, Serializer, SerializeSeq};
 
 use bit_vec::BitVec;
@@ -281,7 +283,8 @@ impl<T> DataIndex for FieldData<T>
 {
     type DType = T;
 
-    fn get_datum(&self, idx: usize) -> error::Result<Value<&T>> {
+    fn get_datum(&self, idx: usize) -> error::Result<Value<&T>>
+    {
         self.get(idx).ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
     }
     fn len(&self) -> usize {
@@ -296,6 +299,20 @@ impl<T> DataIndexMut for FieldData<T>
     }
 }
 
+impl<T> DataIndex for Rc<T>
+    where T: DataIndex
+
+{
+    type DType = <T as DataIndex>::DType;
+
+    fn get_datum(&self, idx: usize) -> error::Result<Value<&Self::DType>>
+    {
+        <T as DataIndex>::get_datum(self, idx)
+    }
+    fn len(&self) -> usize { <T as DataIndex>::len(self) }
+}
+
+#[cfg(serialize)]
 impl<T> Serialize for FieldData<T>
     where T: Serialize
 {

@@ -1,13 +1,12 @@
 /*!
 Traits and structures for selecting a field from a data structure.
 */
+use std::rc::Rc;
 use std::fmt::Debug;
-use std::marker::PhantomData;
 
 use field::Value;
 use access::{DataIndex};
 use error::*;
-use fieldlist::{FieldTypes, FSelector};
 // use data_types::{AssocTypes, DataType, TypeSelector, DTypeList};
 
 /// Type for accessing a specified field (identified by a `FieldIdent`) for an underlying data
@@ -44,35 +43,41 @@ impl<U> DataIndex for Selection<U>
 
 /// Trait for accessing the data of a single field as a [Selection](struct.Selection.html) struct
 /// which implements [DataIndex](../access/trait.DataIndex.html).
-pub trait FSelect
+pub trait FieldSelect
 {
     /// Returns a [Selection](struct.Selection.html) struct containing the data for the field
     /// specified by `ident`.
     ///
     /// This method is a convenience method for calling the [select](trait.SelectField.html#select)
     /// method on the [SelectField](trait.SelectField.html) trait.
-    fn field<'a, Ident: 'a>(&'a self)
-        -> Selection<<Self as SelectField<'a, Ident>>::Output>
-        where Self: SelectField<'a, Ident>,
+    fn field<Label>(&self) -> <Self as SelectFieldByLabel<Label>>::Output
+        where Self: SelectFieldByLabel<Label>,
     {
-        Selection::new(SelectField::select(self))
+        SelectFieldByLabel::select_field(self)
     }
 }
 
 /// Trait implemented by data structures to provide access to data for a single field.
-pub trait SelectField<'a, Ident>
+pub trait SelectFieldByLabel<Label>
 {
     /// The return type for the `select` method.
     type Output: DataIndex;
 
     /// Returns an object that provides [DataIndex](../access/trait.DataIndex.html) access to the
     /// data in the field specified by `ident`.
-    fn select_field(&'a self) -> Self::Output;
+    fn select_field(&self) -> Self::Output;
+}
+
+impl<T, Label> SelectFieldByLabel<Label> for Rc<T>
+    where T: SelectFieldByLabel<Label>
+{
+    type Output = T::Output;
+    fn select_field(&self) -> T::Output { <T as SelectFieldByLabel<Label>>::select_field(self) }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::FSelect;
+    use super::FieldSelect;
 
     use field::Value;
     // use test_utils::*;

@@ -8,7 +8,7 @@ extern crate tokio_io;
 use std::io::Read;
 use std::path::Path;
 
-use agnes::source::{FileReader, FileLocator};
+use agnes::source::file::{FileReader, FileLocator};
 
 #[test]
 fn load_test_sync() {

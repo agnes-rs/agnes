@@ -4,7 +4,7 @@ extern crate serde;
 extern crate csv_sniffer;
 extern crate typenum;
 
-use agnes::data_types::csv::*;
+// use agnes::data_types::csv::*;
 
 mod common;
 

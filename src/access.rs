@@ -1,3 +1,4 @@
+
 /*!
 Traits for accessing data within agnes data structures. Includes `DataIndex` for index-based access
 and `DataIterator` for iterator access.
@@ -68,31 +69,31 @@ impl<'a, T> Iterator for DataIterator<'a, T>
     }
 }
 
-/// Either an owned data structure or reference to a data structure that implements `DataIndex`.
-#[derive(Debug)]
-pub enum OwnedOrRef<'a, T>
-    where T: 'a
-{
-    /// A boxed data structure that implemented `DataIndex`.
-    Owned(Box<dyn DataIndex<DType=T> + 'a>),
-    /// A reference to a data structure that implements `DataIndex`.
-    Ref(&'a dyn DataIndex<DType=T>),
-}
-impl<'a, T> DataIndex for OwnedOrRef<'a, T>
-    where T: 'a + Debug
-{
-    type DType = T;
+// /// Either an owned data structure or reference to a data structure that implements `DataIndex`.
+// #[derive(Debug)]
+// pub enum OwnedOrRef<'a, T>
+//     where T: 'a
+// {
+//     /// A boxed data structure that implemented `DataIndex`.
+//     Owned(Box<dyn DataIndex<DType=T> + 'a>),
+//     /// A reference to a data structure that implements `DataIndex`.
+//     Ref(&'a dyn DataIndex<DType=T>),
+// }
+// impl<'a, T> DataIndex for OwnedOrRef<'a, T>
+//     where T: 'a + Debug
+// {
+//     type DType = T;
 
-    fn get_datum(&self, idx: usize) -> Result<Value<&T>> {
-        match *self {
-            OwnedOrRef::Owned(ref data) => data.get_datum(idx),
-            OwnedOrRef::Ref(ref data) => data.get_datum(idx),
-        }
-    }
-    fn len(&self) -> usize {
-        match *self {
-            OwnedOrRef::Owned(ref data) => data.len(),
-            OwnedOrRef::Ref(ref data) => data.len(),
-        }
-    }
-}
+//     fn get_datum(&self, idx: usize) -> Result<Value<&T>> {
+//         match *self {
+//             OwnedOrRef::Owned(ref data) => data.get_datum(idx),
+//             OwnedOrRef::Ref(ref data) => data.get_datum(idx),
+//         }
+//     }
+//     fn len(&self) -> usize {
+//         match *self {
+//             OwnedOrRef::Owned(ref data) => data.len(),
+//             OwnedOrRef::Ref(ref data) => data.len(),
+//         }
+//     }
+// }

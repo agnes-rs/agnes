@@ -3,7 +3,7 @@ Dataframe library for Rust. Provides data structs and utilities for data aggrega
 and viewing.
 */
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
 #![deny(bare_trait_objects, unconditional_recursion)]
 #![recursion_limit="256"]
 
@@ -23,6 +23,7 @@ extern crate bit_vec;
 extern crate csv_sniffer;
 extern crate tempfile;
 #[macro_use] extern crate mashup;
+extern crate typenum;
 
 #[cfg(test)] extern crate rand;
 
@@ -30,6 +31,7 @@ extern crate tempfile;
 #[macro_use] pub mod cons;
 // #[macro_use] pub mod data_types;
 #[macro_use] pub mod features;
+#[macro_use] pub mod label;
 #[macro_use] pub mod fieldlist;
 pub mod source;
 pub mod store;

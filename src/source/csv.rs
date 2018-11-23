@@ -2,8 +2,6 @@
 
 use std::str::FromStr;
 use std::fmt::Debug;
-use std::marker::PhantomData;
-use std::ops::Add;
 use std::collections::{HashMap};
 
 // use typenum::{Unsigned, Add1, B1};
@@ -14,12 +12,12 @@ use csv_sniffer::metadata::Metadata;
 use source::file::{LocalFileReader, FileLocator};
 use source::decode::decode;
 use error::*;
-use store::{StorageCons, AssocStorage, DataStore};
+use store::{AssocStorage, DataStore};
 use cons::*;
 use field::FieldIdent;
 use field::{Value};
-use fieldlist::{FieldPayload, FieldPayloadCons, FieldCons, FieldDesignator, SpecCons, AssocField,
-    Field, FieldTypes};
+use fieldlist::{FieldPayloadCons, FieldCons, FieldDesignator, SpecCons};
+use label::{TypedValue, Valued,};
 
 /// CSV Data source. Contains location of data file, and computes CSV metadata. Can be turned into
 /// `CsvReader` object.
@@ -73,7 +71,7 @@ impl CsvSource {
 //     }
 // }
 
-pub type CsvSrcSpecCons<Field, Tail> = FieldPayloadCons<Field, usize, Tail>;
+pub type CsvSrcSpecCons<Label, DType, Tail> = FieldPayloadCons<Label, DType, usize, Tail>;
 
 pub trait IntoCsvSrcSpec {
     type CsvSrcSpec;
@@ -91,20 +89,20 @@ impl IntoCsvSrcSpec for Nil {
     }
 }
 
-impl<Field, Tail> IntoCsvSrcSpec
-    for SpecCons<Field, Tail>
+impl<Label, DType, Tail> IntoCsvSrcSpec
+    for SpecCons<Label, DType, Tail>
     where Tail: IntoCsvSrcSpec,
 {
-    type CsvSrcSpec = CsvSrcSpecCons<Field, Tail::CsvSrcSpec>;
+    type CsvSrcSpec = CsvSrcSpecCons<Label, DType, Tail::CsvSrcSpec>;
 
     fn into_csv_src_spec(
         self,
         headers: &HashMap<String, usize>,
         num_fields: usize
     )
-        -> Result<CsvSrcSpecCons<Field, Tail::CsvSrcSpec>>
+        -> Result<CsvSrcSpecCons<Label, DType, Tail::CsvSrcSpec>>
     {
-        let idx = match self.head.payload {
+        let idx = match *self.head.value_ref() {
             FieldDesignator::Expr(ref s) => *headers.get(s)
                 .ok_or(AgnesError::FieldNotFound(FieldIdent::Name(s.to_string())))?,
             FieldDesignator::Idx(idx) => {
@@ -115,7 +113,7 @@ impl<Field, Tail> IntoCsvSrcSpec
             }
         };
         Ok(Cons {
-            head: idx.into(),
+            head: TypedValue::from(idx).into(),
             tail: self.tail.into_csv_src_spec(headers, num_fields)?
         })
     }
@@ -227,9 +225,10 @@ impl BuildDStore for Nil {
         Ok(DataStore::<Nil>::empty())
     }
 }
-impl<Ident, DType, Tail> BuildDStore
+impl<Label, DType, Tail> BuildDStore
     for FieldPayloadCons<
-        Field<Ident, DType>,
+        Label,
+        DType,
         usize,
         Tail
     >
@@ -239,8 +238,8 @@ impl<Ident, DType, Tail> BuildDStore
     // >
     where
           Tail: BuildDStore,
-          Tail::OutputFields: FieldTypes,
-          Ident: Debug,
+          // Tail::OutputFields: FieldTypes,
+          Label: Debug,
     //       Tail::OutputFields: FieldIndex,
     //       <Tail::OutputFields as FieldIndex>::FIdx: Add<B1>,
           DType: FromStr + Debug + Default + Clone,
@@ -251,7 +250,7 @@ impl<Ident, DType, Tail> BuildDStore
     //     Tail::OutputFields
     // >;
     type OutputFields = FieldCons<
-        Ident,
+        Label,
         DType,
         Tail::OutputFields
     >;
@@ -264,7 +263,7 @@ impl<Ident, DType, Tail> BuildDStore
             .map(|row| {
                 let record = row?;
                 let value = decode(
-                    record.get(self.head.payload).ok_or_else(||
+                    record.get(*self.head.value_ref().value_ref()).ok_or_else(||
                         AgnesError::FieldNotFound(FieldIdent::Name(stringify![Field].to_string()))
                     )?
                 )?;
@@ -281,7 +280,8 @@ impl<Ident, DType, Tail> BuildDStore
                 }
             }))
             .collect::<Result<_>>()?;
-        let ds = ds.add_field_from_iter::<Ident, DType, _, _>(values);
+        let ds = ds.add_labeled_field_from_iter::<Label, DType, _, _>(values);
+
 
         Ok(ds)
     }
