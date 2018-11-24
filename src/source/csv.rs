@@ -17,7 +17,7 @@ use cons::*;
 use field::FieldIdent;
 use field::{Value};
 use fieldlist::{FieldPayloadCons, FieldCons, FieldDesignator, SpecCons};
-use label::{TypedValue, Valued,};
+use label::{TypedValue, Valued};
 
 /// CSV Data source. Contains location of data file, and computes CSV metadata. Can be turned into
 /// `CsvReader` object.

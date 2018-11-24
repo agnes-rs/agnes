@@ -198,24 +198,24 @@ pub trait NextLabel
 //     }
 // }
 
-#[macro_export]
-macro_rules! add_field {
-    ($ds:ident<$fields:ty>.$new_label:ident = $data:expr;) => {
-        pub type $new_label = $crate::label::Label<
-            typenum::Add1<<$fields as $crate::label::Natural>::Nat>
-        >;
-        let $ds = $ds.add_field::<$new_label, _>($data);
-    }
-}
-#[macro_export]
-macro_rules! add_field_from_iter {
-    ($ds:ident<$fields:ty>.$new_label:ident = $iter:expr;) => {
-        pub type $new_label = $crate::label::Label<
-            typenum::Add1<<$fields as $crate::label::Natural>::Nat>
-        >;
-        let $ds = $ds.add_field_from_iter::<$new_label, _>($iter);
-    }
-}
+// #[macro_export]
+// macro_rules! add_field {
+//     ($ds:ident<$fields:ty>.$new_label:ident = $data:expr;) => {
+//         pub type $new_label = $crate::label::Label<
+//             typenum::Add1<<$fields as $crate::label::Natural>::Nat>
+//         >;
+//         let $ds = $ds.add_field::<$new_label, _>($data);
+//     }
+// }
+// #[macro_export]
+// macro_rules! add_field_from_iter {
+//     ($ds:ident<$fields:ty>.$new_label:ident = $iter:expr;) => {
+//         pub type $new_label = $crate::label::Label<
+//             typenum::Add1<<$fields as $crate::label::Natural>::Nat>
+//         >;
+//         let $ds = $ds.add_field_from_iter::<$new_label, _>($iter);
+//     }
+// }
 
 impl<PrevFields> DataStore<PrevFields> where PrevFields: AssocStorage
 {

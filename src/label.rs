@@ -13,6 +13,74 @@ use typenum::{
 
 use cons::{Cons, Nil};
 
+
+
+/// A label for a value in an `LVCons`. Backed by a type-level natural number `Idx`.
+#[derive(Debug, Clone)]
+pub struct Label<Idx, Name>
+{
+    index: Idx,
+    _name: PhantomData<Name>
+}
+
+pub trait LabelName
+{
+    fn name() -> &'static str;
+}
+impl<Idx, Name> LabelName for Label<Idx, Name>
+    where Name: LabelName
+{
+    fn name() -> &'static str { Name::name() }
+}
+
+pub trait LabelIndex
+{
+    type Idx;
+}
+impl<Idx, Name> LabelIndex for Label<Idx, Name>
+{
+    type Idx = Idx;
+}
+impl<Label, Value, Tail> LabelIndex for LVCons<Label, Value, Tail>
+    where Label: LabelIndex
+{
+    type Idx = Label::Idx;
+}
+
+pub type NextLabelIndex<T> = Add1<<T as LabelIndex>::Idx>;
+
+pub trait StrLabels
+{
+    fn labels<'a>() -> VecDeque<&'a str>;
+}
+impl StrLabels for Nil
+{
+    fn labels<'a>() -> VecDeque<&'a str> { VecDeque::new() }
+}
+impl<L, T> StrLabels for LCons<L, T>
+    where L: LabelName,
+          T: StrLabels
+{
+    fn labels<'a>() -> VecDeque<&'a str>
+    {
+        let mut previous = T::labels();
+        previous.push_front(L::name());
+        previous
+    }
+}
+impl<L, V, T> StrLabels for LVCons<L, V, T>
+    where L: LabelName,
+          T: StrLabels
+{
+    fn labels<'a>() -> VecDeque<&'a str>
+    {
+        let mut previous = T::labels();
+        previous.push_front(L::name());
+        previous
+    }
+}
+
+
 #[derive(Debug, Clone)]
 pub struct Labeled<L, V>
 {
@@ -48,24 +116,6 @@ impl<D, V> From<V> for TypedValue<D, V>
         }
     }
 }
-
-// #[derive(Debug, Clone)]
-// pub struct MarkerValue<M, V>
-// {
-//     _marker: PhantomData<M>,
-//     value: V
-// }
-// impl<D, V> From<V> for MarkerValue<D, V>
-// {
-//     fn from(orig: V) -> MarkerValue<D, V>
-//     {
-//         MarkerValue
-//         {
-//             _marker: PhantomData,
-//             value: orig
-//         }
-//     }
-// }
 
 pub trait Typed
 {
@@ -126,12 +176,6 @@ impl<T> Valued for T where  T: SelfValued {
     fn value_ref(&self) -> &Self { self }
     fn value(self) -> Self::Value { self }
 }
-// impl<M, V> Valued for MarkerValue<M, V>
-//     where V: Valued
-// {
-//     type Value = V::Value;
-//     fn value_ref(&self) -> &Self::Value { &self.value.value_ref() }
-// }
 impl<D, V> Valued for TypedValue<D, V>
     where V: Valued
 {
@@ -178,134 +222,60 @@ pub type LDMCons<L, D, M, T> = LDVCons<L, D, PhantomData<M>, T>;
 // /// Label-DType-value-marker cons-list
 // pub type LDMVCons<L, D, M, V, T> = LDVCons<L, D, MarkerValue<M, V>, T>;
 
-/// A label for a value in an `LVCons`. Backed by a type-level natural number `Idx`.
-#[derive(Debug, Clone)]
-pub struct Label<Idx, Name>
-{
-    index: Idx,
-    _name: PhantomData<Name>
-}
-
-pub trait LabelName
-{
-    fn name() -> &'static str;
-}
-impl<Idx, Name> LabelName for Label<Idx, Name>
-    where Name: LabelName
-{
-    fn name() -> &'static str { Name::name() }
-}
-
-
-pub trait LabelIndex
-{
-    type Idx;
-}
-impl<Idx, Name> LabelIndex for Label<Idx, Name>
-{
-    type Idx = Idx;
-}
-impl<Label, Value, Tail> LabelIndex for LVCons<Label, Value, Tail>
-    where Label: LabelIndex
-{
-    type Idx = Label::Idx;
-}
-
-pub type NextLabelIndex<T> = Add1<<T as LabelIndex>::Idx>;
-
-pub trait StrLabels
-{
-    fn labels<'a>() -> VecDeque<&'a str>;
-}
-impl StrLabels for Nil
-{
-    fn labels<'a>() -> VecDeque<&'a str> { VecDeque::new() }
-}
-impl<L, T> StrLabels for LCons<L, T>
-    where L: LabelName,
-          T: StrLabels
-{
-    fn labels<'a>() -> VecDeque<&'a str>
-    {
-        let mut previous = T::labels();
-        previous.push_front(L::name());
-        previous
-    }
-}
-impl<L, V, T> StrLabels for LVCons<L, V, T>
-    where L: LabelName,
-          T: StrLabels
-{
-    fn labels<'a>() -> VecDeque<&'a str>
-    {
-        let mut previous = T::labels();
-        previous.push_front(L::name());
-        previous
-    }
-}
-// impl<L, T> LCons<L, T>
-// {
-//     pub fn str_labels<'a>() -> Vec<&'a str>
-//         where Self: StrLabels
-//     {
-//         <Self as StrLabels>::labels(vec![])
-//     }
-// }
-
-/// Type-level equality. Leverages `typenum`'s `IsEqual` trait for type-level-number equality,
+/// Label-level equality. Leverages `typenum`'s `IsEqual` trait for type-level-number equality,
 /// but doesn't use `IsEqual`'s `is_equal` method (since no results of this equality check are
 /// intended to be instantiated).
-pub trait TypeEq<Other> {
+pub trait LabelEq<Other> {
     type Eq: Bit;
 }
 
 pub type True = B1;
 pub type False = B0;
 
-impl<T, U> TypeEq<U> for T
+impl<T, U> LabelEq<U> for T
     where T: IsEqual<U>
 {
     type Eq = <T as IsEqual<U>>::Output;
 }
 
 /// Type-level equality, extended for Labels. The `Name` type parameter doesn't matter.
-impl<T, U, TName, UName> TypeEq<Label<U, UName>> for Label<T, TName>
-    where T: TypeEq<U>
+impl<T, U, TName, UName> LabelEq<Label<U, UName>> for Label<T, TName>
+    where T: LabelEq<U>
 {
-    type Eq = <T as TypeEq<U>>::Eq;
+    type Eq = <T as LabelEq<U>>::Eq;
 }
 
 /// Equate Labels to backing naturals
-impl<T, Name> TypeEq<UTerm> for Label<T, Name>
-    where T: TypeEq<UTerm>
+impl<T, Name> LabelEq<UTerm> for Label<T, Name>
+    where T: LabelEq<UTerm>
 {
-    type Eq = <T as TypeEq<UTerm>>::Eq;
+    type Eq = <T as LabelEq<UTerm>>::Eq;
 }
-impl<T, U, Name> TypeEq<UInt<U, B0>> for Label<T, Name>
-    where T: TypeEq<UInt<U, B0>>
+impl<T, U, Name> LabelEq<UInt<U, B0>> for Label<T, Name>
+    where T: LabelEq<UInt<U, B0>>
 {
-    type Eq = <T as TypeEq<UInt<U, B0>>>::Eq;
+    type Eq = <T as LabelEq<UInt<U, B0>>>::Eq;
 }
-impl<T, U, Name> TypeEq<UInt<U, B1>> for Label<T, Name>
-    where T: TypeEq<UInt<U, B1>>
+impl<T, U, Name> LabelEq<UInt<U, B1>> for Label<T, Name>
+    where T: LabelEq<UInt<U, B1>>
 {
-    type Eq = <T as TypeEq<UInt<U, B1>>>::Eq;
+    type Eq = <T as LabelEq<UInt<U, B1>>>::Eq;
 }
 
-impl<U, Name> TypeEq<Label<U, Name>> for UTerm
-    where UTerm: TypeEq<U>
+impl<U, Name> LabelEq<Label<U, Name>> for UTerm
+    where UTerm: LabelEq<U>
 {
-    type Eq = <UTerm as TypeEq<U>>::Eq;
+    type Eq = <UTerm as LabelEq<U>>::Eq;
 }
-impl<U, Name> TypeEq<Label<U, Name>> for UInt<U, B0>
-    where UInt<U, B0>: TypeEq<U>
+impl<U, Name> LabelEq<Label<U, Name>> for UInt<U, B0>
+    where UInt<U, B0>: LabelEq<U>
 {
-    type Eq = <UInt<U, B0> as TypeEq<U>>::Eq;
+    type Eq = <UInt<U, B0> as LabelEq<U>>::Eq;
 }
-impl<U, Name> TypeEq<Label<U, Name>> for UInt<U, B1>
-    where UInt<U, B1>: TypeEq<U>
+impl<U, Name> LabelEq<Label<U, Name>> for UInt<U, B1>
+    where UInt<U, B1>: LabelEq<U>
 {
-    type Eq = <UInt<U, B1> as TypeEq<U>>::Eq;
+    type Eq = <UInt<U, B1> as LabelEq<U>>::Eq;
 }
 
 /// A label for a value in an `LVCons` within a specific namespace `NS`. Backed by a type-level
@@ -317,16 +287,16 @@ pub struct NsLabel<N, NS> {
 }
 /// Type-level equality implementation for `NsLabel`s. Result will be `True` if both namespace and
 /// the type-level natural number backing this label match.
-impl<T, U, TNS, UNS> TypeEq<NsLabel<U, UNS>> for NsLabel<T, TNS>
-    where T: TypeEq<U>,
-          TNS: TypeEq<UNS>,
-          <T as TypeEq<U>>::Eq: BitAnd<<TNS as TypeEq<UNS>>::Eq>,
-          <<T as TypeEq<U>>::Eq as BitAnd<<TNS as TypeEq<UNS>>::Eq>>::Output: Bit,
+impl<T, U, TNS, UNS> LabelEq<NsLabel<U, UNS>> for NsLabel<T, TNS>
+    where T: LabelEq<U>,
+          TNS: LabelEq<UNS>,
+          <T as LabelEq<U>>::Eq: BitAnd<<TNS as LabelEq<UNS>>::Eq>,
+          <<T as LabelEq<U>>::Eq as BitAnd<<TNS as LabelEq<UNS>>::Eq>>::Output: Bit,
 {
-    type Eq = And<<T as TypeEq<U>>::Eq, <TNS as TypeEq<UNS>>::Eq>;
+    type Eq = And<<T as LabelEq<U>>::Eq, <TNS as LabelEq<UNS>>::Eq>;
 }
 
-/// `TypeEq`-based membership test
+/// `LabelEq`-based membership test
 pub trait Member<E> {
     type IsMember: Bit;
 }
@@ -335,12 +305,127 @@ impl<E> Member<E> for Nil {
     type IsMember = False;
 }
 impl<E, L, T> Member<E> for LCons<L, T>
-    where L: TypeEq<E>,
+    where L: LabelEq<E>,
           T: Member<E>,
-          <L as TypeEq<E>>::Eq: BitOr<<T as Member<E>>::IsMember>,
-          <<L as TypeEq<E>>::Eq as BitOr<<T as Member<E>>::IsMember>>::Output: Bit,
+          <L as LabelEq<E>>::Eq: BitOr<<T as Member<E>>::IsMember>,
+          <<L as LabelEq<E>>::Eq as BitOr<<T as Member<E>>::IsMember>>::Output: Bit,
 {
-    type IsMember = Or<<L as TypeEq<E>>::Eq, <T as Member<E>>::IsMember>;
+    type IsMember = Or<<L as LabelEq<E>>::Eq, <T as Member<E>>::IsMember>;
+}
+impl<E, L, V, T> Member<E> for LVCons<L, V, T>
+    where L: LabelEq<E>,
+          T: Member<E>,
+          <L as LabelEq<E>>::Eq: BitOr<<T as Member<E>>::IsMember>,
+          <<L as LabelEq<E>>::Eq as BitOr<<T as Member<E>>::IsMember>>::Output: Bit,
+{
+    type IsMember = Or<<L as LabelEq<E>>::Eq, <T as Member<E>>::IsMember>;
+}
+
+/// Trait to ensure that all labels in `LabeList` are found in cons-list `Self`.
+pub trait HasLabels<LabelList>
+{}
+impl<T> HasLabels<Nil> for T
+{}
+impl<NeedleLbl, NeedleTail, Haystack> HasLabels<LabelCons<NeedleLbl, NeedleTail>>
+    for Haystack
+    where Haystack: Member<NeedleLbl, IsMember=True>,
+          Haystack: HasLabels<NeedleTail>,
+{}
+impl<NeedleLblIdx, NeedleLbl, Haystack> HasLabels<Label<NeedleLblIdx, NeedleLbl>>
+    for Haystack
+    where Haystack: Member<Label<NeedleLblIdx, NeedleLbl>, IsMember=True>,
+{}
+
+/// Trait to find the subset of cons-list `Self` which are labeled with labels in `LabelList`.
+///
+/// Any labels in `LabelList` not found in `Self` will be ignored (see `HasLabels` for a trait
+/// that requires all members of `LabelList` to be found).
+pub trait Filter<LabelList>
+{
+    type Filtered;
+}
+
+// End-point. No more list elements to search. We don't care if anything remains or not in
+// `LabelList`.
+impl<LabelList> Filter<LabelList> for Nil
+{
+    type Filtered = Nil;
+}
+
+// Implementation for `LCons` cons-lists.
+impl<LabelList, L, T>
+    Filter<LabelList>
+    for LCons<L, T>
+    where
+        LabelList: Member<L>,
+        LCons<L, T>: FilterPred<LabelList, <LabelList as Member<L>>::IsMember>
+{
+    type Filtered =
+        <LCons<L, T> as FilterPred<LabelList, <LabelList as Member<L>>::IsMember>>::Filtered;
+}
+
+// Implementation for `LVCons` cons-lists.
+impl<LabelList, L, V, T>
+    Filter<LabelList>
+    for LVCons<L, V, T>
+    where
+        LabelList: Member<L>,
+        LVCons<L, V, T>: FilterPred<LabelList, <LabelList as Member<L>>::IsMember>
+{
+    type Filtered =
+        <LVCons<L, V, T> as FilterPred<LabelList, <LabelList as Member<L>>::IsMember>>::Filtered;
+}
+
+/// Helper filter trait. Used by `Filter` for computing the subset of `Self` cons-list which
+/// contains the labels in `LabelList`.
+///
+/// `IsMember` specifies whether or not the label of the head value of `Self` is a member of
+/// `LabelList`.
+pub trait FilterPred<LabelList, IsMember>
+{
+    type Filtered;
+}
+
+// `FilterPred` implementation for an `LCons` cons-list where the head is in `LabelList`.
+impl<LabelList, L, T>
+    FilterPred<LabelList, True>
+    for LCons<L, T>
+    where
+        T: Filter<LabelList>,
+{
+    // head is in list, so we include it and check the tail
+    type Filtered = LCons<L, <T as Filter<LabelList>>::Filtered>;
+}
+// `FilterPred` implementation for an `LCons` cons-list where the head isn't in `LabelList`.
+impl<LabelList, L, T>
+    FilterPred<LabelList, False>
+    for LCons<L, T>
+    where
+        T: Filter<LabelList>,
+{
+    // head isn't in list, so we check the tail
+    type Filtered = <T as Filter<LabelList>>::Filtered;
+}
+
+// `FilterPred` implementation for an `LVCons` cons-list where the head is in `LabelList`.
+impl<LabelList, L, V, T>
+    FilterPred<LabelList, True>
+    for LVCons<L, V, T>
+    where
+        T: Filter<LabelList>,
+{
+    // head is in list, so we include it and check the tail
+    type Filtered = LVCons<L, V, <T as Filter<LabelList>>::Filtered>;
+}
+// `FilterPred` implementation for an `LVCons` cons-list where the head isn't in `LabelList`.
+impl<LabelList, L, V, T>
+    FilterPred<LabelList, False>
+    for LVCons<L, V, T>
+    where
+        T: Filter<LabelList>,
+{
+    // head isn't in list, so we check the tail
+    type Filtered = <T as Filter<LabelList>>::Filtered;
 }
 
 /// Lookup into a `Cons`-list by `typenum` natural number.
@@ -385,12 +470,12 @@ pub trait LookupNatByLabel<L>
 }
 impl<TargetL, L, V, T> LookupNatByLabel<TargetL>
     for LVCons<L, V, T>
-    where TargetL: TypeEq<L>,
+    where TargetL: LabelEq<L>,
           LVCons<L, V, T>:
-            LookupNatByLabelMatch<TargetL, <TargetL as TypeEq<L>>::Eq>,
+            LookupNatByLabelMatch<TargetL, <TargetL as LabelEq<L>>::Eq>,
 {
     type Nat = <LVCons<L, V, T> as
-        LookupNatByLabelMatch<TargetL, <TargetL as TypeEq<L>>::Eq>>::Nat;
+        LookupNatByLabelMatch<TargetL, <TargetL as LabelEq<L>>::Eq>>::Nat;
 }
 
 pub trait LookupNatByLabelMatch<TargetL, B>
@@ -425,11 +510,57 @@ impl<L, T> LookupElemByLabel<L> for T
         LookupElemByNat::<_>::elem(self)
     }
 }
-
 pub type ElemOf<T, Label> = <T as LookupElemByLabel<Label>>::Elem;
-pub type TypeOfElemOf<T, Label> = <<T as LookupElemByLabel<Label>>::Elem as Typed>::DType;
-pub type ValueOfElemOf<T, Label> = <<T as LookupElemByLabel<Label>>::Elem as Valued>::Value;
-pub type MarkerOfElemOf<T, Label> = <<T as LookupElemByLabel<Label>>::Elem as Marked>::Marker;
+
+pub trait LookupValuedElemByLabel<L>: LookupElemByLabel<L>
+{
+    type Elem: Valued;
+    fn elem(&self) -> &<Self as LookupValuedElemByLabel<L>>::Elem;
+}
+impl<T, L> LookupValuedElemByLabel<L>
+    for T
+    where
+        T: LookupElemByLabel<L>,
+        ElemOf<Self, L>: Valued
+{
+    type Elem = <Self as LookupElemByLabel<L>>::Elem;
+    fn elem(&self) -> &<Self as LookupElemByLabel<L>>::Elem
+    {
+        <Self as LookupElemByLabel<L>>::elem(self)
+    }
+}
+pub type ValuedElemOf<T, Label> = <T as LookupValuedElemByLabel<Label>>::Elem;
+pub type ValueOfElemOf<T, Label> = <<T as LookupValuedElemByLabel<Label>>::Elem as Valued>::Value;
+
+pub trait LookupMarkedElemByLabel<L>: LookupElemByLabel<L>
+{
+    type Elem: Marked;
+}
+impl<T, L> LookupMarkedElemByLabel<L>
+    for T
+    where
+        T: LookupElemByLabel<L>,
+        ElemOf<Self, L>: Marked
+{
+    type Elem = <Self as LookupElemByLabel<L>>::Elem;
+}
+pub type MarkedElemOf<T, Label> = <T as LookupMarkedElemByLabel<Label>>::Elem;
+pub type MarkerOfElemOf<T, Label> = <<T as LookupMarkedElemByLabel<Label>>::Elem as Marked>::Marker;
+
+pub trait LookupTypedElemByLabel<L>: LookupElemByLabel<L>
+{
+    type Elem: Typed;
+}
+impl<T, L> LookupTypedElemByLabel<L>
+    for T
+    where
+        T: LookupElemByLabel<L>,
+        ElemOf<Self, L>: Typed,
+{
+    type Elem = <Self as LookupElemByLabel<L>>::Elem;
+}
+pub type TypedElemOf<T, Label> = <T as LookupTypedElemByLabel<Label>>::Elem;
+pub type TypeOfElemOf<T, Label> = <<T as LookupTypedElemByLabel<Label>>::Elem as Typed>::DType;
 
 pub trait AssocLabels {
     type Labels;
@@ -449,11 +580,11 @@ impl AssocLabels for Nil {
 macro_rules! label {
     ($name:ident, $nat:ty) => {
         #[allow(non_snake_case)]
-        mod $name {
+        pub mod $name {
             #![allow(dead_code)]
             #[allow(unused_imports)]
             use typenum::consts::*;
-            const NAME: &'static str = stringify![$name];
+            pub const NAME: &'static str = stringify![$name];
 
             pub type Natural = $nat;
 
@@ -468,10 +599,22 @@ macro_rules! label {
     }
 }
 
+#[macro_export]
+macro_rules! Labels {
+    (@labels()) => { Nil };
+    (@labels($label:ident, $($rest:ident,)*)) => {
+        LCons<$label::Label, Labels![@labels($($rest,)*)]>
+    };
+    ($($label:ident),*$(,)*) => {
+        Labels![@labels($($label,)*)]
+    }
+}
+
+
 #[cfg(test)]
 mod tests
 {
-    use cons::Nil;
+    use cons::*;
     use super::*;
     use typenum::{
         Bit,
@@ -481,16 +624,16 @@ mod tests
     #[test]
     fn type_eq()
     {
-        assert!(<U1 as TypeEq<U1>>::Eq::to_bool());
-        assert!(!<U1 as TypeEq<U4>>::Eq::to_bool());
+        assert!(<U1 as LabelEq<U1>>::Eq::to_bool());
+        assert!(!<U1 as LabelEq<U4>>::Eq::to_bool());
 
         label![ImALabel, U0];
         label![ImAnotherLabel, U1];
         // type ImALabel = Label<U0>;
         // type ImAnotherLabel = Label<U1>;
 
-        assert!(<ImALabel::Label as TypeEq<ImALabel::Label>>::Eq::to_bool());
-        assert!(!<ImALabel::Label as TypeEq<ImAnotherLabel::Label>>::Eq::to_bool());
+        assert!(<ImALabel::Label as LabelEq<ImALabel::Label>>::Eq::to_bool());
+        assert!(!<ImALabel::Label as LabelEq<ImAnotherLabel::Label>>::Eq::to_bool());
     }
 
     #[test]
@@ -502,7 +645,7 @@ mod tests
         label![F3, U3];
         label![F4, U4];
 
-        let foo = LVCons {
+        let list = LVCons {
             head: Labeled::<F0::Label, _>::from(6u64),
             tail: LVCons {
                 head: Labeled::<F1::Label, _>::from(5.3f64),
@@ -519,43 +662,97 @@ mod tests
             },
         };
 
-        assert_eq!(LookupElemByNat::<U0>::elem(&foo).value, 6u64);
-        assert_eq!(LookupElemByNat::<U1>::elem(&foo).value, 5.3);
-        assert_eq!(LookupElemByNat::<U2>::elem(&foo).value, -3i64);
-        assert_eq!(LookupElemByNat::<U3>::elem(&foo).value, "Hello".to_string());
-        assert_eq!(LookupElemByNat::<U4>::elem(&foo).value, 3.2f32);
+        assert_eq!(LookupElemByNat::<U0>::elem(&list).value, 6u64);
+        assert_eq!(LookupElemByNat::<U1>::elem(&list).value, 5.3);
+        assert_eq!(LookupElemByNat::<U2>::elem(&list).value, -3i64);
+        assert_eq!(LookupElemByNat::<U3>::elem(&list).value, "Hello".to_string());
+        assert_eq!(LookupElemByNat::<U4>::elem(&list).value, 3.2f32);
 
-        assert_eq!(LookupNatByLabel::<F0::Label>::nat(&foo), 0);
-        assert_eq!(LookupNatByLabel::<F1::Label>::nat(&foo), 1);
-        assert_eq!(LookupNatByLabel::<F2::Label>::nat(&foo), 2);
-        assert_eq!(LookupNatByLabel::<F3::Label>::nat(&foo), 3);
-        assert_eq!(LookupNatByLabel::<F4::Label>::nat(&foo), 4);
+        assert_eq!(LookupNatByLabel::<F0::Label>::nat(&list), 0);
+        assert_eq!(LookupNatByLabel::<F1::Label>::nat(&list), 1);
+        assert_eq!(LookupNatByLabel::<F2::Label>::nat(&list), 2);
+        assert_eq!(LookupNatByLabel::<F3::Label>::nat(&list), 3);
+        assert_eq!(LookupNatByLabel::<F4::Label>::nat(&list), 4);
 
-        assert_eq!(LookupElemByLabel::<F0::Label>::elem(&foo).value, 6u64);
-        assert_eq!(LookupElemByLabel::<F1::Label>::elem(&foo).value, 5.3);
-        assert_eq!(LookupElemByLabel::<F2::Label>::elem(&foo).value, -3i64);
-        assert_eq!(LookupElemByLabel::<F3::Label>::elem(&foo).value, "Hello".to_string());
-        assert_eq!(LookupElemByLabel::<F4::Label>::elem(&foo).value, 3.2f32);
+        assert_eq!(LookupElemByLabel::<F0::Label>::elem(&list).value, 6u64);
+        assert_eq!(LookupElemByLabel::<F1::Label>::elem(&list).value, 5.3);
+        assert_eq!(LookupElemByLabel::<F2::Label>::elem(&list).value, -3i64);
+        assert_eq!(LookupElemByLabel::<F3::Label>::elem(&list).value, "Hello".to_string());
+        assert_eq!(LookupElemByLabel::<F4::Label>::elem(&list).value, 3.2f32);
 
         // type F5 = Label<U5>;
         label![F5, U5];
-        let foo = LVCons {
+        let list = LVCons {
             head: Labeled::<F5::Label, _>::from(3u32),
-            tail: foo,
+            tail: list,
         };
 
-        assert_eq!(LookupNatByLabel::<F0::Label>::nat(&foo), 1);
-        assert_eq!(LookupNatByLabel::<F1::Label>::nat(&foo), 2);
-        assert_eq!(LookupNatByLabel::<F2::Label>::nat(&foo), 3);
-        assert_eq!(LookupNatByLabel::<F3::Label>::nat(&foo), 4);
-        assert_eq!(LookupNatByLabel::<F4::Label>::nat(&foo), 5);
-        assert_eq!(LookupNatByLabel::<F5::Label>::nat(&foo), 0);
+        assert_eq!(LookupNatByLabel::<F0::Label>::nat(&list), 1);
+        assert_eq!(LookupNatByLabel::<F1::Label>::nat(&list), 2);
+        assert_eq!(LookupNatByLabel::<F2::Label>::nat(&list), 3);
+        assert_eq!(LookupNatByLabel::<F3::Label>::nat(&list), 4);
+        assert_eq!(LookupNatByLabel::<F4::Label>::nat(&list), 5);
+        assert_eq!(LookupNatByLabel::<F5::Label>::nat(&list), 0);
 
-        assert_eq!(LookupElemByLabel::<F0::Label>::elem(&foo).value, 6u64);
-        assert_eq!(LookupElemByLabel::<F1::Label>::elem(&foo).value, 5.3);
-        assert_eq!(LookupElemByLabel::<F2::Label>::elem(&foo).value, -3i64);
-        assert_eq!(LookupElemByLabel::<F3::Label>::elem(&foo).value, "Hello".to_string());
-        assert_eq!(LookupElemByLabel::<F4::Label>::elem(&foo).value, 3.2f32);
-        assert_eq!(LookupElemByLabel::<F5::Label>::elem(&foo).value, 3u32);
+        assert_eq!(LookupElemByLabel::<F0::Label>::elem(&list).value, 6u64);
+        assert_eq!(LookupElemByLabel::<F1::Label>::elem(&list).value, 5.3);
+        assert_eq!(LookupElemByLabel::<F2::Label>::elem(&list).value, -3i64);
+        assert_eq!(LookupElemByLabel::<F3::Label>::elem(&list).value, "Hello".to_string());
+        assert_eq!(LookupElemByLabel::<F4::Label>::elem(&list).value, 3.2f32);
+        assert_eq!(LookupElemByLabel::<F5::Label>::elem(&list).value, 3u32);
+    }
+
+    #[test]
+    fn filter()
+    {
+        label![F0, U0];
+        label![F1, U1];
+        label![F2, U2];
+        label![F3, U3];
+        label![F4, U4];
+
+        type SampleLabels =
+            LVCons<
+                F0::Label, u64,
+                LVCons<
+                    F1::Label, f64,
+                    LVCons<
+                        F2::Label, i64,
+                        LVCons<
+                            F3::Label, String,
+                            LVCons<
+                                F4::Label, f32,
+                                Nil
+                            >
+                        >
+                    >
+                >
+            >;
+
+        {
+            type Filtered = <SampleLabels as Filter<Labels![F3]>>::Filtered;
+            // we only filtered 1 label, so length should be 1
+            assert_eq!(Filtered::LEN, 1);
+        }
+        {
+            type Filtered = <SampleLabels as Filter<Labels![F1, F2, F4]>>::Filtered;
+            // we only filtered 3 labels, so length should be 3
+            assert_eq!(Filtered::LEN, 3);
+        }
+        {
+            label![F5, U5];
+            type Filtered = <SampleLabels as Filter<Labels![F1, F2, F4, F5]>>::Filtered;
+            // F5 doesn't exist in SampleLabels, so we still should only have 3
+            assert_eq!(Filtered::LEN, 3);
+        }
+        {
+            label![F5, U5];
+            label![F6, U6];
+            label![F7, U7];
+            type Filtered = <SampleLabels as Filter<Labels![F5, F6, F7]>>::Filtered;
+            // None of these labels exist in SampleLabels, so we should have 0
+            assert_eq!(Filtered::LEN, 0);
+        }
+
     }
 }

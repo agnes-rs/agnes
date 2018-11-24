@@ -58,15 +58,32 @@ pub struct DataView<Labels, Frames>
     frames: Frames,
 }
 
-pub trait HasLabels<LabelList>
-{}
-impl<T> HasLabels<Nil> for T
-{}
-impl<NeedleLbl, NeedleTail, Haystack> HasLabels<LabelCons<NeedleLbl, NeedleTail>>
-    for Haystack
-    where Haystack: Member<NeedleLbl, IsMember=True>,
-          Haystack: HasLabels<NeedleTail>,
-{}
+// pub trait TyFrom<T>
+// {
+//     //FIXME: Should always be 'Self', but default associated types are unstable
+//     type Output /* = Self */;
+// }
+// pub trait TyInto<T>
+// {
+//     //FIXME: Should always be 'T', but default associated types are unstable
+//     type Output /* = T */;
+// }
+// // TyFrom implies TyInto
+// impl<T, U> TyInto<U> for T where U: TyFrom<T>
+// {
+//     type Output = <U as TyFrom<T>>::Output;
+// }
+// // TyFrom is reflexive
+// impl<T> TyFrom<T> for T
+// {
+//     type Output = T;
+// }
+
+// impl<LblIdx, LblName> TyFrom<Label<LblIdx, LblName>> for LabelCons<Label<LblIdx, LblName>, Nil>
+// {
+//     type Output = Self;
+// }
+
 
 
 impl<FrameLabel, FrameFields, Tail> NRows
@@ -87,6 +104,16 @@ impl<Labels, Frames> DataView<Labels, Frames>
             _labels: PhantomData,
             frames,
         }
+    }
+}
+
+impl<Labels, Frames> DataView<Labels, Frames>
+{
+    /// Field names in this data view
+    pub fn fieldnames<'a>(&'a self) -> Vec<&'a str>
+        where Labels: StrLabels
+    {
+        <Labels as StrLabels>::labels().into()
     }
 }
 
@@ -138,123 +165,41 @@ impl<Labels, Frames> DataView<Labels, Frames>
     }
 }
 
-// /// Returns a DataFrame<Fields> for a frame label (stored in FrameLookupCons)
-// pub trait LookupFrameByFrameLabel<'a, FrameLabel>
-// {
-//     type Frame;
-//     fn select_frame(&'a self) -> &'a Self::Frame;
-// }
-// impl<'a, FrameLabel, Frames> LookupFrameByFrameLabel<'a, FrameLabel>
-//     for Frames
-//     where Frames: LookupElemByLabel<FrameLabel>,
-//           ElemOf<Frames, FrameLabel>: Valued
-// {
-//     type Frame = ValueOfElemOf<Frames, FrameLabel>;
+pub trait FindFrameLabel<Label>:
+    LookupMarkedElemByLabel<Label>
+{
+    type FrameLabel;
+}
+impl<Labels, Label> FindFrameLabel<Label>
+    for Labels
+    where
+        Labels: LookupMarkedElemByLabel<Label>,
+{
+    type FrameLabel = MarkerOfElemOf<Labels, Label>;
+}
+pub type FrameLabelOf<Labels, Label> = <Labels as FindFrameLabel<Label>>::FrameLabel;
 
-//     fn select_frame(&'a self) -> &'a Self::Frame
-//     {
-//         LookupElemByLabel::<FrameLabel>::elem(self).value_ref()
-//     }
-// }
-
-// impl<Labels, Frames> DataView<Labels, Frames>
-// {
-//     /// Returns a DataFrame<Fields> for a specific `FrameLabel`.
-//     pub fn select_frame_by_frame_label<'a, FrameLabel>(&self)
-//         -> &<Frames as LookupFrameByFrameLabel<'a, FrameLabel>>::Frame
-//         where Frames: LookupFrameByFrameLabel<'a, FrameLabel>,
-//     {
-//         <Frames as LookupFrameByFrameLabel<FrameLabel>>::select_frame(&self.frames)
-//     }
-// }
-
-// pub type FrameByFrameLabelOf<'a, Frames, FrameLabel> =
-//     <Frames as LookupFrameByFrameLabel<'a, FrameLabel>>::Frame;
-
-
-// /// Returns a DataFrame<Fields> given a Field Label.
-// pub trait LookupFrameByLabel<'a, Labels, Label>
-// {
-//     type Frame;
-//     fn select_frame(&'a self) -> &'a Self::Frame;
-// }
-// impl<'a, Label, Labels, Frames> LookupFrameByLabel<'a, Labels, Label>
-//     for Frames
-//     where Labels: LookupElemByLabel<Label>,
-//           ElemOf<Labels, Label>: Marked,
-//           Frames: LookupFrameByFrameLabel<'a, MarkerOfElemOf<Labels, Label>>
-// {
-//     type Frame = <Frames as LookupFrameByFrameLabel<'a, MarkerOfElemOf<Labels, Label>>>::Frame;
-
-//     fn select_frame(&'a self) -> &'a Self::Frame
-//     {
-//         LookupFrameByFrameLabel::<MarkerOfElemOf<Labels, Label>>::select_frame(self)
-//     }
-// }
-
-// impl<Labels, Frames> DataView<Labels, Frames>
-// {
-//     pub fn select_frame_by_label<'a, Label>(&'a self)
-//         -> &'a <Frames as LookupFrameByLabel<'a, Labels, Label>>::Frame
-//         where Frames: LookupFrameByLabel<'a, Labels, Label>,
-//               Label: 'a
-//     {
-//         <Frames as LookupFrameByLabel<'a, Labels, Label>>::select_frame(&self.frames)
-//     }
-// }
-
-// pub type FrameOf<'a, Labels, Frames, Label> =
-//     <Frames as LookupFrameByLabel<'a, Labels, Label>>::Frame;
-
-// pub trait SelectFieldFromFrames<'a, Labels, Label>
-// {
-//     type Output;
-//     fn select_field(&'a self) -> Self::Output;
-// }
-
-// impl<'a, Labels, Frames, Label>
-//     SelectFieldFromFrames<'a, Labels, Label>
-//     for Frames
-//     where
-//           // Frame support `Label`-based lookup
-//           Label: 'a,
-//           Frames: 'a + LookupFrameByLabel<'a, Labels, Label>,
-//           FrameOf<'a, Labels, Frames, Label>:
-//             SelectFieldByLabel<'a, Label> + FieldSelect + FrameFields,
-
-//           // `Fields` type parameter of `DataFrame` has associated storage which supports
-//           // `Label`-based lookup
-//           // FrameFieldsOf<FrameOf<'a, Labels, Frames, Label>>: AssocStorage,
-//           // DataStore<FrameFieldsOf<FrameOf<'a, Labels, Frames, Label>>>:
-//           //   SelectFieldByLabel<'a, Label>,
-
-//           // <FrameFieldsOf<FrameOf<'a, Labels, Frames, Label>> as AssocStorage>::Storage:
-//           //   LookupElemByLabel<Label>,
-//           // ElemOf<
-//           //   <FrameFieldsOf<FrameOf<'a, Labels, Frames, Label>> as AssocStorage>::Storage, Label
-//           // >:
-//           //   Valued + Typed,
-//           // ValueOfElemOf<
-//           //   <FrameFieldsOf<FrameOf<'a, Labels, Frames, Label>> as AssocStorage>::Storage, Label
-//           // >:
-//           //   DataIndex<
-//           //       DType=TypeOfElemOf<
-//           //           <FrameFieldsOf<FrameOf<'a, Labels, Frames, Label>> as AssocStorage>::Storage,
-//           //           Label
-//           //       >
-//           //   >
-// {
-//     type Output = <FrameOf<'a, Labels, Frames, Label> as SelectFieldByLabel<'a, Label>>::Output;
-
-//     fn select_field(&'a self) -> Self::Output
-//     {
-//         Frames::select_frame(self).field::<Label>()
-//     }
-
-// }
+pub trait FindFrame<Labels, Label>:
+    LookupValuedElemByLabel<FrameLabelOf<Labels, Label>>
+    where
+        Labels: FindFrameLabel<Label>
+{
+    // type Frame;
+}
+impl<Frames, Labels, Label> FindFrame<Labels, Label>
+    for Frames
+    where
+        Labels: FindFrameLabel<Label>,
+        Frames: LookupValuedElemByLabel<FrameLabelOf<Labels, Label>>,
+{
+    // type Frame = ValueOfElemOf<Frames, FrameLabelOf<Labels, Label>>;
+}
+// pub type FrameOf<Frames, Labels, Label> = <Frames as FindFrame<Labels, Label>>::Frame;
+pub type FrameOf<Frames, Labels, Label> =
+    <<Frames as LookupValuedElemByLabel<FrameLabelOf<Labels, Label>>>::Elem as Valued>::Value;
 
 pub type FieldOf<Frames, Labels, Label> =
-    <ValueOfElemOf<Frames, MarkerOfElemOf<Labels, Label>> as SelectFieldByLabel<Label>>::Output;
+    <FrameOf<Frames, Labels, Label> as SelectFieldByLabel<Label>>::Output;
 
 pub trait SelectFieldFromLabels<Labels, Label>
 {
@@ -264,28 +209,18 @@ pub trait SelectFieldFromLabels<Labels, Label>
 impl<Labels, Frames, Label> SelectFieldFromLabels<Labels, Label>
     for Frames
     where
-        // Allows looking up frame index by label
-        Labels: LookupElemByLabel<Label>,
-        // Makes sure we can get the frame index
-        ElemOf<Labels, Label>: Marked,
-        // Looks up the frame by frame index
-        Frames: LookupElemByLabel<MarkerOfElemOf<Labels, Label>>,
-        // Get the value of frame itself
-        ElemOf<Frames, MarkerOfElemOf<Labels, Label>>: Valued,
-        // Requires us to select the field by label from the selected frame
-        ValueOfElemOf<Frames, MarkerOfElemOf<Labels, Label>>: SelectFieldByLabel<Label>,
-        // Makes sure the field has a type, value, and can be cloned
+        Labels: FindFrameLabel<Label>,
+        Frames: FindFrame<Labels, Label>,
+        FrameOf<Frames, Labels, Label>: SelectFieldByLabel<Label>,
         FieldOf<Frames, Labels, Label>: Typed + SelfValued + Clone,
-        // Makes sure the type of field is debug-printable
         TypeOf<FieldOf<Frames, Labels, Label>>: fmt::Debug,
 {
-    // type Output = Framed<TypeOf<FieldOf<Frames, Labels, Label>>>;
     type Output = FieldOf<Frames, Labels, Label>;
 
     fn select_field(&self) -> Self::Output
     {
         SelectFieldByLabel::<Label>::select_field(
-            LookupElemByLabel::<MarkerOfElemOf<Labels, Label>>::elem(self).value_ref()
+            LookupValuedElemByLabel::<FrameLabelOf<Labels, Label>>::elem(self).value_ref()
         ).clone()
     }
 }
@@ -341,8 +276,6 @@ impl<Labels, Frames> FieldSelect for DataView<Labels, Frames> {}
 
 // pub type AssocFieldsOf<L, F> = <L as AssocFieldCons<F>>::Output;
 
-//TODONEXT: give up and switch to Rc-based tracking of DataIndex structs; we're overeager with
-// out preoptimizations here
 pub type DataIndexCons<Label, DType, DI, Tail> = FieldPayloadCons<Label, DType, DI, Tail>;
 
 pub trait AssocDataIndexCons<Labels>
@@ -363,11 +296,6 @@ impl<Label, FrameLabel, LookupTail, Frames>
             + AssocDataIndexCons<LookupTail>,
           <Self as SelectFieldFromLabels<FrameLookupCons<Label, FrameLabel, LookupTail>, Label>>
             ::Output: Typed
-          // Self: 'a + LookupFrameByFrameLabel<'a, FrameLabel> + AssocDataIndexCons<LookupTail>,
-          // FrameByFrameLabelOf<'a, Frames, FrameLabel>: SelectFieldByLabel<Label> + FieldSelect,
-          // FindField<'a, Frames, FrameLabel, Label>: Typed + SelfValued,
-          // FindField<'a, Frames, FrameLabel, Label>:
-          //   DataIndex<DType=FindFieldType<'a, Frames, FrameLabel, Label>>,
 {
     type Output = DataIndexCons<
         Label,
@@ -574,26 +502,6 @@ impl<Labels, Frames>
     where Frames: Len + NRows + AssocDataIndexCons<Labels>,
           AssocDataIndexConsOf<Frames, Labels>: DeriveCapabilities<AddCellToRowFn>,
           Labels: StrLabels,
-          // (Frames, )
-          // for<'a> Frames: CapableOf<'a, Labels, AddCellToRowFn>
-          // for<'a> Frames: AssocPartialMappable<Labels, AddCellToRowFn>,
-          // for<'a> <Frames as AssocPartialMappable<'a, Labels, AddCellToRowFn>>::Output:
-          //   DeriveCapabilities<'a, AddCellToRowFn>
-
-          // for<'a> Frames: AssocDataIndexCons<'a, Labels>,
-          // for<'a> AssocDataIndexConsOf<'a, Frames, Labels>: DeriveCapabilities<'a, AddCellToRowFn>,
-
-          // for<'a> <Frames as AssocDataIndexCons<'a, Labels>>::Output: Display
-
-          //AssocDataIndexConsOf<'a, Frames, Labels>: Display
-          // AddCellToRowFn: ReqFeature,
-          // for<'a> AssocDataIndexConsOf<'a, Frames, Labels>:
-          //    DeriveCapabilities<'a, ReqFeatureOf<AddCellToRowFn>>,
-
-          // for<'a, 'b> AssocDataIndexConsOf<'a, Frames, Labels>: DeriveCapabilities<'b, DisplayFeat>,
-          // for<'a, 'b> <AssocDataIndexConsOf<'a, Frames, Labels>
-          //   as DeriveCapabilities<'b, DisplayFeat>>::Output:
-          //       PartialMap<AddCellToRowFn>
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         if self.frames.is_empty() {
@@ -602,48 +510,18 @@ impl<Labels, Frames>
         let mut table = pt::Table::new();
 
         let nrows = self.nrows();
-        {
-            // let afd = AssocPartialMappable::<Labels, AddCellToRowFn>::fields_data(&self.frames);
-            // let afd = self.assoc_fields_data();
-            let afd = AssocDataIndexCons::<Labels>::assoc_data(&self.frames);
-            let derived = DeriveCapabilities::<AddCellToRowFn>::derive(afd);
-            let mut func = AddCellToRowFn {
-                rows: vec![pt::row::Row::empty(); nrows.min(MAX_DISP_ROWS)]
-            };
-            derived.map(&mut func);
-            for row in func.rows.drain(..) {
-                table.add_row(row);
-            }
+        let mut func = AddCellToRowFn {
+            rows: vec![pt::row::Row::empty(); nrows.min(MAX_DISP_ROWS)]
+        };
+        self.frames.assoc_data().derive().map(&mut func);
+        for row in func.rows.drain(..) {
+            table.add_row(row);
         }
 
         table.set_titles(<Labels as StrLabels>::labels().into());
         table.set_format(*pt::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
 
         Display::fmt(&table, f)
-
-
-        // write!(f, "{}", self.assoc_fields_data())
-        // let nrows = self.frames.nrows();
-        // let mut func = AddCellToRowFn {
-        //     rows: vec![pt::row::Row::empty(); nrows.min(MAX_DISP_ROWS)]
-        // };
-        // // let afd = self.assoc_fields_data();
-        // // let derived = afd.derive();
-        // // derived.map(&mut func);
-        // let mut table = pt::Table::new();
-        // // <DerivePartialMap<AssocFieldsOf<Labels, Frames>, AddCellToRowFn>
-        // //     as PartialMap<Self, AddCellToRowFn>>::map(self, &mut func);
-
-        // // partial_map![<Self as AssocFieldCons>::Output, AddCellToRowFn<Labels, Frames>];
-        // // <Self as AssocFieldCons<_, _>>::Fields::aidjofa();
-        // for row in func.rows.drain(..) {
-        //     table.add_row(row);
-        // }
-
-        // table.set_titles(<Labels as StrLabels>::str_labels().into());
-        // table.set_format(*pt::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-
-        // Display::fmt(&table, f)
     }
 }
 
@@ -662,7 +540,6 @@ impl<DType> Func<DType> for AddCellToRowFn
     {
         debug_assert!(data.len() >= self.rows.len());
         for i in 0..self.rows.len() {
-            // println!("{}", data.get_datum(i).unwrap());
             self.rows[i].add_cell(cell!(data.get_datum(i).unwrap()));
         }
     }
@@ -672,7 +549,6 @@ impl FuncDefault for AddCellToRowFn
     type Output = ();
     fn call(&mut self) -> Self::Output
     {
-        // let type_data = self.dv.field::<Label>();
         for i in 0..self.rows.len() {
             self.rows[i].add_cell(cell!());
         }
@@ -684,12 +560,37 @@ impl IsImplemented<AddCellToRowFn> for String {
 impl IsImplemented<AddCellToRowFn> for f64 {
     type IsImpl = Implemented;
 }
-// impl ReqFeature for AddCellToRowFn
+impl IsImplemented<AddCellToRowFn> for u64 {
+    type IsImpl = Implemented;
+}
+
+// impl<Labels, Frames> DataView<Labels, Frames>
 // {
-//     type Feature = DisplayFeat;
+//     /// merge this `DataView` with another `DataView` object, creating a new `DataView` with the
+//     /// same number of rows and all the fields from both source `DataView` objects.
+//     pub fn merge<OtherLabels, OtherFrames>(&self, other: &DataView<OtherLabels, OtherFrames>)
+//         -> error::Result<DataView<OtherFields>>
+//         // where DTypes::Storage: MaxLen<DTypes>
+//     {
+//         if self.nrows() != other.nrows() {
+//             return Err(error::AgnesError::DimensionMismatch(
+//                 "number of rows mismatch in merge".into()));
+//         }
+
+//         // compute merged stores (and mapping from 'other' store index references to combined
+//         // store vector)
+//         let (new_frames, other_store_indices) = compute_merged_frames(self, other);
+
+//         // compute merged field list
+//         let MergedFields { mut new_fields, .. } =
+//             compute_merged_field_list(self, other, &other_store_indices, None)?;
+//         let new_fields = IndexMap::from_iter(new_fields.drain(..));
+//         Ok(DataView {
+//             frames: new_frames,
+//             fields: new_fields
+//         })
+//     }
 // }
-
-
 
 
 
@@ -814,20 +715,6 @@ impl IsImplemented<AddCellToRowFn> for f64 {
 // {
 //     type Fields = <(Idents, Frames) as AssocFieldCons<FrameS, FieldS>>::Fields;
 // }
-
-#[macro_export]
-macro_rules! Labels {
-    (@labels()) => { Nil };
-    (@labels($fident:ty, $($rest:ty,)*)) => {
-        IdentCons {
-            head: PhantomData::<$fident>,
-            tail: Labels![@labels($($rest)*)]
-        }
-    };
-    ($($fident:ty),*$(,)*) => {
-        Labels![@labels($($fident,)*)]
-    }
-}
 
 // // Idents is a 'IdentFrameIdxCons', Frames is a 'FrameCons'.
 // #[derive(Debug, Clone, Default)]
@@ -1503,6 +1390,7 @@ mod tests {
 
     use source::csv::{CsvSource, CsvReader, IntoCsvSrcSpec};
     use super::*;
+    use test_utils::*;
 
     // use super::{DataView, Filter};
     use error::*;
@@ -1525,25 +1413,6 @@ mod tests {
     }
 
     #[test]
-    fn lookup_frame()
-    {
-        spec![
-            let gdp_spec = {
-                CountryName("Country Name"): String,
-                CountryCode("Country Code"): String,
-                Year1983("1983"): f64,
-            };
-        ];
-
-        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
-        let ds = csv_rdr.read().unwrap();
-        let view = ds.into_view();
-
-        // println!("{:?}", view.select_frame_by_frame_label::<UTerm>());
-        // println!("{:?}", view.select_frame_by_label::<CountryName>());
-    }
-
-    #[test]
     fn lookup_field()
     {
         spec![
@@ -1558,8 +1427,9 @@ mod tests {
         let ds = csv_rdr.read().unwrap();
         let view = ds.into_view();
 
-        println!("{:?}", SelectFieldByLabel::<CountryName::Label>::select_field(&view));
-        println!("{:?}", view.field::<CountryName::Label>());
+        // println!("{:?}", SelectFieldByLabel::<CountryName::Label>::select_field(&view));
+        let country_name = view.field::<CountryName::Label>();
+        println!("{:?}", country_name);
     }
 
     #[test]
@@ -1577,29 +1447,7 @@ mod tests {
         let ds = csv_rdr.read().unwrap();
         let view = ds.into_view();
 
-        // works fine:
-        // println!("{}", view.assoc_fields_data().derive());
-
-        // doesn't work:
-        // println!("{}", (&view).assoc_fields_data());
-
-        // doesn't work:
         println!("{}", view);
-
-        // let nrows = view.nrows();
-        // let mut func = AddCellToRowFn {
-        //     rows: vec![pt::row::Row::empty(); nrows]
-        // };
-        // view.assoc_fields_data().derive().map(&mut func);
-        // let mut table = pt::Table::new();
-        // for row in func.rows.drain(..) {
-        //     table.add_row(row);
-        // }
-
-        // table.set_format(*pt::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-        // print!("{}", table);
-
-        // println!("{:?}", view.assoc_fields_data().derive());
     }
 
     // #[test]
@@ -1702,50 +1550,64 @@ mod tests {
     //     // println!("{}", dv);
     // }
 
-    // #[test]
-    // fn subview() {
-    //     let ds = sample_emp_table();
-    //     let dv: DataView = ds.into();
-    //     assert_eq!(dv.frames[0].store_ref_count(), 1);
-    //     assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+    #[test]
+    fn fieldnames()
+    {
+        let ds = sample_emp_table();
+        let dv = ds.into_view();
+        assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+    }
 
-    //     let subdv1 = dv.v("EmpId");
-    //     assert_eq!(dv.frames[0].store_ref_count(), 2);
-    //     assert_eq!(subdv1.nrows(), 7);
-    //     assert_eq!(subdv1.nfields(), 1);
-    //     let subdv1 = dv.subview("EmpId").expect("subview failed");
-    //     assert_eq!(dv.frames[0].store_ref_count(), 3);
-    //     assert_eq!(subdv1.nrows(), 7);
-    //     assert_eq!(subdv1.nfields(), 1);
+    #[test]
+    fn subview() {
+        let ds = sample_emp_table();
+        let dv = ds.into_view();
+        let subdv1 = dv.v::<EmpId::Label>();
+        println!("{}", subdv1);
 
-    //     let subdv2 = dv.v(vec!["EmpId", "DeptId"]);
-    //     assert_eq!(dv.frames[0].store_ref_count(), 4);
-    //     assert_eq!(subdv2.nrows(), 7);
-    //     assert_eq!(subdv2.nfields(), 2);
-    //     let subdv2 = dv.subview(vec!["EmpId", "DeptId"]).expect("subview failed");
-    //     assert_eq!(dv.frames[0].store_ref_count(), 5);
-    //     assert_eq!(subdv2.nrows(), 7);
-    //     assert_eq!(subdv2.nfields(), 2);
 
-    //     let subdv3 = dv.v(vec!["EmpId", "DeptId", "EmpName"]);
-    //     assert_eq!(dv.frames[0].store_ref_count(), 6);
-    //     assert_eq!(subdv3.nrows(), 7);
-    //     assert_eq!(subdv3.nfields(), 3);
-    //     let subdv3 = dv.subview(vec!["EmpId", "DeptId", "EmpName"]).expect("subview failed");
-    //     assert_eq!(dv.frames[0].store_ref_count(), 7);
-    //     assert_eq!(subdv3.nrows(), 7);
-    //     assert_eq!(subdv3.nfields(), 3);
+        /*
+        assert_eq!(dv.frames[0].store_ref_count(), 1);
+        assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
 
-    //     // Subview of a subview
-    //     let subdv4 = subdv2.v("DeptId");
-    //     assert_eq!(dv.frames[0].store_ref_count(), 8);
-    //     assert_eq!(subdv4.nrows(), 7);
-    //     assert_eq!(subdv4.nfields(), 1);
-    //     let subdv4 = subdv2.subview("DeptId").expect("subview failed");
-    //     assert_eq!(dv.frames[0].store_ref_count(), 9);
-    //     assert_eq!(subdv4.nrows(), 7);
-    //     assert_eq!(subdv4.nfields(), 1);
-    // }
+        let subdv1 = dv.v("EmpId");
+        assert_eq!(dv.frames[0].store_ref_count(), 2);
+        assert_eq!(subdv1.nrows(), 7);
+        assert_eq!(subdv1.nfields(), 1);
+        let subdv1 = dv.subview("EmpId").expect("subview failed");
+        assert_eq!(dv.frames[0].store_ref_count(), 3);
+        assert_eq!(subdv1.nrows(), 7);
+        assert_eq!(subdv1.nfields(), 1);
+
+        let subdv2 = dv.v(vec!["EmpId", "DeptId"]);
+        assert_eq!(dv.frames[0].store_ref_count(), 4);
+        assert_eq!(subdv2.nrows(), 7);
+        assert_eq!(subdv2.nfields(), 2);
+        let subdv2 = dv.subview(vec!["EmpId", "DeptId"]).expect("subview failed");
+        assert_eq!(dv.frames[0].store_ref_count(), 5);
+        assert_eq!(subdv2.nrows(), 7);
+        assert_eq!(subdv2.nfields(), 2);
+
+        let subdv3 = dv.v(vec!["EmpId", "DeptId", "EmpName"]);
+        assert_eq!(dv.frames[0].store_ref_count(), 6);
+        assert_eq!(subdv3.nrows(), 7);
+        assert_eq!(subdv3.nfields(), 3);
+        let subdv3 = dv.subview(vec!["EmpId", "DeptId", "EmpName"]).expect("subview failed");
+        assert_eq!(dv.frames[0].store_ref_count(), 7);
+        assert_eq!(subdv3.nrows(), 7);
+        assert_eq!(subdv3.nfields(), 3);
+
+        // Subview of a subview
+        let subdv4 = subdv2.v("DeptId");
+        assert_eq!(dv.frames[0].store_ref_count(), 8);
+        assert_eq!(subdv4.nrows(), 7);
+        assert_eq!(subdv4.nfields(), 1);
+        let subdv4 = subdv2.subview("DeptId").expect("subview failed");
+        assert_eq!(dv.frames[0].store_ref_count(), 9);
+        assert_eq!(subdv4.nrows(), 7);
+        assert_eq!(subdv4.nfields(), 1);
+        */
+    }
 
     // #[test]
     // fn subview_fail() {

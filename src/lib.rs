@@ -51,5 +51,5 @@ pub mod select;
 #[cfg(feature = "experimental")]
 pub mod experimental;
 
-// #[cfg(test)] pub(crate) mod test_utils;
+#[cfg(test)] pub(crate) mod test_utils;
 // #[cfg(test)] pub(crate) mod test_gen_data;
