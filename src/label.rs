@@ -730,6 +730,18 @@ mod tests
             >;
 
         {
+            // null case
+            type Filtered = <SampleLabels as Filter<Labels![]>>::Filtered;
+            // empty filter, length should be 0
+            assert_eq!(Filtered::LEN, 0);
+        }
+        {
+            // other null case
+            type Filtered = <Nil as Filter<Labels![F1, F3]>>::Filtered;
+            // empty cons-list, so filtered length should be 0
+            assert_eq!(Filtered::LEN, 0);
+        }
+        {
             type Filtered = <SampleLabels as Filter<Labels![F3]>>::Filtered;
             // we only filtered 1 label, so length should be 1
             assert_eq!(Filtered::LEN, 1);
@@ -738,6 +750,27 @@ mod tests
             type Filtered = <SampleLabels as Filter<Labels![F1, F2, F4]>>::Filtered;
             // we only filtered 3 labels, so length should be 3
             assert_eq!(Filtered::LEN, 3);
+
+            {
+                type Refiltered = <Filtered as Filter<Labels![F1, F2, F4]>>::Filtered;
+                // filtered same labels, so length should stay at 3
+                assert_eq!(Refiltered::LEN, 3);
+            }
+            {
+                type Refiltered = <Filtered as Filter<Labels![F1, F2]>>::Filtered;
+                // filtered 2 labels that should exist `Filtered`, so length should be 2
+                assert_eq!(Refiltered::LEN, 2);
+            }
+            {
+                type Refiltered = <Filtered as Filter<Labels![F3, F0]>>::Filtered;
+                // filtered 2 labels that should not exist `Filtered`, so length should be 0
+                assert_eq!(Refiltered::LEN, 0);
+            }
+            {
+                type Refiltered = <Filtered as Filter<Labels![F0, F1, F2, F3, F4]>>::Filtered;
+                // `F0 and `F3` don't exist in `Filtered`, so length should be 3
+                assert_eq!(Refiltered::LEN, 3);
+            }
         }
         {
             label![F5, U5];
