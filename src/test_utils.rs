@@ -11,7 +11,7 @@ label![DeptId, U1];
 label![EmpName, U2];
 
 // use data_types::standard as dt_std;
-type SampleDataStoreFields =
+pub type SampleDataStoreFields =
     FieldCons<
         EmpId::Label,
         u64,
@@ -25,21 +25,21 @@ type SampleDataStoreFields =
             >
         >
     >;
-type SampleDataStore = DataStore<SampleDataStoreFields>;
+pub type SampleDataStore = DataStore<SampleDataStoreFields>;
 
-pub(crate) fn sample_emp_table() -> SampleDataStore
+pub fn sample_emp_table() -> SampleDataStore
 {
     emp_table(vec![0u64, 2, 5, 6, 8, 9, 10], vec![1u64, 2, 1, 1, 3, 4, 4],
         vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"])
 }
-pub(crate) fn emp_table(
+pub fn emp_table(
     empids: Vec<u64>, deptids: Vec<u64>, names: Vec<&str>
 )
     -> SampleDataStore
 {
     emp_table_from_field(empids.into(), deptids.into(), names.into())
 }
-pub(crate) fn emp_table_from_field(
+pub fn emp_table_from_field(
     empids: FieldData<u64>,
     deptids: FieldData<u64>,
     names: FieldData<String>
@@ -51,7 +51,7 @@ pub(crate) fn emp_table_from_field(
         .add_labeled_field(deptids)
         .add_labeled_field(empids)
 }
-// pub(crate) fn sample_emp_table_extra() -> dt_std::DataStore
+// pub fn sample_emp_table_extra() -> dt_std::DataStore
 // {
 //     dt_std::DataStore::empty()
 //         .with_cloned_data_from_iter("SalaryOffset",
@@ -61,12 +61,12 @@ pub(crate) fn emp_table_from_field(
 //         .with_cloned_data_from_iter("VacationHrs",
 //             vec![47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5].iter()).unwrap()
 // }
-// pub(crate) fn sample_merged_emp_table() -> dt_std::DataView {
+// pub fn sample_merged_emp_table() -> dt_std::DataView {
 //     let ds = sample_emp_table();
 //     let orig_dv: dt_std::DataView = ds.into();
 //     orig_dv.merge(&sample_emp_table_extra().into()).unwrap()
 // }
-// pub(crate) trait MergedWithSample {
+// pub trait MergedWithSample {
 //     fn merged_with_sample_emp_table(self, name: &str) -> dt_std::DataView;
 // }
 // impl MergedWithSample for Vec<u64> {
@@ -110,18 +110,18 @@ pub(crate) fn emp_table_from_field(
 //     }
 // }
 
-// pub(crate) fn sample_dept_table() -> dt_std::DataStore
+// pub fn sample_dept_table() -> dt_std::DataStore
 // {
 //     dept_table(vec![1u64, 2, 3, 4], vec!["Marketing", "Sales", "Manufacturing", "R&D"])
 // }
-// pub(crate) fn dept_table(
+// pub fn dept_table(
 //     deptids: Vec<u64>, names: Vec<&str>
 // )
 //     -> dt_std::DataStore
 // {
 //     dept_table_from_field(deptids.into(), names.into())
 // }
-// pub(crate) fn dept_table_from_field(
+// pub fn dept_table_from_field(
 //     deptids: FieldData<dt_std::Types, u64>, names: FieldData<dt_std::Types, String>
 // )
 //     -> dt_std::DataStore
@@ -143,7 +143,7 @@ pub(crate) fn emp_table_from_field(
 // // use data_types::{DataType, DTypeList, MaxLen, TypeSelector};
 
 // #[allow(dead_code)]
-// pub(crate) fn assert_dv_eq_vec<'a, Fields, Ident, FIdx, R>(
+// pub fn assert_dv_eq_vec<'a, Fields, Ident, FIdx, R>(
 //     left: &DataView<Fields>, mut right: Vec<R>
 // )
 //     where R: Into<$dtype>,
@@ -156,7 +156,7 @@ pub(crate) fn emp_table_from_field(
 // }
 
 // #[allow(dead_code)]
-// pub(crate) fn assert_dv_pred<'a, Fields, Ident, FIdx, F>(
+// pub fn assert_dv_pred<'a, Fields, Ident, FIdx, F>(
 //     left: &DataView<Fields>, mut f: F
 // )
 //     where F: FnMut(&$dtype) -> bool,
@@ -179,7 +179,7 @@ pub(crate) fn emp_table_from_field(
 // use apply::sort::sort_order;
 
 // #[allow(dead_code)]
-// pub(crate) fn assert_dv_sorted_eq<'a, Fields, Ident, FIdx, R>(
+// pub fn assert_dv_sorted_eq<'a, Fields, Ident, FIdx, R>(
 //     left: &DataView<Fields>, mut right: Vec<R>
 // )
 //     where R: Into<$dtype>,
@@ -200,7 +200,7 @@ pub(crate) fn emp_table_from_field(
 // macro_rules! impl_test_helpers {
 //     ($name:tt; $dtype:ty) => {
 
-// pub(crate) mod $name {
+// pub mod $name {
 
 //     impl_assert_vec_eq_and_pred!($dtype);
 //     impl_assert_sorted_eq!($dtype);
@@ -215,14 +215,14 @@ pub(crate) fn emp_table_from_field(
 // impl_test_helpers!(text;     String);
 // impl_test_helpers!(boolean;  bool);
 
-// pub(crate) mod float {
+// pub mod float {
 //     use field::FieldIdent;
 //     use apply::sort::sort_order;
 
 //     impl_assert_vec_eq_and_pred!(f64);
 
 //     #[allow(dead_code)]
-//     pub(crate) fn assert_dv_sorted_eq<'a, Fields, Ident, FIdx, R>(
+//     pub fn assert_dv_sorted_eq<'a, Fields, Ident, FIdx, R>(
 //         left: &DataView<Fields>, ident: &'a FieldIdent, mut right: Vec<R>
 //     )
 //         where R: Into<f64>,
@@ -239,6 +239,6 @@ pub(crate) fn emp_table_from_field(
 
 // }
 
-// pub(crate) fn assert_field_lists_match<L: IntoFieldList, R: IntoFieldList>(left: L, right: R) {
+// pub fn assert_field_lists_match<L: IntoFieldList, R: IntoFieldList>(left: L, right: R) {
 //     assert_eq!(left.into_field_list(), right.into_field_list());
 // }

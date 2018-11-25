@@ -1455,6 +1455,8 @@ mod tests {
 
     use source::csv::{CsvSource, CsvReader, IntoCsvSrcSpec};
     use super::*;
+
+    #[cfg(feature = "test-utils")]
     use test_utils::*;
 
     // use super::{DataView, Filter};
@@ -1616,6 +1618,7 @@ mod tests {
     // }
 
     #[test]
+    #[cfg(feature = "test-utils")]
     fn fieldnames()
     {
         let ds = sample_emp_table();
@@ -1624,6 +1627,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "test-utils")]
     fn subview() {
         let ds = sample_emp_table();
         let dv = ds.into_view();
@@ -1683,39 +1687,6 @@ mod tests {
     }
 
     //TODO: multi-frame subview tests (which filter out no-longer-needed frames)
-
-    // #[test]
-    // fn subview_fail() {
-    //     let ds = sample_emp_table();
-    //     let dv: DataView = ds.into();
-    //     assert_eq!(dv.frames[0].store_ref_count(), 1);
-    //     assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
-
-    //     // "Employee Name" does not exist
-    //     let subdv1 = dv.v(vec!["EmpId", "DeptId", "Employee Name"]);
-    //     assert_eq!(dv.frames[0].store_ref_count(), 2);
-    //     assert_eq!(subdv1.nrows(), 7);
-    //     assert_eq!(subdv1.nfields(), 2);
-    //     match dv.subview(vec!["EmpId", "DeptId", "Employee Name"]) {
-    //         Ok(_) => { panic!("expected error (field not found), but succeeded"); },
-    //         Err(AgnesError::FieldNotFound(field)) => {
-    //             assert_eq!(field, FieldIdent::Name("Employee Name".into()));
-    //         },
-    //         Err(e) => { panic!("Incorrect error: {:?}", e); }
-    //     }
-
-    //     let subdv2 = dv.v("Nonexistant");
-    //     assert_eq!(dv.frames[0].store_ref_count(), 3);
-    //     assert_eq!(subdv2.nrows(), 7); // still 7 rows, just no fields
-    //     assert_eq!(subdv2.nfields(), 0);
-    //     match dv.subview(vec!["Nonexistant"]) {
-    //         Ok(_) => { panic!("expected error (field not found), but succeeded"); },
-    //         Err(AgnesError::FieldNotFound(field)) => {
-    //             assert_eq!(field, FieldIdent::Name("Nonexistant".into()));
-    //         },
-    //         Err(e) => { panic!("Incorrect error: {:?}", e); }
-    //     }
-    // }
 
     // #[test]
     // fn filter() {

@@ -9,13 +9,13 @@ use field::FieldIdent;
 use store::{DataStore, AddFieldFromIter};
 use field::Value;
 
-pub(crate) trait GenerateInto<Fields, NewIdent, NewDType>: AddFieldFromIter<NewIdent, NewDType>
+pub trait GenerateInto<Fields, NewIdent, NewDType>: AddFieldFromIter<NewIdent, NewDType>
 {
     fn generate_into(&self, &mut DataStore<Fields>, sz: usize, rng: &mut StdRng)
         -> DataStore<Self::OutputFields>;
 }
 
-pub(crate) struct Normal<Out> {
+pub struct Normal<Out> {
     mean: f64,
     stdev: f64,
     phantom: PhantomData<Out>
@@ -106,7 +106,7 @@ impl<Fields, NewIdent> GenerateInto<Fields, NewIdent, f64> for Normal<f64>
     }
 }
 
-pub(crate) struct Uniform<T> {
+pub struct Uniform<T> {
     low: T,
     high: T,
 }
@@ -149,7 +149,7 @@ impl<Fields, NewIdent> GenerateInto<Fields, NewIdent, $t> for Uniform<$t>
 }
 impl_uniform_generate_into![u64 i64 f64];
 
-pub(crate) struct UniformChoice<T> {
+pub struct UniformChoice<T> {
     choices: Vec<T>
 }
 impl<T> UniformChoice<T> {
@@ -201,7 +201,7 @@ impl<'a> From<Vec<&'a str>> for UniformChoice<String> {
     }
 }
 
-pub(crate) struct FieldGenerator<Fields, NewIdent, NewDType>(
+pub struct FieldGenerator<Fields, NewIdent, NewDType>(
     Box<dyn GenerateInto<Fields, NewIdent, NewDType>>
 );
 impl<Fields, NewIdent, NewDType> GenerateInto<Fields, NewIdent, NewDType>
@@ -241,12 +241,12 @@ impl<Fields, NewIdent, NewDType> From<UniformChoice<NewDType>>
 }
 
 #[allow(dead_code)]
-pub(crate) struct FieldSpec<Fields, NewIdent, NewDType> {
+pub struct FieldSpec<Fields, NewIdent, NewDType> {
     generator: FieldGenerator<Fields, NewIdent, NewDType>
 }
 impl<Fields, NewIdent, NewDType> FieldSpec<Fields, NewIdent, NewDType> {
     #[allow(dead_code)]
-    pub(crate) fn new<I, G>(generator: G)
+    pub fn new<I, G>(generator: G)
         -> FieldSpec<Fields, NewIdent, NewDType>
         where G: Into<FieldGenerator<Fields, NewIdent, NewDType>>
     {
@@ -256,7 +256,7 @@ impl<Fields, NewIdent, NewDType> FieldSpec<Fields, NewIdent, NewDType> {
     }
 }
 #[allow(dead_code)]
-pub(crate) fn generate_random_datastore<Fields, NewIdent, NewDType, I: Into<Option<u64>>>(
+pub fn generate_random_datastore<Fields, NewIdent, NewDType, I: Into<Option<u64>>>(
     fields: Vec<FieldSpec<Fields, NewIdent, NewDType>>,
     nrecords: usize,
     seed: I
@@ -285,7 +285,7 @@ pub(crate) fn generate_random_datastore<Fields, NewIdent, NewDType, I: Into<Opti
 }
 
 #[allow(dead_code)]
-pub(crate) fn generate_sample_random_datastore<Fields, NewIdent, NewDType, I: Into<Option<u64>>>(
+pub fn generate_sample_random_datastore<Fields, NewIdent, NewDType, I: Into<Option<u64>>>(
     nrecords: usize, seed: I
 )
     -> DataStore<Fields>
