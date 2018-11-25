@@ -787,6 +787,18 @@ mod tests
             // None of these labels exist in SampleLabels, so we should have 0
             assert_eq!(Filtered::LEN, 0);
         }
+        {
+            // check for problems cause by duplicated in label list
+            type Filtered = <SampleLabels as Filter<Labels![F2, F2, F2]>>::Filtered;
+            // we only filtered 1 label (even if it was duplicated), so length should be 1
+            assert_eq!(Filtered::LEN, 1);
+        }
+        {
+            // check for problems cause by duplicated in label list
+            type Filtered = <SampleLabels as Filter<Labels![F2, F2, F3]>>::Filtered;
+            // we only filtered 2 label (albeit with some duplication), so length should be 2
+            assert_eq!(Filtered::LEN, 2);
+        }
 
     }
 }
