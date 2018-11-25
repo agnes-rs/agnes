@@ -13,6 +13,7 @@ object with all of the records of the two source `DataView`s.
 parameters.
 
 */
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::marker::PhantomData;
 use std::fmt::{self, Display, Formatter};
@@ -42,14 +43,6 @@ use store::{NRows, AssocStorage};
 use select::{SelectFieldByLabel, FieldSelect};
 use label::*;
 
-pub type FrameLookupCons<Label, FrameLabel, Tail> = LMCons<Label, FrameLabel, Tail>;
-pub type ViewFrameCons<FrameLabel, FrameFields, Tail>
-    = LVCons<FrameLabel, Rc<DataFrame<FrameFields>>, Tail>;
-
-/// Allow `DataFrame`s to be pulled from `LVCons` as `Value`s
-impl<FrameFields> SelfValued for DataFrame<FrameFields>
-    where FrameFields: AssocStorage {}
-
 // `Labels` is `FrameLookupCons` cons-list. `Frames` is `ViewFrameCons` cons-list.
 #[derive(Debug, Clone, Default)]
 pub struct DataView<Labels, Frames>
@@ -57,6 +50,16 @@ pub struct DataView<Labels, Frames>
     _labels: PhantomData<Labels>,
     frames: Frames,
 }
+
+pub type FrameLookupCons<Label, FrameLabel, Tail> = LMCons<Label, FrameLabel, Tail>;
+pub type ViewFrameCons<FrameLabel, FrameFields, Tail>
+    = LVCons<FrameLabel, DataFrame<FrameFields>, Tail>;
+
+/// Allow `DataFrame`s to be pulled from `LVCons` as `Value`s
+impl<FrameFields> SelfValued for DataFrame<FrameFields>
+    where FrameFields: AssocStorage {}
+
+
 
 // pub trait TyFrom<T>
 // {
@@ -122,19 +125,18 @@ impl<Labels, Frames> DataView<Labels, Frames>
 {
     /// Generate a new subview of this DataView. LabelList is an LabelCons.
     pub fn v<LabelList>(&self)
-        -> DataView<Labels, Frames>
-        where Labels: HasLabels<LabelList>
+        -> DataView<<Labels as Filter<LabelList>>::Filtered, Frames>
+        where Labels: HasLabels<LabelList> + Filter<LabelList>
     {
         DataView {
-            //TODO: this doesn't actually do anything yet (does not subview)
             _labels: PhantomData,
             //TODO: trim this frame list down based on labels
             frames: self.frames.clone(),
         }
     }
     pub fn subview<LabelList>(&self)
-        -> DataView<Labels, Frames>
-        where Labels: HasLabels<LabelList>
+        -> DataView<<Labels as Filter<LabelList>>::Filtered, Frames>
+        where Labels: HasLabels<LabelList> + Filter<LabelList>
     {
         self.v::<LabelList>()
     }
@@ -151,17 +153,58 @@ impl<Labels, Frames> DataView<Labels, Frames>
 }
 
 impl<Labels, Frames> DataView<Labels, Frames>
-    where Frames: Len
+    where Labels: Len, Frames: Len
 {
     /// Returns `true` if the DataView is empty (has no rows or has no fields)
     pub fn is_empty(&self) -> bool
     {
-        self.frames.is_empty()
+        Labels::LEN == 0 || self.frames.is_empty()
     }
     /// Number of fields in this data view
     pub fn nfields(&self) -> usize
     {
+        Labels::LEN
+    }
+    /// Number of frames this data view covers
+    pub fn nframes(&self) -> usize
+    {
         Frames::LEN
+    }
+}
+
+#[cfg(test)]
+pub trait StoreRefCounts
+{
+    fn store_ref_counts(&self) -> VecDeque<usize>;
+}
+
+#[cfg(test)]
+impl StoreRefCounts for Nil
+{
+    fn store_ref_counts(&self) -> VecDeque<usize> { VecDeque::new() }
+}
+#[cfg(test)]
+impl<FrameLabel, FrameFields, Tail> StoreRefCounts
+    for ViewFrameCons<FrameLabel, FrameFields, Tail>
+    where
+        FrameFields: AssocStorage,
+        Tail: StoreRefCounts
+{
+    fn store_ref_counts(&self) -> VecDeque<usize>
+    {
+        let mut previous = self.tail.store_ref_counts();
+        previous.push_front(self.head.value_ref().store_ref_count());
+        previous
+    }
+}
+
+#[cfg(test)]
+impl<Labels, Frames> DataView<Labels, Frames>
+    where Frames: StoreRefCounts
+{
+    pub fn store_ref_counts(&self) -> VecDeque<usize>
+    {
+        Frames::store_ref_counts(&self.frames)
     }
 }
 
@@ -183,18 +226,13 @@ pub trait FindFrame<Labels, Label>:
     LookupValuedElemByLabel<FrameLabelOf<Labels, Label>>
     where
         Labels: FindFrameLabel<Label>
-{
-    // type Frame;
-}
+{}
 impl<Frames, Labels, Label> FindFrame<Labels, Label>
     for Frames
     where
         Labels: FindFrameLabel<Label>,
         Frames: LookupValuedElemByLabel<FrameLabelOf<Labels, Label>>,
-{
-    // type Frame = ValueOfElemOf<Frames, FrameLabelOf<Labels, Label>>;
-}
-// pub type FrameOf<Frames, Labels, Label> = <Frames as FindFrame<Labels, Label>>::Frame;
+{}
 pub type FrameOf<Frames, Labels, Label> =
     <<Frames as LookupValuedElemByLabel<FrameLabelOf<Labels, Label>>>::Elem as Valued>::Value;
 
@@ -1562,51 +1600,59 @@ mod tests {
     fn subview() {
         let ds = sample_emp_table();
         let dv = ds.into_view();
-        let subdv1 = dv.v::<EmpId::Label>();
-        println!("{}", subdv1);
+        assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+        assert_eq!(dv.store_ref_counts(), vec![1]);
+        assert_eq!(dv.nrows(), 7);
+        assert_eq!(dv.nfields(), 3);
 
-
-        /*
-        assert_eq!(dv.frames[0].store_ref_count(), 1);
-        assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
-
-        let subdv1 = dv.v("EmpId");
-        assert_eq!(dv.frames[0].store_ref_count(), 2);
-        assert_eq!(subdv1.nrows(), 7);
-        assert_eq!(subdv1.nfields(), 1);
-        let subdv1 = dv.subview("EmpId").expect("subview failed");
-        assert_eq!(dv.frames[0].store_ref_count(), 3);
+        let subdv1 = dv.v::<Labels![EmpId]>();
+        assert_eq!(subdv1.fieldnames(), vec!["EmpId"]);
+        assert_eq!(dv.store_ref_counts(), vec![2]);
         assert_eq!(subdv1.nrows(), 7);
         assert_eq!(subdv1.nfields(), 1);
 
-        let subdv2 = dv.v(vec!["EmpId", "DeptId"]);
-        assert_eq!(dv.frames[0].store_ref_count(), 4);
-        assert_eq!(subdv2.nrows(), 7);
-        assert_eq!(subdv2.nfields(), 2);
-        let subdv2 = dv.subview(vec!["EmpId", "DeptId"]).expect("subview failed");
-        assert_eq!(dv.frames[0].store_ref_count(), 5);
+        let subdv1 = dv.v::<Labels![EmpId]>();
+        assert_eq!(subdv1.fieldnames(), vec!["EmpId"]);
+        assert_eq!(dv.store_ref_counts(), vec![3]);
+        assert_eq!(subdv1.nrows(), 7);
+        assert_eq!(subdv1.nfields(), 1);
+
+        let subdv2 = dv.v::<Labels![EmpId, DeptId]>();
+        assert_eq!(subdv2.fieldnames(), vec!["EmpId", "DeptId"]);
+        assert_eq!(dv.store_ref_counts(), vec![4]);
         assert_eq!(subdv2.nrows(), 7);
         assert_eq!(subdv2.nfields(), 2);
 
-        let subdv3 = dv.v(vec!["EmpId", "DeptId", "EmpName"]);
-        assert_eq!(dv.frames[0].store_ref_count(), 6);
+        let subdv2 = dv.v::<Labels![EmpId, DeptId]>();
+        assert_eq!(subdv2.fieldnames(), vec!["EmpId", "DeptId"]);
+        assert_eq!(dv.store_ref_counts(), vec![5]);
+        assert_eq!(subdv2.nrows(), 7);
+        assert_eq!(subdv2.nfields(), 2);
+
+        let subdv3 = dv.v::<Labels![EmpId, DeptId, EmpName]>();
+        assert_eq!(subdv3.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+        assert_eq!(dv.store_ref_counts(), vec![6]);
         assert_eq!(subdv3.nrows(), 7);
         assert_eq!(subdv3.nfields(), 3);
-        let subdv3 = dv.subview(vec!["EmpId", "DeptId", "EmpName"]).expect("subview failed");
-        assert_eq!(dv.frames[0].store_ref_count(), 7);
+
+        let subdv3 = dv.v::<Labels![EmpId, DeptId, EmpName]>();
+        assert_eq!(subdv3.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+        assert_eq!(dv.store_ref_counts(), vec![7]);
         assert_eq!(subdv3.nrows(), 7);
         assert_eq!(subdv3.nfields(), 3);
 
         // Subview of a subview
-        let subdv4 = subdv2.v("DeptId");
-        assert_eq!(dv.frames[0].store_ref_count(), 8);
+        let subdv4 = subdv2.v::<Labels![DeptId]>();
+        assert_eq!(subdv4.fieldnames(), vec!["DeptId"]);
+        assert_eq!(dv.store_ref_counts(), vec![8]);
         assert_eq!(subdv4.nrows(), 7);
         assert_eq!(subdv4.nfields(), 1);
-        let subdv4 = subdv2.subview("DeptId").expect("subview failed");
-        assert_eq!(dv.frames[0].store_ref_count(), 9);
+
+        let subdv4 = subdv2.v::<Labels![EmpId]>();
+        assert_eq!(subdv4.fieldnames(), vec!["EmpId"]);
+        assert_eq!(dv.store_ref_counts(), vec![9]);
         assert_eq!(subdv4.nrows(), 7);
         assert_eq!(subdv4.nfields(), 1);
-        */
     }
 
     // #[test]

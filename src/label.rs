@@ -49,6 +49,7 @@ impl<Label, Value, Tail> LabelIndex for LVCons<Label, Value, Tail>
 
 pub type NextLabelIndex<T> = Add1<<T as LabelIndex>::Idx>;
 
+//TODO: figure out how to have this return an array
 pub trait StrLabels
 {
     fn labels<'a>() -> VecDeque<&'a str>;

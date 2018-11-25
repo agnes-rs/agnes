@@ -345,7 +345,7 @@ impl<Fields> DataStore<Fields>
         DataView::new(
             ViewFrameCons
             {
-                head: Rc::new(DataFrame::from(self)).into(),
+                head: DataFrame::from(self).into(),
                 tail: Nil
             }
         )

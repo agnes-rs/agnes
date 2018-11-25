@@ -54,13 +54,17 @@ impl<Fields> NRows for DataFrame<Fields>
         self.len()
     }
 }
+#[cfg(test)]
 impl<Fields> DataFrame<Fields>
     where Fields: AssocStorage
 {
-    #[cfg(test)]
-    pub(crate) fn store_ref_count(&self) -> usize {
+    pub fn store_ref_count(&self) -> usize {
         Arc::strong_count(&self.store)
     }
+}
+impl<Fields> DataFrame<Fields>
+    where Fields: AssocStorage
+{
     // /// Get the field type of a particular field in the underlying `DataStore`.
     // pub fn get_field_type(&self, ident: &FieldIdent) -> Option<DTypes::DType> {
     //     self.store.get_field_type(ident)
