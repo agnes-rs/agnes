@@ -13,8 +13,6 @@ use typenum::{
 
 use cons::{Cons, Nil};
 
-
-
 /// A label for a value in an `LVCons`. Backed by a type-level natural number `Idx`.
 #[derive(Debug, Clone)]
 pub struct Label<Idx, Name>
@@ -57,17 +55,6 @@ pub trait StrLabels
 impl StrLabels for Nil
 {
     fn labels<'a>() -> VecDeque<&'a str> { VecDeque::new() }
-}
-impl<L, T> StrLabels for LCons<L, T>
-    where L: LabelName,
-          T: StrLabels
-{
-    fn labels<'a>() -> VecDeque<&'a str>
-    {
-        let mut previous = T::labels();
-        previous.push_front(L::name());
-        previous
-    }
 }
 impl<L, V, T> StrLabels for LVCons<L, V, T>
     where L: LabelName,
@@ -162,7 +149,6 @@ impl_selfvalued![
     bool char str String
 ];
 impl<T> SelfValued for ::field::FieldData<T> {}
-// impl<'a, T> SelfValued for &'a ::field::FieldData<T> {}
 impl<T> SelfValued for ::frame::Framed<T> {}
 impl<T> SelfValued for Rc<T> {}
 
@@ -209,19 +195,15 @@ impl<L, D, M> Marked for Labeled<L, TypedValue<D, PhantomData<M>>>
 }
 pub type MarkerOf<T> = <T as Marked>::Marker;
 
-/// Label-only cons-list
-pub type LCons<L, T> = Cons<PhantomData<L>, T>;
-pub type LabelCons<L, T> = LCons<L, T>;
 /// Label-value cons-list
 pub type LVCons<L, V, T> = Cons<Labeled<L, V>, T>;
+/// Label-only cons-list
+pub type LCons<L, T> = LVCons<L, (), T>;
+pub type LabelCons<L, T> = LCons<L, T>;
 /// Label-marker cons-list
 pub type LMCons<L, M, T> = LVCons<L, PhantomData<M>, T>;
 /// Label-DType-value cons-list
 pub type LDVCons<L, D, V, T> = LVCons<L, TypedValue<D, V>, T>;
-/// Label-DType-marker cons-list
-pub type LDMCons<L, D, M, T> = LDVCons<L, D, PhantomData<M>, T>;
-// /// Label-DType-value-marker cons-list
-// pub type LDMVCons<L, D, M, V, T> = LDVCons<L, D, MarkerValue<M, V>, T>;
 
 /// Label-level equality. Leverages `typenum`'s `IsEqual` trait for type-level-number equality,
 /// but doesn't use `IsEqual`'s `is_equal` method (since no results of this equality check are
@@ -305,14 +287,6 @@ pub trait Member<E> {
 impl<E> Member<E> for Nil {
     type IsMember = False;
 }
-impl<E, L, T> Member<E> for LCons<L, T>
-    where L: LabelEq<E>,
-          T: Member<E>,
-          <L as LabelEq<E>>::Eq: BitOr<<T as Member<E>>::IsMember>,
-          <<L as LabelEq<E>>::Eq as BitOr<<T as Member<E>>::IsMember>>::Output: Bit,
-{
-    type IsMember = Or<<L as LabelEq<E>>::Eq, <T as Member<E>>::IsMember>;
-}
 impl<E, L, V, T> Member<E> for LVCons<L, V, T>
     where L: LabelEq<E>,
           T: Member<E>,
@@ -344,6 +318,9 @@ impl<NeedleLblIdx, NeedleLbl, Haystack> HasLabels<Label<NeedleLblIdx, NeedleLbl>
 pub trait Filter<LabelList>
 {
     type Filtered;
+
+    /// Filters `Self`, constructing new cons-list of type `Filtered`.
+    fn filter(self) -> Self::Filtered;
 }
 
 // End-point. No more list elements to search. We don't care if anything remains or not in
@@ -351,18 +328,8 @@ pub trait Filter<LabelList>
 impl<LabelList> Filter<LabelList> for Nil
 {
     type Filtered = Nil;
-}
 
-// Implementation for `LCons` cons-lists.
-impl<LabelList, L, T>
-    Filter<LabelList>
-    for LCons<L, T>
-    where
-        LabelList: Member<L>,
-        LCons<L, T>: FilterPred<LabelList, <LabelList as Member<L>>::IsMember>
-{
-    type Filtered =
-        <LCons<L, T> as FilterPred<LabelList, <LabelList as Member<L>>::IsMember>>::Filtered;
+    fn filter(self) -> Nil { Nil }
 }
 
 // Implementation for `LVCons` cons-lists.
@@ -375,6 +342,11 @@ impl<LabelList, L, V, T>
 {
     type Filtered =
         <LVCons<L, V, T> as FilterPred<LabelList, <LabelList as Member<L>>::IsMember>>::Filtered;
+
+    fn filter(self) -> Self::Filtered
+    {
+        self.filter_pred()
+    }
 }
 
 /// Helper filter trait. Used by `Filter` for computing the subset of `Self` cons-list which
@@ -385,48 +357,130 @@ impl<LabelList, L, V, T>
 pub trait FilterPred<LabelList, IsMember>
 {
     type Filtered;
+
+    fn filter_pred(self) -> Self::Filtered;
 }
 
-// `FilterPred` implementation for an `LCons` cons-list where the head is in `LabelList`.
-impl<LabelList, L, T>
+// `FilterPred` implementation for a cons-list where the head is in `LabelList`.
+impl<LabelList, H, T>
     FilterPred<LabelList, True>
-    for LCons<L, T>
+    for Cons<H, T>
     where
         T: Filter<LabelList>,
 {
     // head is in list, so we include it and check the tail
-    type Filtered = LCons<L, <T as Filter<LabelList>>::Filtered>;
+    type Filtered = Cons<H, <T as Filter<LabelList>>::Filtered>;
+
+    fn filter_pred(self) -> Self::Filtered
+    {
+        Cons
+        {
+            head: self.head,
+            tail: self.tail.filter()
+        }
+    }
 }
-// `FilterPred` implementation for an `LCons` cons-list where the head isn't in `LabelList`.
-impl<LabelList, L, T>
+// `FilterPred` implementation for a cons-list where the head isn't in `LabelList`.
+impl<LabelList, H, T>
     FilterPred<LabelList, False>
-    for LCons<L, T>
+    for Cons<H, T>
     where
         T: Filter<LabelList>,
 {
     // head isn't in list, so we check the tail
     type Filtered = <T as Filter<LabelList>>::Filtered;
+
+    fn filter_pred(self) -> Self::Filtered
+    {
+        self.tail.filter()
+    }
 }
 
-// `FilterPred` implementation for an `LVCons` cons-list where the head is in `LabelList`.
+
+/// Trait to find the subset of cons-list `Self` which are labeled with labels in `LabelList`,
+/// providing a method to clone a copy of that list.
+///
+/// Any labels in `LabelList` not found in `Self` will be ignored (see `HasLabels` for a trait
+/// that requires all members of `LabelList` to be found).
+pub trait FilterClone<LabelList>
+{
+    type Filtered;
+
+    /// Filters `Self` and clones into new cons-list of type `Filtered`.
+    fn filter_clone(&self) -> Self::Filtered;
+}
+
+impl<LabelList> FilterClone<LabelList> for Nil
+{
+    type Filtered = Nil;
+
+    fn filter_clone(&self) -> Nil { Nil }
+}
+
+// Implementation for `LVCons` cons-lists.
 impl<LabelList, L, V, T>
-    FilterPred<LabelList, True>
+    FilterClone<LabelList>
     for LVCons<L, V, T>
     where
-        T: Filter<LabelList>,
+        LabelList: Member<L>,
+        LVCons<L, V, T>: FilterPredClone<LabelList, <LabelList as Member<L>>::IsMember>
+{
+    type Filtered =
+        <LVCons<L, V, T> as FilterPredClone<LabelList, <LabelList as Member<L>>::IsMember>>
+            ::Filtered;
+
+    fn filter_clone(&self) -> Self::Filtered
+    {
+        self.filter_pred_clone()
+    }
+}
+
+/// Helper filter trait. Used by `Filter` for computing the subset of `Self` cons-list which
+/// contains the labels in `LabelList`, and cloning a copy of that subset.
+///
+/// `IsMember` specifies whether or not the label of the head value of `Self` is a member of
+/// `LabelList`.
+pub trait FilterPredClone<LabelList, IsMember>
+{
+    type Filtered;
+
+    fn filter_pred_clone(&self) -> Self::Filtered;
+}
+
+// `FilterPredClone` implementation for a cons-list where the head is in `LabelList`.
+impl<LabelList, H, T>
+    FilterPredClone<LabelList, True>
+    for Cons<H, T>
+    where
+        T: FilterClone<LabelList>,
+        H: Clone
 {
     // head is in list, so we include it and check the tail
-    type Filtered = LVCons<L, V, <T as Filter<LabelList>>::Filtered>;
+    type Filtered = Cons<H, <T as FilterClone<LabelList>>::Filtered>;
+
+    fn filter_pred_clone(&self) -> Self::Filtered
+    {
+        Cons
+        {
+            head: self.head.clone(),
+            tail: self.tail.filter_clone()
+        }
+    }
 }
-// `FilterPred` implementation for an `LVCons` cons-list where the head isn't in `LabelList`.
-impl<LabelList, L, V, T>
-    FilterPred<LabelList, False>
-    for LVCons<L, V, T>
+// `FilterPred` implementation for a cons-list where the head isn't in `LabelList`.
+impl<LabelList, H, T>
+    FilterPredClone<LabelList, False>
+    for Cons<H, T>
     where
-        T: Filter<LabelList>,
+        T: FilterClone<LabelList>,
 {
     // head isn't in list, so we check the tail
-    type Filtered = <T as Filter<LabelList>>::Filtered;
+    type Filtered = <T as FilterClone<LabelList>>::Filtered;
+
+    fn filter_pred_clone(&self) -> Self::Filtered
+    {
+        self.tail.filter_clone()
+    }
 }
 
 /// Lookup into a `Cons`-list by `typenum` natural number.

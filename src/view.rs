@@ -120,23 +120,50 @@ impl<Labels, Frames> DataView<Labels, Frames>
     }
 }
 
+pub trait FieldLabelList
+{
+    type LabelList;
+}
+
+impl FieldLabelList for Nil
+{
+    type LabelList = Nil;
+}
+
+impl<Label, FrameLabel, Tail>
+    FieldLabelList
+    for FrameLookupCons<Label, FrameLabel, Tail>
+    where
+        Tail: FieldLabelList
+{
+    type LabelList = LCons<FrameLabel, <Tail as FieldLabelList>::LabelList>;
+}
+
+
 impl<Labels, Frames> DataView<Labels, Frames>
     where Frames: Clone
 {
     /// Generate a new subview of this DataView. LabelList is an LabelCons.
     pub fn v<LabelList>(&self)
-        -> DataView<<Labels as Filter<LabelList>>::Filtered, Frames>
-        where Labels: HasLabels<LabelList> + Filter<LabelList>
+        -> DataView<
+            <Labels as Filter<LabelList>>::Filtered,
+            <Frames as FilterClone<<Labels as FieldLabelList>::LabelList>>::Filtered
+        >
+        where Labels: HasLabels<LabelList> + Filter<LabelList> + FieldLabelList,
+              Frames: FilterClone<<Labels as FieldLabelList>::LabelList>
     {
         DataView {
             _labels: PhantomData,
-            //TODO: trim this frame list down based on labels
-            frames: self.frames.clone(),
+            frames: self.frames.filter_clone(),
         }
     }
     pub fn subview<LabelList>(&self)
-        -> DataView<<Labels as Filter<LabelList>>::Filtered, Frames>
-        where Labels: HasLabels<LabelList> + Filter<LabelList>
+        -> DataView<
+            <Labels as Filter<LabelList>>::Filtered,
+            <Frames as FilterClone<<Labels as FieldLabelList>::LabelList>>::Filtered
+        >
+        where Labels: HasLabels<LabelList> + Filter<LabelList> + FieldLabelList,
+              Frames: FilterClone<<Labels as FieldLabelList>::LabelList>
     {
         self.v::<LabelList>()
     }
@@ -1654,6 +1681,8 @@ mod tests {
         assert_eq!(subdv4.nrows(), 7);
         assert_eq!(subdv4.nfields(), 1);
     }
+
+    //TODO: multi-frame subview tests (which filter out no-longer-needed frames)
 
     // #[test]
     // fn subview_fail() {
