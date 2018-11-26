@@ -12,11 +12,11 @@ use csv_sniffer::metadata::Metadata;
 use source::file::{LocalFileReader, FileLocator};
 use source::decode::decode;
 use error::*;
-use store::{AssocStorage, DataStore};
+use store::{AssocStorage, DataStore, AddFieldFromValueIter};
 use cons::*;
 use field::FieldIdent;
 use field::{Value};
-use fieldlist::{FieldPayloadCons, FieldCons, FieldDesignator, SpecCons};
+use fieldlist::{FieldPayloadCons, FieldSpec, FieldDesignator, SpecCons};
 use label::{TypedValue, Valued};
 
 /// CSV Data source. Contains location of data file, and computes CSV metadata. Can be turned into
@@ -238,22 +238,19 @@ impl<Label, DType, Tail> BuildDStore
     // >
     where
           Tail: BuildDStore,
-          // Tail::OutputFields: FieldTypes,
+          DataStore<<Tail as BuildDStore>::OutputFields>: AddFieldFromValueIter<Label, DType>,
+          Tail::OutputFields: PushBack<FieldSpec<Label, DType>>,
+          <Tail::OutputFields as PushBack<FieldSpec<Label, DType>>>::Output: AssocStorage,
           Label: Debug,
     //       Tail::OutputFields: FieldIndex,
     //       <Tail::OutputFields as FieldIndex>::FIdx: Add<B1>,
           DType: FromStr + Debug + Default + Clone,
           ParseError: From<<DType as FromStr>::Err>,
 {
-    // type OutputFields = StorageCons<
-    //     Field<Ident, Add1<<Tail::OutputFields as FieldIndex>::FIdx>, DType>,
-    //     Tail::OutputFields
-    // >;
-    type OutputFields = FieldCons<
-        Label,
-        DType,
-        Tail::OutputFields
-    >;
+    type OutputFields =
+        <DataStore<<Tail as BuildDStore>::OutputFields> as AddFieldFromValueIter<Label, DType>>
+            ::OutputFields;
+
     fn build(&mut self, src: &CsvSource) -> Result<DataStore<Self::OutputFields>> {
         let file_reader = LocalFileReader::new(&src.src)?;
         let mut csv_reader = src.metadata.dialect.open_reader(file_reader)?;
@@ -280,7 +277,7 @@ impl<Label, DType, Tail> BuildDStore
                 }
             }))
             .collect::<Result<_>>()?;
-        let ds = ds.add_labeled_field_from_iter::<Label, DType, _, _>(values);
+        let ds = ds.add_field_from_value_iter::<Label, DType, _, _>(values);
 
 
         Ok(ds)

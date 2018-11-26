@@ -625,7 +625,16 @@ impl IsImplemented<AddCellToRowFn> for String {
 impl IsImplemented<AddCellToRowFn> for f64 {
     type IsImpl = Implemented;
 }
+impl IsImplemented<AddCellToRowFn> for f32 {
+    type IsImpl = Implemented;
+}
 impl IsImplemented<AddCellToRowFn> for u64 {
+    type IsImpl = Implemented;
+}
+impl IsImplemented<AddCellToRowFn> for i64 {
+    type IsImpl = Implemented;
+}
+impl IsImplemented<AddCellToRowFn> for bool {
     type IsImpl = Implemented;
 }
 
@@ -1517,12 +1526,15 @@ mod tests {
         println!("{}", view);
     }
 
-    // #[test]
-    // fn merge() {
-    //     let ds1 = sample_emp_table();
-    //     let ds2 = sample_emp_table_extra();
+    #[test]
+    fn merge() {
+        let ds1 = sample_emp_table();
+        let ds2 = sample_emp_table_extra();
+        let (dv1, dv2) = (ds1.into_view(), ds2.into_view());
 
-    //     let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
+        println!("{}", dv1);
+        println!("{}", dv2);
+
     //     println!("{}", dv1);
     //     println!("{}", dv2);
     //     let merged_dv: DataView = dv1.merge(&dv2).expect("merge failed");
@@ -1535,7 +1547,7 @@ mod tests {
     //     {
     //         assert_eq!(left, &&right);
     //     }
-    // }
+    }
 
     // #[test]
     // fn merge_dimension_mismatch() {

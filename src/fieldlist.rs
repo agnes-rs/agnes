@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 // use typenum::{Unsigned, U0, B1};
 
 use cons::*;
-use label::{LMCons, LDVCons, SelfValued, TypedValue};
+use label::*;
 // use data_types::{DTypeList, GetDType};
 
 
@@ -43,6 +43,8 @@ impl<DType, Payload> From<Payload> for TypedPayload<DType, Payload>
 //     _marker: PhantomData<Marker>
 // }
 
+pub type FieldSpec<Label, DType> = Labeled<Label, PhantomData<DType>>;
+
 /// Type alias for an `LVCons`-list which only contains the data type information for the identified
 /// field.
 pub type FieldCons<Label, DType, Tail> = LMCons<Label, DType, Tail>;
@@ -71,22 +73,24 @@ pub type FieldPayloadCons<Label, DType, Payload, Tail> = LDVCons<Label, DType, P
 //     type Field = Field;
 // }
 
-// pub trait AssocFieldCons {
+// pub trait AssocFieldCons
+// {
 //     type Fields;
 // }
-// impl AssocFieldCons for Nil {
+// impl AssocFieldCons for Nil
+// {
 //     type Fields = Nil;
 // }
-// impl<Ident, DType, Tail> AssocFieldCons
-//     for FieldCons<Ident, DType, Tail>
+// impl<Label, DType, Tail> AssocFieldCons
+//     for FieldCons<Label, DType, Tail>
 // {
 //     type Fields = Self;
 // }
-// impl<Ident, DType, Payload, Tail> AssocFieldCons
-//     for FieldPayloadCons<Field<Ident, DType>, Payload, Tail>
+// impl<Label, DType, Payload, Tail> AssocFieldCons
+//     for FieldPayloadCons<Label, DType, Payload, Tail>
 //     where Tail: AssocFieldCons,
 // {
-//     type Fields = FieldCons<Ident, DType, Tail::Fields>;
+//     type Fields = FieldCons<Label, DType, Tail::Fields>;
 // }
 
 

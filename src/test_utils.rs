@@ -4,6 +4,7 @@ use field::FieldData;
 use access::DataIndex;
 use fieldlist::FieldCons;
 use cons::Nil;
+use field::Value;
 use store::DataStore;
 
 label![EmpId, U0];
@@ -11,20 +12,7 @@ label![DeptId, U1];
 label![EmpName, U2];
 
 // use data_types::standard as dt_std;
-pub type SampleDataStoreFields =
-    FieldCons<
-        EmpId::Label,
-        u64,
-        FieldCons<
-            DeptId::Label,
-            u64,
-            FieldCons<
-                EmpName::Label,
-                String,
-                Nil
-            >
-        >
-    >;
+pub type SampleDataStoreFields = Fields![EmpId: u64, DeptId: u64, EmpName: String];
 pub type SampleDataStore = DataStore<SampleDataStoreFields>;
 
 pub fn sample_emp_table() -> SampleDataStore
@@ -47,20 +35,38 @@ pub fn emp_table_from_field(
     -> SampleDataStore
 {
     DataStore::<Nil>::empty()
-        .add_labeled_field(names)
-        .add_labeled_field(deptids)
-        .add_labeled_field(empids)
+        .add_field(empids)
+        .add_field(deptids)
+        .add_field(names)
 }
-// pub fn sample_emp_table_extra() -> dt_std::DataStore
-// {
-//     dt_std::DataStore::empty()
-//         .with_cloned_data_from_iter("SalaryOffset",
-//             vec![-5i64, 4, 12, -33, 10, 0, -1].iter()).unwrap()
-//         .with_cloned_data_from_iter("DidTraining",
-//             vec![false, false, true, true, true, false, true].iter()).unwrap()
-//         .with_cloned_data_from_iter("VacationHrs",
-//             vec![47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5].iter()).unwrap()
-// }
+
+label![SalaryOffset, U3];
+label![DidTraining, U4];
+label![VacationHrs, U5];
+pub type SampleDataStoreExtraFields =
+    Fields![SalaryOffset: i64, DidTraining: bool, VacationHrs: f32];
+pub type SampleDataStoreExtra = DataStore<SampleDataStoreExtraFields>;
+
+pub fn sample_emp_table_extra()
+    -> SampleDataStoreExtra
+{
+    DataStore::<Nil>::empty()
+        .add_cloned_field_from_iter(&[-5i64, 4, 12, -33, 10, 0, -1])
+        .add_cloned_field_from_iter(&[false, false, true, true, true, false, true])
+        .add_cloned_field_from_iter(&[47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5])
+}
+
+pub type SampleDataStoreFullFields =
+    Fields![SampleDataStoreFields .. SalaryOffset: i64, DidTraining: bool, VacationHrs: f32];
+pub type SampleDataStoreFull = DataStore<SampleDataStoreFullFields>;
+pub fn sample_emp_table_full()
+    -> SampleDataStoreFull
+{
+    sample_emp_table()
+        .add_cloned_field_from_iter(&[-5i64, 4, 12, -33, 10, 0, -1])
+        .add_cloned_field_from_iter(&[false, false, true, true, true, false, true])
+        .add_cloned_field_from_iter(&[47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5])
+}
 // pub fn sample_merged_emp_table() -> dt_std::DataView {
 //     let ds = sample_emp_table();
 //     let orig_dv: dt_std::DataView = ds.into();

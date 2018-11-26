@@ -45,7 +45,7 @@ impl<Label, Value, Tail> LabelIndex for LVCons<Label, Value, Tail>
     type Idx = Label::Idx;
 }
 
-pub type NextLabelIndex<T> = Add1<<T as LabelIndex>::Idx>;
+// pub type NextLabelIndex<T> = Add1<<T as LabelIndex>::Idx>;
 
 //TODO: figure out how to have this return an array
 pub trait StrLabels
@@ -657,11 +657,34 @@ macro_rules! label {
 #[macro_export]
 macro_rules! Labels {
     (@labels()) => { Nil };
-    (@labels($label:ident, $($rest:ident,)*)) => {
+    (@labels($label:ident, $($rest:ident,)*)) =>
+    {
         LCons<$label::Label, Labels![@labels($($rest,)*)]>
     };
-    ($($label:ident),*$(,)*) => {
+    ($($label:ident),*$(,)*) =>
+    {
         Labels![@labels($($label,)*)]
+    }
+}
+
+#[macro_export]
+macro_rules! Fields {
+    (@fields()) => { Nil };
+    (@fields($label:ident: $dtype:ident, $($rest_label:ident: $rest_dtype:ident,)*)) =>
+    {
+        FieldCons<$label::Label, $dtype, Fields![@fields($($rest_label: $rest_dtype,)*)]>
+    };
+    ($($label:ident: $dtype:ident),*$(,)*) =>
+    {
+        Fields![@fields($($label: $dtype,)*)]
+    };
+    ($existing:ident .. $($label:ident: $dtype:ident),*$(,)*) =>
+    {
+        <$existing as $crate::cons::Append<Fields![@fields($($label: $dtype,)*)]>>::Appended
+    };
+    ($($label:ident: $dtype:ident),*$(,)* .. $existing:ident) =>
+    {
+        <Fields![@fields($($label: $dtype,)*)] as $crate::cons::Append<$existing>>::Appended
     }
 }
 
@@ -853,6 +876,5 @@ mod tests
             // we only filtered 2 label (albeit with some duplication), so length should be 2
             assert_eq!(Filtered::LEN, 2);
         }
-
     }
 }

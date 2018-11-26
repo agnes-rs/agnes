@@ -195,7 +195,7 @@ impl<T> FieldData<T>
     }
 }
 impl<T> FieldData<T>
-    where T: Debug + Default + Clone
+    where T: Debug + Default
 {
     /// Add a new value (or an indication of a missing one) to the data vector.
     pub fn push_val(&mut self, value: Value<T>) {
@@ -210,6 +210,10 @@ impl<T> FieldData<T>
             }
         }
     }
+}
+impl<T> FieldData<T>
+    where T: Debug + Default + Clone
+{
     /// Add a new value (passed by reference) to the data vector.
     pub fn push_ref(&mut self, value: Value<&T>) {
         match value {
@@ -233,7 +237,7 @@ impl<T> FieldData<T>
     }
 }
 impl<T> FromIterator<Value<T>> for FieldData<T>
-    where T: Debug + Default + Clone,
+    where T: Debug + Default,
 {
     fn from_iter<I: IntoIterator<Item=Value<T>>>(iter: I) -> Self {
         let mut data = FieldData::default();
@@ -255,7 +259,6 @@ impl<'a, T> FromIterator<Value<&'a T>> for FieldData<T>
     }
 }
 impl<T> FromIterator<T> for FieldData<T>
-    // where T: DataType
 {
     fn from_iter<I: IntoIterator<Item=T>>(iter: I) -> Self {
         let mut mask = BitVec::new();
@@ -292,7 +295,7 @@ impl<T> DataIndex for FieldData<T>
     }
 }
 impl<T> DataIndexMut for FieldData<T>
-    where T: Debug + Default + Clone
+    where T: Debug + Default
 {
     fn push(&mut self, value: Value<Self::DType>) {
         self.push_val(value)
