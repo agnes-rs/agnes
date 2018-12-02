@@ -1,3 +1,7 @@
+use std::ops::Add;
+
+use typenum::{Unsigned, UTerm, Add1, B1};
+
 /// The end of a heterogeneous type list.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Nil;
@@ -87,18 +91,25 @@ impl<List, H, T> Append<List> for Cons<H, T> where T: Append<List> {
 // }
 
 pub trait Len {
-    const LEN: usize;
+    type Len: Unsigned;
 
-    fn is_empty(&self) -> bool { Self::LEN == 0 }
-    fn len(&self) -> usize { Self::LEN }
+    fn is_empty(&self) -> bool { self.len() == 0 }
+    fn len(&self) -> usize { Self::Len::to_usize() }
 }
 
 impl Len for Nil {
-    const LEN: usize = 0;
+    type Len = UTerm;
 }
 impl<Head, Tail> Len
     for Cons<Head, Tail>
-    where Tail: Len
+    where Tail: Len,
+          <Tail as Len>::Len: Add<B1>,
+          <<Tail as Len>::Len as Add<B1>>::Output: Unsigned,
 {
-    const LEN: usize = <Tail as Len>::LEN + 1;
+    type Len = Add1<<Tail as Len>::Len>;
+}
+
+#[macro_export]
+macro_rules! length {
+    ($list:ty) => (<<$list as $crate::cons::Len>::Len as typenum::Unsigned>::USIZE)
 }

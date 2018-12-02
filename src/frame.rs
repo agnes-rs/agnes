@@ -592,7 +592,7 @@ mod tests {
         // println!("{:?}", ds.field::<CountryName>());
 
         let frame = DataFrame::from(ds);
-        println!("{:?}", frame.field::<CountryName::Label>());
+        println!("{:?}", frame.field::<CountryName>());
 
         // let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec);
         // let ds = csv_rdr.read().unwrap();

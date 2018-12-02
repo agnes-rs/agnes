@@ -1,5 +1,7 @@
 // use view::IntoFieldList;
 // use store::{WithClonedDataFromIter};
+use typenum::Add1;
+
 use field::FieldData;
 use access::DataIndex;
 use fieldlist::FieldCons;
@@ -7,15 +9,9 @@ use cons::Nil;
 use field::Value;
 use store::DataStore;
 
-label![EmpId, U0];
-label![DeptId, U1];
-label![EmpName, U2];
+data_store![pub emp_table; EmpId: u64, DeptId: u64, EmpName: String];
 
-// use data_types::standard as dt_std;
-pub type SampleDataStoreFields = Fields![EmpId: u64, DeptId: u64, EmpName: String];
-pub type SampleDataStore = DataStore<SampleDataStoreFields>;
-
-pub fn sample_emp_table() -> SampleDataStore
+pub fn sample_emp_table() -> emp_table::Store
 {
     emp_table(vec![0u64, 2, 5, 6, 8, 9, 10], vec![1u64, 2, 1, 1, 3, 4, 4],
         vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"])
@@ -23,7 +19,7 @@ pub fn sample_emp_table() -> SampleDataStore
 pub fn emp_table(
     empids: Vec<u64>, deptids: Vec<u64>, names: Vec<&str>
 )
-    -> SampleDataStore
+    -> emp_table::Store
 {
     emp_table_from_field(empids.into(), deptids.into(), names.into())
 }
@@ -32,7 +28,7 @@ pub fn emp_table_from_field(
     deptids: FieldData<u64>,
     names: FieldData<String>
 )
-    -> SampleDataStore
+    -> emp_table::Store
 {
     DataStore::<Nil>::empty()
         .add_field(empids)
@@ -40,15 +36,10 @@ pub fn emp_table_from_field(
         .add_field(names)
 }
 
-label![SalaryOffset, U3];
-label![DidTraining, U4];
-label![VacationHrs, U5];
-pub type SampleDataStoreExtraFields =
-    Fields![SalaryOffset: i64, DidTraining: bool, VacationHrs: f32];
-pub type SampleDataStoreExtra = DataStore<SampleDataStoreExtraFields>;
+data_store![pub extra_emp; emp_table; SalaryOffset: i64, DidTraining: bool, VacationHrs: f32];
 
 pub fn sample_emp_table_extra()
-    -> SampleDataStoreExtra
+    -> extra_emp::Store
 {
     DataStore::<Nil>::empty()
         .add_cloned_field_from_iter(&[-5i64, 4, 12, -33, 10, 0, -1])
@@ -56,17 +47,51 @@ pub fn sample_emp_table_extra()
         .add_cloned_field_from_iter(&[47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5])
 }
 
-pub type SampleDataStoreFullFields =
-    Fields![SampleDataStoreFields .. SalaryOffset: i64, DidTraining: bool, VacationHrs: f32];
-pub type SampleDataStoreFull = DataStore<SampleDataStoreFullFields>;
+
+
+data_store![pub full_emp_table; extra_emp;
+    EmpId: u64, DeptId: u64, EmpName: String, SalaryOffset: i64, DidTraining: bool, VacationHrs: f32
+];
 pub fn sample_emp_table_full()
-    -> SampleDataStoreFull
+    -> full_emp_table::Store
 {
-    sample_emp_table()
+    DataStore::<Nil>::empty()
+        .add_cloned_field_from_iter(&[0u64, 2, 5, 6, 8, 9, 10])
+        .add_cloned_field_from_iter(&[1u64, 2, 1, 1, 3, 4, 4])
+        .add_field_from_iter(
+            ["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"].iter()
+            .map(|&s| s.to_string())
+        )
         .add_cloned_field_from_iter(&[-5i64, 4, 12, -33, 10, 0, -1])
         .add_cloned_field_from_iter(&[false, false, true, true, true, false, true])
         .add_cloned_field_from_iter(&[47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5])
 }
+
+data_store![pub dept_table; full_emp_table; DeptId: u64, DeptName: String];
+
+pub fn sample_dept_table()
+    -> dept_table::Store
+{
+    dept_table(vec![1u64, 2, 3, 4], vec!["Marketing", "Sales", "Manufacturing", "R&D"])
+}
+pub fn dept_table(
+    deptids: Vec<u64>, names: Vec<&str>
+)
+    -> dept_table::Store
+{
+    dept_table_from_field(deptids.into(), names.into())
+}
+pub fn dept_table_from_field(
+    deptids: FieldData<u64>, names: FieldData<String>
+)
+    -> dept_table::Store
+{
+    dept_table::Store::empty()
+        .add_field(deptids)
+        .add_field(names)
+}
+
+
 // pub fn sample_merged_emp_table() -> dt_std::DataView {
 //     let ds = sample_emp_table();
 //     let orig_dv: dt_std::DataView = ds.into();

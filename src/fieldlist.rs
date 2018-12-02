@@ -150,7 +150,7 @@ macro_rules! spec {
     (@step $field_label:ident($field_name:expr): $field_ty:ty, $($rest:tt)*) => {{
         use $crate::fieldlist::{FieldDesignator, SpecCons};
         SpecCons::<
-            $field_label::Label,
+            $field_label,
             $field_ty,
             _
         >::new(
@@ -176,22 +176,22 @@ macro_rules! spec {
     (@decl_fields($pos:ty) ) => {};
     (@decl_fields($pos:ty) $field_label:ident($field_name:expr): $field_ty:ty) => {
         // type $field_label = $crate::label::Label<$pos>;
-        label![$field_label, $pos];
+        nat_label![$field_label, ::typenum::U0, $pos];
         spec![@decl_fields(::typenum::Add1<$pos>)];
     };
     (@decl_fields($pos:ty) $field_label:ident[$field_name:ident]: $field_ty:ty) => {
         // type $field_label = $crate::label::Label<$pos>;
-        label![$field_label, $pos];
+        nat_label![$field_label, ::typenum::U0, $pos];
         spec![@decl_fields(::typenum::Add1<$pos>)];
     };
     (@decl_fields($pos:ty) $field_label:ident($field_name:expr): $field_ty:ty, $($rest:tt)*) => {
         // type $field_label = $crate::label::Label<$pos>;
-        label![$field_label, $pos];
+        nat_label![$field_label, ::typenum::U0, $pos];
         spec![@decl_fields(::typenum::Add1<$pos>) $($rest)*];
     };
     (@decl_fields($pos:ty) $field_label:ident[$field_name:ident]: $field_ty:ty, $($rest:tt)*) => {
         // type $field_label = $crate::label::Label<$pos>;
-        label![$field_label, $pos];
+        nat_label![$field_label, ::typenum::U0, $pos];
         spec![@decl_fields(::typenum::Add1<$pos>) $($rest)*];
     };
     (@decl_fields $($body:tt)*) => {

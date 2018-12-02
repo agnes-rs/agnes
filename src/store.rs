@@ -554,6 +554,44 @@ impl<Fields> DataStore<Fields>
     }
 }
 
+#[macro_export]
+macro_rules! data_store {
+    ($vis:vis $name:ident; $prev_ns:ident; $($field_tt:tt)*) => {
+        $vis mod $name
+        {
+            use super::$prev_ns;
+            pub type Namespace = typenum::Add1<$prev_ns::Namespace>;
+            declare_fields![Namespace; $($field_tt)*];
+            pub type Fields = Fields![$($field_tt)*];
+            pub type Store = $crate::store::DataStore<Fields>;
+        }
+    };
+    ($vis:vis $name:ident; $($field_tt:tt)*) => {
+        $vis mod $name
+        {
+            pub type Namespace = typenum::U0;
+            declare_fields![Namespace; $($field_tt)*];
+            pub type Fields = Fields![$($field_tt)*];
+            pub type Store = $crate::store::DataStore<Fields>;
+            pub type DataStore = Store;
+        }
+
+    };
+}
+
+// another data_store macro option (example):
+
+// data_store![
+//     namespace full_emp_table: extra_emp {
+//         use emp_table::Fields;
+//         use extra_emp::Fields;
+//         field EmpId: u64;
+//         field DeptId: u64;
+//     }
+// ]
+
+
+
 #[cfg(test)]
 mod tests {
 
@@ -619,7 +657,7 @@ mod tests {
         // LookupElemByLabel::<CountryName>::elem(&ds.data).adjfiaoj();
 
         // println!("{:?}", ds);
-        println!("{:?}", ds.field::<CountryName::Label>());
+        println!("{:?}", ds.field::<CountryName>());
 
         // let dv = ds.into_view();
         // use view::LookupFrameByLabel;

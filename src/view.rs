@@ -23,6 +23,7 @@ use serde::ser::{self, Serialize, Serializer, SerializeMap};
 use prettytable as pt;
 
 use access::DataIndex;
+use error;
 use frame::{DataFrame, Framed, FrameFields, FrameFieldsOf};
 
 #[cfg(serialize)]
@@ -30,7 +31,7 @@ use frame::{SerializedField};
 // use frame::{DataFrame, FramedMap, FramedTMap, FramedMapExt, Framed, FramedFunc, SerializedField};
 // use filter::Filter;
 use field::{Value};
-// use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list, MergedFields,
+use join::{Merge};// use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list, MergedFields,
 //     MergeFields};
 use fieldlist::{FieldCons, FieldPayloadCons};
 use features::{Func, FuncDefault, Implemented, Unimplemented, IsImplemented,
@@ -47,8 +48,8 @@ use label::*;
 #[derive(Debug, Clone, Default)]
 pub struct DataView<Labels, Frames>
 {
-    _labels: PhantomData<Labels>,
-    frames: Frames,
+    pub(crate) _labels: PhantomData<Labels>,
+    pub(crate) frames: Frames,
 }
 
 pub type FrameLookupCons<Label, FrameLabel, Tail> = LMCons<Label, FrameLabel, Tail>;
@@ -185,17 +186,17 @@ impl<Labels, Frames> DataView<Labels, Frames>
     /// Returns `true` if the DataView is empty (has no rows or has no fields)
     pub fn is_empty(&self) -> bool
     {
-        Labels::LEN == 0 || self.frames.is_empty()
+        length![Labels] == 0 || self.frames.is_empty()
     }
     /// Number of fields in this data view
     pub fn nfields(&self) -> usize
     {
-        Labels::LEN
+        length![Labels]
     }
     /// Number of frames this data view covers
     pub fn nframes(&self) -> usize
     {
-        Frames::LEN
+        length![Frames]
     }
 }
 
@@ -638,33 +639,42 @@ impl IsImplemented<AddCellToRowFn> for bool {
     type IsImpl = Implemented;
 }
 
-// impl<Labels, Frames> DataView<Labels, Frames>
-// {
-//     /// merge this `DataView` with another `DataView` object, creating a new `DataView` with the
-//     /// same number of rows and all the fields from both source `DataView` objects.
-//     pub fn merge<OtherLabels, OtherFrames>(&self, other: &DataView<OtherLabels, OtherFrames>)
-//         -> error::Result<DataView<OtherFields>>
-//         // where DTypes::Storage: MaxLen<DTypes>
-//     {
-//         if self.nrows() != other.nrows() {
-//             return Err(error::AgnesError::DimensionMismatch(
-//                 "number of rows mismatch in merge".into()));
-//         }
+impl<Labels, Frames> DataView<Labels, Frames>
+{
+    /// merge this `DataView` with another `DataView` object, creating a new `DataView` with the
+    /// same number of rows and all the fields from both source `DataView` objects.
+    pub fn merge<RLabels, RFrames>(&self, right: &DataView<RLabels, RFrames>)
+        -> error::Result<DataView<
+            <Self as Merge<RLabels, RFrames>>::OutLabels,
+            <Self as Merge<RLabels, RFrames>>::OutFrames,
+        >>
+        where
+            Self: Merge<RLabels, RFrames>,
+            RFrames: NRows,
+            Frames: NRows,
+            <Self as Merge<RLabels, RFrames>>::OutLabels: IsLabelSet,
+        // where DTypes::Storage: MaxLen<DTypes>
+    {
+        if self.nrows() != right.nrows() {
+            return Err(error::AgnesError::DimensionMismatch(
+                "number of rows mismatch in merge".into()));
+        }
+        Ok(Merge::merge(self, right))
 
-//         // compute merged stores (and mapping from 'other' store index references to combined
-//         // store vector)
-//         let (new_frames, other_store_indices) = compute_merged_frames(self, other);
+        // // compute merged stores (and mapping from 'other' store index references to combined
+        // // store vector)
+        // let (new_frames, other_store_indices) = compute_merged_frames(self, other);
 
-//         // compute merged field list
-//         let MergedFields { mut new_fields, .. } =
-//             compute_merged_field_list(self, other, &other_store_indices, None)?;
-//         let new_fields = IndexMap::from_iter(new_fields.drain(..));
-//         Ok(DataView {
-//             frames: new_frames,
-//             fields: new_fields
-//         })
-//     }
-// }
+        // // compute merged field list
+        // let MergedFields { mut new_fields, .. } =
+        //     compute_merged_field_list(self, other, &other_store_indices, None)?;
+        // let new_fields = IndexMap::from_iter(new_fields.drain(..));
+        // Ok(DataView {
+        //     frames: new_frames,
+        //     fields: new_fields
+        // })
+    }
+}
 
 
 
@@ -1504,7 +1514,7 @@ mod tests {
         let view = ds.into_view();
 
         // println!("{:?}", SelectFieldByLabel::<CountryName::Label>::select_field(&view));
-        let country_name = view.field::<CountryName::Label>();
+        let country_name = view.field::<CountryName>();
         println!("{:?}", country_name);
     }
 
@@ -1528,59 +1538,46 @@ mod tests {
 
     #[test]
     fn merge() {
-        let ds1 = sample_emp_table();
-        let ds2 = sample_emp_table_extra();
-        let (dv1, dv2) = (ds1.into_view(), ds2.into_view());
+        let dv1 = sample_emp_table().into_view();
+        let dv2 = sample_emp_table_extra().into_view();
 
         println!("{}", dv1);
         println!("{}", dv2);
 
-    //     println!("{}", dv1);
-    //     println!("{}", dv2);
-    //     let merged_dv: DataView = dv1.merge(&dv2).expect("merge failed");
-    //     println!("{}", merged_dv);
-    //     assert_eq!(merged_dv.nrows(), 7);
-    //     assert_eq!(merged_dv.nfields(), 6);
-    //     for (left, right) in merged_dv.fieldnames().iter()
-    //         .zip(vec!["EmpId", "DeptId", "EmpName", "SalaryOffset", "DidTraining", "VacationHrs"]
-    //                 .iter().map(|&s| FieldIdent::Name(s.into())))
-    //     {
-    //         assert_eq!(left, &&right);
-    //     }
+        let merged_dv = dv1.merge(&dv2).unwrap();
+        println!("{}", merged_dv);
+        assert_eq!(merged_dv.nrows(), 7);
+        assert_eq!(merged_dv.nfields(), 6);
+        assert_eq!(merged_dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName", "SalaryOffset",
+            "DidTraining", "VacationHrs"]);
     }
 
-    // #[test]
-    // fn merge_dimension_mismatch() {
-    //     let ds1 = sample_emp_table();
-    //     let ds2 = sample_dept_table();
+    #[test]
+    fn merge_dimension_mismatch() {
+        let dv1 = sample_emp_table().into_view();
+        let dv2 = sample_dept_table().into_view();
 
-    //     let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
-    //     println!("{}", dv1);
-    //     println!("{}", dv2);
-    //     match dv1.merge(&dv2) {
-    //         Ok(_) => { panic!("Merge was expected to fail (dimension mismatch), but succeeded"); },
-    //         Err(AgnesError::DimensionMismatch(_)) => { /* expected */ },
-    //         Err(e) => { panic!("Incorrect error: {:?}", e); },
-    //     };
-    // }
+        println!("{}", dv1);
+        println!("{}", dv2);
 
-    // #[test]
-    // fn merge_field_collision() {
-    //     let ds1 = sample_emp_table();
-    //     let ds2 = sample_emp_table();
+        let merge_result = dv1.merge(&dv2);
+        match merge_result {
+            Ok(_) => { panic!("Merge was expected to fail (dimension mismatch), but succeeded"); },
+            Err(AgnesError::DimensionMismatch(_)) => { /* expected */ },
+            Err(e) => { panic!("Incorrect error: {:?}", e); },
+        };
+    }
 
-    //     let (dv1, dv2): (DataView, DataView) = (ds1.into(), ds2.into());
-    //     println!("{}", dv1);
-    //     println!("{}", dv2);
-    //     match dv1.merge(&dv2) {
-    //         Ok(_) => { panic!("Merge expected to fail (field collision), but succeeded"); },
-    //         Err(AgnesError::FieldCollision(fields)) => {
-    //             assert_eq!(fields, vec!["EmpId", "DeptId", "EmpName"]
-    //                 .iter().map(|&s| FieldIdent::Name(s.into())).collect::<Vec<_>>());
-    //         },
-    //         Err(e) => { panic!("Incorrect error: {:?}", e); }
-    //     }
-    // }
+    #[test]
+    fn merge_field_collision() {
+        let dv1 = sample_emp_table().into_view();
+        let dv2 = sample_emp_table().into_view();
+
+        println!("{}", dv1);
+        println!("{}", dv2);
+
+        // let merge_result = dv1.merge(&dv2);
+    }
 
     // #[test]
     // fn rename() {
@@ -1641,6 +1638,7 @@ mod tests {
     #[test]
     #[cfg(feature = "test-utils")]
     fn subview() {
+        use test_utils::emp_table::*;
         let ds = sample_emp_table();
         let dv = ds.into_view();
         assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
