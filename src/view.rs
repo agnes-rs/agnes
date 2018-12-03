@@ -652,7 +652,7 @@ impl<Labels, Frames> DataView<Labels, Frames>
             Self: Merge<RLabels, RFrames>,
             RFrames: NRows,
             Frames: NRows,
-            <Self as Merge<RLabels, RFrames>>::OutLabels: IsLabelSet,
+            <Self as Merge<RLabels, RFrames>>::OutLabels: IsLabelSet<IsSet=True>,
         // where DTypes::Storage: MaxLen<DTypes>
     {
         if self.nrows() != right.nrows() {
@@ -1536,6 +1536,7 @@ mod tests {
         println!("{}", view);
     }
 
+    #[cfg(feature = "test-utils")]
     #[test]
     fn merge() {
         let dv1 = sample_emp_table().into_view();
@@ -1552,6 +1553,7 @@ mod tests {
             "DidTraining", "VacationHrs"]);
     }
 
+    #[cfg(feature = "test-utils")]
     #[test]
     fn merge_dimension_mismatch() {
         let dv1 = sample_emp_table().into_view();
@@ -1566,17 +1568,6 @@ mod tests {
             Err(AgnesError::DimensionMismatch(_)) => { /* expected */ },
             Err(e) => { panic!("Incorrect error: {:?}", e); },
         };
-    }
-
-    #[test]
-    fn merge_field_collision() {
-        let dv1 = sample_emp_table().into_view();
-        let dv2 = sample_emp_table().into_view();
-
-        println!("{}", dv1);
-        println!("{}", dv2);
-
-        // let merge_result = dv1.merge(&dv2);
     }
 
     // #[test]
@@ -1626,8 +1617,8 @@ mod tests {
     //     // println!("{}", dv);
     // }
 
-    #[test]
     #[cfg(feature = "test-utils")]
+    #[test]
     fn fieldnames()
     {
         let ds = sample_emp_table();
@@ -1635,8 +1626,8 @@ mod tests {
         assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
     }
 
-    #[test]
     #[cfg(feature = "test-utils")]
+    #[test]
     fn subview() {
         use test_utils::emp_table::*;
         let ds = sample_emp_table();

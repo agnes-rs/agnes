@@ -8,12 +8,12 @@ use agnes::{
 
 fn main()
 {
-    let ds = sample_emp_table();
-    let dv = ds.into_view();
+    let dv = sample_emp_table().into_view();
     assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
     assert_eq!(dv.nrows(), 7);
     assert_eq!(dv.nfields(), 3);
 
+    use emp_table::*;
     let subdv1 = dv.v::<Labels![EmployeeName]>();
-    //~^ ERROR Use of undeclared type or module `EmployeeName`
+    //~^ ERROR cannot find type `EmployeeName` in this scope
 }

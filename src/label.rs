@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::rc::Rc;
-use std::ops::{BitAnd, BitOr, Sub, Add};
+use std::ops::{BitAnd, BitOr, Not, Sub, Add};
 use std::marker::PhantomData;
 
 use typenum::{
@@ -425,18 +425,29 @@ impl<Needle, Haystack> HasLabels<Needle>
 /// Marker trait for ensuring that the labels of a cons-list constitute a set (no label cardinality
 /// greater than 1).
 pub trait IsLabelSet
-{}
+{
+    type IsSet;
+}
 // Empty set
 impl IsLabelSet
     for Nil
-{}
+{
+    type IsSet = True;
+}
 // Cons-list is a label set if head label isn't found in tail, and tail is a label set
 impl<L, V, T> IsLabelSet
     for LVCons<L, V, T>
     where
-        T: Member<L, IsMember=False>,
-        T: IsLabelSet
-{}
+        T: Member<L>,
+        <T as Member<L>>::IsMember: Not,
+        <<T as Member<L>>::IsMember as Not>::Output: BitAnd<<T as IsLabelSet>::IsSet>,
+        T: IsLabelSet,
+{
+    type IsSet = And<
+        <<T as Member<L>>::IsMember as Not>::Output,
+        <T as IsLabelSet>::IsSet,
+    >;
+}
 
 
 
