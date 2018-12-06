@@ -9,34 +9,48 @@ use cons::Nil;
 use field::Value;
 use store::DataStore;
 
-data_store![pub emp_table; EmpId: u64, DeptId: u64, EmpName: String];
+namespace![
+    pub namespace emp_table {
+        field EmpId: u64;
+        field DeptId: u64;
+        field EmpName: String;
+    }
+];
 
+macro_rules! emp_table_from_field {
+    ($empids:expr, $deptids:expr, $names:expr) => {{
+        $crate::store::DataStore::<$crate::cons::Nil>::empty()
+            .add_field($empids)
+            .add_field($deptids)
+            .add_field($names)
+    }}
+}
+macro_rules! emp_table {
+    ($empids:expr, $deptids:expr, $names:expr) => {{
+        emp_table_from_field![$empids.into(), $deptids.into(), $names.into()]
+    }}
+}
+macro_rules! sample_emp_table {
+    () => {{
+        emp_table![
+            vec![0u64, 2, 5, 6, 8, 9, 10],
+            vec![1u64, 2, 1, 1, 3, 4, 4],
+            vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"]
+        ]
+    }}
+}
 pub fn sample_emp_table() -> emp_table::Store
 {
-    emp_table(vec![0u64, 2, 5, 6, 8, 9, 10], vec![1u64, 2, 1, 1, 3, 4, 4],
-        vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"])
-}
-pub fn emp_table(
-    empids: Vec<u64>, deptids: Vec<u64>, names: Vec<&str>
-)
-    -> emp_table::Store
-{
-    emp_table_from_field(empids.into(), deptids.into(), names.into())
-}
-pub fn emp_table_from_field(
-    empids: FieldData<u64>,
-    deptids: FieldData<u64>,
-    names: FieldData<String>
-)
-    -> emp_table::Store
-{
-    DataStore::<Nil>::empty()
-        .add_field(empids)
-        .add_field(deptids)
-        .add_field(names)
+    sample_emp_table![]
 }
 
-data_store![pub extra_emp; emp_table; SalaryOffset: i64, DidTraining: bool, VacationHrs: f32];
+namespace![
+    pub namespace extra_emp: emp_table {
+        field SalaryOffset: i64;
+        field DidTraining: bool;
+        field VacationHrs: f32;
+    }
+];
 
 pub fn sample_emp_table_extra()
     -> extra_emp::Store
@@ -49,9 +63,17 @@ pub fn sample_emp_table_extra()
 
 
 
-data_store![pub full_emp_table; extra_emp;
-    EmpId: u64, DeptId: u64, EmpName: String, SalaryOffset: i64, DidTraining: bool, VacationHrs: f32
+namespace![
+    pub namespace full_emp_table: extra_emp {
+        field EmpId: u64;
+        field DeptId: u64;
+        field EmpName: String;
+        field SalaryOffset: i64;
+        field DidTraining: bool;
+        field VacationHrs: f32;
+    }
 ];
+
 pub fn sample_emp_table_full()
     -> full_emp_table::Store
 {
@@ -67,7 +89,12 @@ pub fn sample_emp_table_full()
         .add_cloned_field_from_iter(&[47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5])
 }
 
-data_store![pub dept_table; full_emp_table; DeptId: u64, DeptName: String];
+namespace![
+    pub namespace dept_table: full_emp_table {
+        field DeptId: u64;
+        field DeptName: String;
+    }
+];
 
 pub fn sample_dept_table()
     -> dept_table::Store

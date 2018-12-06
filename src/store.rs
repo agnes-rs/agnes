@@ -522,6 +522,23 @@ impl<Label, Fields> SelectFieldByLabel<Label> for DataStore<Fields>
 }
 impl<Fields> FieldSelect for DataStore<Fields> where Fields: AssocStorage {}
 
+// pub struct FrameLookupLabel<FrameLabel>
+// {
+//     _marker: PhantomData<FrameLabel>
+// }
+// impl<FrameLabel> Label for FrameLookupLabel<FrameLabel>
+//     where FrameLabel: Label
+// {
+//     const NAME: &'static str = FrameLabel::NAME;
+// }
+// impl<FrameLabel> Identifier for FrameLookupLabel<FrameLabel>
+//     where FrameLabel: Identifier
+// {
+//     type Ident = Ident<Self::Namespace, Self::Natural>;
+//     type Namespace = LocalNamespace;
+//     type Natural = <FrameLabel as Identifier>::Natural;
+// }
+
 pub trait AssocFrameLookup
 {
     type Output;
@@ -534,7 +551,12 @@ impl<Label, Value, Tail> AssocFrameLookup
     for LVCons<Label, Value, Tail>
     where Tail: AssocFrameLookup
 {
-    type Output = FrameLookupCons<Label, UTerm, <Tail as AssocFrameLookup>::Output>;
+    type Output = FrameLookupCons<
+        Label,
+        UTerm,
+        Label,
+        <Tail as AssocFrameLookup>::Output
+    >;
 }
 
 
@@ -553,43 +575,6 @@ impl<Fields> DataStore<Fields>
         )
     }
 }
-
-#[macro_export]
-macro_rules! data_store {
-    ($vis:vis $name:ident; $prev_ns:ident; $($field_tt:tt)*) => {
-        $vis mod $name
-        {
-            use super::$prev_ns;
-            pub type Namespace = typenum::Add1<$prev_ns::Namespace>;
-            declare_fields![Namespace; $($field_tt)*];
-            pub type Fields = Fields![$($field_tt)*];
-            pub type Store = $crate::store::DataStore<Fields>;
-        }
-    };
-    ($vis:vis $name:ident; $($field_tt:tt)*) => {
-        $vis mod $name
-        {
-            pub type Namespace = typenum::U0;
-            declare_fields![Namespace; $($field_tt)*];
-            pub type Fields = Fields![$($field_tt)*];
-            pub type Store = $crate::store::DataStore<Fields>;
-            pub type DataStore = Store;
-        }
-
-    };
-}
-
-// another data_store macro option (example):
-
-// data_store![
-//     namespace full_emp_table: extra_emp {
-//         use emp_table::Fields;
-//         use extra_emp::Fields;
-//         field EmpId: u64;
-//         field DeptId: u64;
-//     }
-// ]
-
 
 
 #[cfg(test)]
@@ -628,6 +613,14 @@ mod tests {
         (CsvReader::new(&source, spec).unwrap(), source.metadata().clone())
     }
 
+    namespace![
+        pub namespace gdp {
+            field CountryName: String;
+            field CountryCode: String;
+            field Year1983: f64;
+        }
+    ];
+
     #[test]
     fn storage_create() {
         let ds = DataStore::<Nil>::empty();
@@ -639,25 +632,23 @@ mod tests {
         );
         // println!("{:?}", ds);
 
-        spec![
-            let gdp_spec = {
-                CountryName("Country Name"): String,
-                CountryCode("Country Code"): String,
-                Year1983("1983"): f64,
-            };
+        let gdp_spec = spec![
+            fieldname gdp::CountryName = "Country Name";
+            fieldname gdp::CountryCode = "Country Code";
+            fieldname gdp::Year1983 = "1983";
         ];
         // println!("{:?}", gdp_spec);
 
         // gdp_spec.tail.tail.head.ajdfiaoj();
 
         // ds.adjiaofj();
-        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec);
+        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
         let ds = csv_rdr.read().unwrap();
 
         // LookupElemByLabel::<CountryName>::elem(&ds.data).adjfiaoj();
 
         // println!("{:?}", ds);
-        println!("{:?}", ds.field::<CountryName>());
+        println!("{:?}", ds.field::<gdp::CountryName>());
 
         // let dv = ds.into_view();
         // use view::LookupFrameByLabel;

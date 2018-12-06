@@ -115,22 +115,52 @@ impl<Label, DType, Tail> SpecCons<Label, DType, Tail>
     }
 }
 
+
 #[macro_export]
 macro_rules! spec {
+    () => {{
+        $crate::cons::Nil
+    }};
+    (fieldname $field_label:ty = $header:expr; $($rest:tt)*) => {{
+        use $crate::fieldlist::{FieldDesignator, SpecCons};
+        SpecCons::<
+            $field_label,
+            <$field_label as $crate::label::Typed>::DType,
+            _,
+        >::new(
+            FieldDesignator::Expr($header.to_string()),
+            spec![$($rest)*]
+        )
+    }};
+    (fieldindex $field_label:ty = $idx:expr; $($rest:tt)*) => {{
+        use $crate::fieldlist::{FieldDesignator, SpecCons};
+        SpecCons::<
+            $field_label,
+            <$field_label as $crate::label::Typed>::DType,
+            _,
+        >::new(
+            FieldDesignator:Idx($idx),
+            spec![$($rest)*]
+        )
+    }};
+}
+
+#[macro_export]
+macro_rules! spec_old {
     // general end point
     (@step ) => {{
         $crate::cons::Nil
     }};
 
     // end points without trailing comma
-    (@step $field_label:ident($field_name:expr): $field_ty:ty) => {{
+    (@step $field_label:ident($src_field_name:expr): $field_ty:ty) => {{
         use $crate::fieldlist::{FieldDesignator, SpecCons};
         SpecCons::<
             $field_label,
             $field_ty,
             _
         >::new(
-            FieldDesignator::Expr($field_name.to_string()),
+            FieldDesignator::Expr($src_field_name.to_string()),
             spec![@step ]
         )
     }};
@@ -147,14 +177,14 @@ macro_rules! spec {
     }};
 
     // entry point / main recursion loop
-    (@step $field_label:ident($field_name:expr): $field_ty:ty, $($rest:tt)*) => {{
+    (@step $field_label:ident($src_field_name:expr): $field_ty:ty, $($rest:tt)*) => {{
         use $crate::fieldlist::{FieldDesignator, SpecCons};
         SpecCons::<
             $field_label,
             $field_ty,
             _
         >::new(
-            FieldDesignator::Expr($field_name.to_string()),
+            FieldDesignator::Expr($src_field_name.to_string()),
             spec![@step $($rest)*]
         )
     }};
@@ -174,23 +204,19 @@ macro_rules! spec {
     }};
 
     (@decl_fields($pos:ty) ) => {};
-    (@decl_fields($pos:ty) $field_label:ident($field_name:expr): $field_ty:ty) => {
-        // type $field_label = $crate::label::Label<$pos>;
+    (@decl_fields($pos:ty) $field_label:ident($src_field_name:expr): $field_ty:ty) => {
         nat_label![$field_label, ::typenum::U0, $pos];
         spec![@decl_fields(::typenum::Add1<$pos>)];
     };
-    (@decl_fields($pos:ty) $field_label:ident[$field_name:ident]: $field_ty:ty) => {
-        // type $field_label = $crate::label::Label<$pos>;
+    (@decl_fields($pos:ty) $field_label:ident[$src_field_name:ident]: $field_ty:ty) => {
         nat_label![$field_label, ::typenum::U0, $pos];
         spec![@decl_fields(::typenum::Add1<$pos>)];
     };
-    (@decl_fields($pos:ty) $field_label:ident($field_name:expr): $field_ty:ty, $($rest:tt)*) => {
-        // type $field_label = $crate::label::Label<$pos>;
+    (@decl_fields($pos:ty) $field_label:ident($src_field_name:expr): $field_ty:ty, $($rest:tt)*) => {
         nat_label![$field_label, ::typenum::U0, $pos];
         spec![@decl_fields(::typenum::Add1<$pos>) $($rest)*];
     };
-    (@decl_fields($pos:ty) $field_label:ident[$field_name:ident]: $field_ty:ty, $($rest:tt)*) => {
-        // type $field_label = $crate::label::Label<$pos>;
+    (@decl_fields($pos:ty) $field_label:ident[$src_field_name:ident]: $field_ty:ty, $($rest:tt)*) => {
         nat_label![$field_label, ::typenum::U0, $pos];
         spec![@decl_fields(::typenum::Add1<$pos>) $($rest)*];
     };

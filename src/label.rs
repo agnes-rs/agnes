@@ -93,26 +93,26 @@ impl<T> LabelName
 //     fn name() -> &'static str { Name::name() }
 // }
 
-pub trait LabelIndex
-{
-    type Idx;
-}
-impl<T> LabelIndex
-    for T
-    where
-        T: Label
-{
-    type Idx = <T as Identifier>::Natural;
-}
-// impl<Idx, Name> LabelIndex for Label<Idx, Name>
+// pub trait LabelIndex
 // {
-//     type Idx = Idx;
+//     type Idx;
 // }
-impl<Label, Value, Tail> LabelIndex for LVCons<Label, Value, Tail>
-    where Label: LabelIndex
-{
-    type Idx = Label::Idx;
-}
+// impl<T> LabelIndex
+//     for T
+//     where
+//         T: Label
+// {
+//     type Idx = <T as Identifier>::Natural;
+// }
+// // impl<Idx, Name> LabelIndex for Label<Idx, Name>
+// // {
+// //     type Idx = Idx;
+// // }
+// impl<Label, Value, Tail> LabelIndex for LVCons<Label, Value, Tail>
+//     where Label: LabelIndex
+// {
+//     type Idx = Label::Idx;
+// }
 
 // pub type NextLabelIndex<T> = Add1<<T as LabelIndex>::Idx>;
 
@@ -810,40 +810,107 @@ impl<L, V, T> StrLabels for LVCons<L, V, T>
 
 
 
-#[macro_export]
-macro_rules! first_ns {
-    ($name:ident) => {
-        type $name = typenum::U0;
-    }
-}
+// #[macro_export]
+// macro_rules! first_ns {
+//     ($name:ident) => {
+//         type $name = typenum::U0;
+//     }
+// }
+
+// #[macro_export]
+// macro_rules! ns {
+//     ($name:ident) => {
+//         first_ns![$name];
+//     };
+//     ($name:ident, $prev:ident) => {
+//         type $name = typenum::Add1<$prev>;
+//     }
+// }
 
 #[macro_export]
-macro_rules! ns {
-    ($name:ident) => {
-        first_ns![$name];
+macro_rules! namespace {
+    (@fields() -> ($($out:tt)*)) => {
+        declare_fields![Namespace; $($out)*];
+        pub type Fields = Fields![$($out)*];
     };
-    ($name:ident, $prev:ident) => {
-        type $name = typenum::Add1<$prev>;
-    }
+
+    (@fields
+        (field $field_name:ident: $field_ty:ident = $str_name:expr; $($rest:tt)*)
+        ->
+        ($($out:tt)*)
+    ) => {
+        namespace![@fields
+            ($($rest)*)
+            ->
+            ($($out)* $field_name: $field_ty = $str_name,)
+        ];
+    };
+    (@fields
+        (field $field_name:ident: $field_ty:ident; $($rest:tt)*)
+        ->
+        ($($out:tt)*)
+    ) => {
+        namespace![@fields
+            ($($rest)*)
+            ->
+            ($($out)* $field_name: $field_ty = stringify![$field_name],)
+        ];
+    };
+
+    (@body($($body:tt)*)) => {
+        namespace![@fields($($body)*) -> ()];
+    };
+
+    ($vis:vis namespace $ns_name:ident: $prev_ns:ident {
+        // $(field $field_name:ident: $field_ty:ident;)*
+        $($body:tt)*
+    }) => {
+        $vis mod $ns_name
+        {
+            #![allow(dead_code)]
+            use super::$prev_ns;
+            pub type Namespace = typenum::Add1<$prev_ns::Namespace>;
+            pub type Store = $crate::store::DataStore<Fields>;
+            pub type DataStore = Store;
+
+            namespace![@body($($body)*)];
+        }
+    };
+    ($vis:vis namespace $ns_name:ident {
+        $($body:tt)*
+    }) => {
+        $vis mod $ns_name
+        {
+            #![allow(dead_code)]
+            pub type Namespace = typenum::U0;
+            pub type Store = $crate::store::DataStore<Fields>;
+            pub type DataStore = Store;
+
+            namespace![@body($($body)*)];
+        }
+    };
 }
 
 
 macro_rules! nat_label
 {
-    ($name:ident, $ns:ty, $nat:ty) => {
+    ($label:ident, $ns:ty, $nat:ty, $dtype:ty, $name:expr) => {
         #[derive(Debug, Clone)]
-        pub struct $name;
+        pub struct $label;
 
-        impl $crate::label::Identifier for $name
+        impl $crate::label::Identifier for $label
         {
             type Ident = $crate::label::Ident<$ns, $nat>;
             type Namespace = $ns;
             type Natural = $nat;
         }
-        impl $crate::label::Label for $name
+        impl $crate::label::Label for $label
         {
-            // type Ident = $crate::label::Ident<$ns, $nat>;
-            const NAME: &'static str = stringify![$name];
+            const NAME: &'static str = $name;
+        }
+        impl $crate::label::Typed for $label
+        {
+            type DType = $dtype;
         }
     }
 }
@@ -851,15 +918,27 @@ macro_rules! nat_label
 
 #[macro_export]
 macro_rules! first_label {
-    ($name:ident, $ns:ty) => {
-        nat_label![$name, $ns, typenum::consts::U0];
+    ($label:ident, $ns:ty, $dtype:ty) => {
+        first_label![$label, $ns, $dtype, stringify![$label]];
+    };
+    ($label:ident, $ns:ty, $dtype:ty, $name:expr) => {
+        nat_label![$label, $ns, typenum::consts::U0, $dtype, $name];
     }
 }
 
 #[macro_export]
 macro_rules! next_label {
-    ($name:ident, $prev:ident) => {
-        nat_label![$name, $crate::label::NsOf<$prev>, typenum::Add1<$crate::label::NatOf<$prev>>];
+    ($label:ident, $prev:ident, $dtype:ty) => {
+        next_label![$label, $prev, $dtype, stringify![$label]];
+    };
+    ($label:ident, $prev:ident, $dtype:ty, $name:expr) => {
+        nat_label![
+            $label,
+            $crate::label::NsOf<$prev>,
+            typenum::Add1<$crate::label::NatOf<$prev>>,
+            $dtype,
+            $name
+        ];
     }
 }
 
@@ -876,48 +955,154 @@ macro_rules! Labels {
     }
 }
 
-#[macro_export]
-macro_rules! declare_fields {
-    (@step($ns:ty)($prev_label:ident)()) => {
+// #[macro_export]
+// macro_rules! declare_fields {
+//     (@step($ns:ty)($prev_label:ident)()) => {
+//     };
+//     (@step
+//         ($ns:ty)
+//         ($prev_label:ident)
+//         ($label:ident: $dtype:ident, $($rest_label:ident: $rest_dtype:ident,)*)
+//     )
+//         =>
+//     {
+//         next_label![$label, $prev_label, $dtype, $name];
+//         declare_fields![@step
+//             ($ns)
+//             ($label)
+//             ($($rest_label: $rest_dtype,)*)
+//         ];
+//     };
 
-    };
+//     (@start
+//         ($ns:ty)
+//         ($label:ident: $dtype:ident, $($rest_label:ident: $rest_dtype:ident,)*)
+//     )
+//         =>
+//     {
+//         first_label![$label, $ns, $dtype, $name];
+//         declare_fields![@step
+//             ($ns)
+//             ($label)
+//             ($($rest_label: $rest_dtype,)*)
+//         ];
+//     };
+
+//     ($ns:ty; $($label:ident: $dtype:ident),*$(,)*) =>
+//     {
+//         declare_fields![$ns; $($label: $dtype = stringify![$label],)*];
+//     };
+//     ($ns:ty; $($label:ident: $dtype:ident = $name:expr),*$(,)*) =>
+//     {
+//         declare_fields![@start($ns)($($label: $dtype,)*)];
+//     };
+// }
+
+#[macro_export]
+macro_rules! declare_fields
+{
+    // end case
+    (@step($ns:ty)($prev_label:ident)()) => {};
+
+    // non-initial label with name string
     (@step
         ($ns:ty)
         ($prev_label:ident)
-        ($label:ident: $dtype:ident, $($rest_label:ident: $rest_dtype:ident,)*)
+        ($label:ident: $dtype:ident = $name:expr, $($rest:tt)*)
     )
         =>
     {
-        next_label![$label, $prev_label];
+        next_label![$label, $prev_label, $dtype, $name];
         declare_fields![@step
             ($ns)
             ($label)
-            ($($rest_label: $rest_dtype,)*)
+            ($($rest)*)
         ];
     };
+    // handle non-trailing comma
+    (@step($ns:ty)($prev_label:ident)($label:ident: $dtype:ident = $name:expr))
+        =>
+    {
+        declare_fields![@step($ns)($prev_label)($label: $dtype,)]
+    };
+    // // non-initial label without name string
+    // (@step
+    //     ($ns:ty)
+    //     ($prev_label:ident)
+    //     ($label:ident: $dtype:ident, $($rest:tt)*)
+    // )
+    //     =>
+    // {
+    //     next_label![$label, $prev_label, $dtype, stringify![$label]];
+    //     declare_fields![@step
+    //         ($ns)
+    //         ($label)
+    //         ($($rest)*)
+    //     ];
+    // };
+    // // handle non-trailing comma
+    // (@step($ns:ty)($prev_label:ident)($label:ident: $dtype:ident))
+    //     =>
+    // {
+    //     declare_fields![@step($ns)($prev_label)($label: $dtype,)];
+    // };
+
+
+    // initial label with name string
     (@start
         ($ns:ty)
-        ($label:ident: $dtype:ident, $($rest_label:ident: $rest_dtype:ident,)*)
+        ($label:ident: $dtype:ident = $name:expr, $($rest:tt)*)
     )
         =>
     {
-        first_label![$label, $ns];
+        first_label![$label, $ns, $dtype, $name];
         declare_fields![@step
             ($ns)
             ($label)
-            ($($rest_label: $rest_dtype,)*)
+            ($($rest)*)
         ];
     };
-    ($ns:ty; $($label:ident: $dtype:ident),*$(,)*) =>
+    // handle non-trailing comma
+    (@start($ns:ty)($label:ident: $dtype:ident = $name:expr))
+        =>
     {
-        declare_fields![@start($ns)($($label: $dtype,)*)];
+        declare_fields![@step($ns)($label: $dtype = $name,)]
+    };
+    // // initial label, no name string
+    // (@start
+    //     ($ns:ty)
+    //     ($label:ident: $dtype:ident, $($rest:tt)*)
+    // )
+    //     =>
+    // {
+    //     first_label![$label, $ns, $dtype, stringify![$label]];
+    //     declare_fields![@step
+    //         ($ns)
+    //         ($label)
+    //         ($($rest)*)
+    //     ];
+    // };
+    // // handle non-trailing comma
+    // (@start($ns:ty)($label:ident: $dtype:ident))
+    //     =>
+    // {
+    //     declare_fields![@step($ns)($label: $dtype,)]
+    // };
+
+    // entry point
+    ($ns:ty; $($fields:tt)*) => {
+        declare_fields![@start($ns)($($fields)*)];
     };
 }
 
 #[macro_export]
 macro_rules! Fields {
     (@fields()) => { $crate::cons::Nil };
-    (@fields($label:ident: $dtype:ident, $($rest_label:ident: $rest_dtype:ident,)*)) =>
+    (@fields(
+        $label:ident: $dtype:ident $(= $name:expr)*,
+        $($rest_label:ident: $rest_dtype:ident $(= $rest_name:expr)*,)*)
+    )
+        =>
     {
         $crate::fieldlist::FieldCons<
             $label,
@@ -925,7 +1110,7 @@ macro_rules! Fields {
             Fields![@fields($($rest_label: $rest_dtype,)*)]
         >
     };
-    ($($label:ident: $dtype:ident),*$(,)*) =>
+    ($($label:ident: $dtype:ident $(= $name:expr)*),*$(,)*) =>
     {
         Fields![@fields($($label: $dtype,)*)]
     };
@@ -951,8 +1136,8 @@ mod tests
     };
 
     pub type SampleNamespace = U0;
-    first_label![ImALabel, U0];
-    next_label![ImAnotherLabel, ImALabel];
+    first_label![ImALabel, U0, u64];
+    next_label![ImAnotherLabel, ImALabel, u64];
 
     // #[allow(non_snake_case)]
     // pub mod ImALabel
@@ -990,14 +1175,14 @@ mod tests
     }
 
     pub type NumberNamespace = Add1<SampleNamespace>;
-    first_label![F0, NumberNamespace];
-    next_label![F1, F0];
-    next_label![F2, F1];
-    next_label![F3, F2];
-    next_label![F4, F3];
-    next_label![F5, F4];
-    next_label![F6, F5];
-    next_label![F7, F6];
+    first_label![F0, NumberNamespace, u64];
+    next_label![F1, F0, f64];
+    next_label![F2, F1, i64];
+    next_label![F3, F2, String];
+    next_label![F4, F3, f32];
+    next_label![F5, F4, f32];
+    next_label![F6, F5, f32];
+    next_label![F7, F6, f32];
 
     #[test]
     fn lookup()

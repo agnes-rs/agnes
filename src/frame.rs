@@ -574,15 +574,21 @@ mod tests {
         (CsvReader::new(&source, spec).unwrap(), source.metadata().clone())
     }
 
+    namespace![
+        pub namespace gdp {
+            field CountryName: String;
+            field CountryCode: String;
+            field Year1983: f64;
+        }
+    ];
+
     #[test]
     fn frame_select()
     {
-        spec![
-            let gdp_spec = {
-                CountryName("Country Name"): String,
-                CountryCode("Country Code"): String,
-                Year1983("1983"): f64,
-            };
+        let gdp_spec = spec![
+            fieldname gdp::CountryName = "Country Name";
+            fieldname gdp::CountryCode = "Country Code";
+            fieldname gdp::Year1983 = "1983";
         ];
 
         let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
@@ -592,7 +598,7 @@ mod tests {
         // println!("{:?}", ds.field::<CountryName>());
 
         let frame = DataFrame::from(ds);
-        println!("{:?}", frame.field::<CountryName>());
+        println!("{:?}", frame.field::<gdp::CountryName>());
 
         // let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec);
         // let ds = csv_rdr.read().unwrap();

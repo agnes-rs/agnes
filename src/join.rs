@@ -17,38 +17,39 @@ impl<O, U> Offset<O>
     type Output = <U as Add<O>>::Output;
 }
 
-pub trait UpdateFrameLabelMarker<FrameLabelOffset>
+pub trait UpdateFrameIndexMarker<FrameIndexOffset>
 {
     type Output;
 }
-impl<FrameLabelOffset>
-    UpdateFrameLabelMarker<FrameLabelOffset>
+impl<FrameIndexOffset>
+    UpdateFrameIndexMarker<FrameIndexOffset>
     for Nil
 {
     type Output = Nil;
 }
-impl<RLabel, RFrameLabel, RTail, FrameLabelOffset>
-    UpdateFrameLabelMarker<FrameLabelOffset>
-    for FrameLookupCons<RLabel, RFrameLabel, RTail>
+impl<RLabel, RFrameIndex, RFrameLabel, RTail, FrameIndexOffset>
+    UpdateFrameIndexMarker<FrameIndexOffset>
+    for FrameLookupCons<RLabel, RFrameIndex, RFrameLabel, RTail>
     where
-        RFrameLabel: Offset<FrameLabelOffset>,
-        RTail: UpdateFrameLabelMarker<FrameLabelOffset>
+        RFrameIndex: Offset<FrameIndexOffset>,
+        RTail: UpdateFrameIndexMarker<FrameIndexOffset>
 {
     type Output = FrameLookupCons<
         RLabel,
-        <RFrameLabel as Offset<FrameLabelOffset>>::Output,
-        <RTail as UpdateFrameLabelMarker<FrameLabelOffset>>::Output
+        <RFrameIndex as Offset<FrameIndexOffset>>::Output,
+        RFrameLabel,
+        <RTail as UpdateFrameIndexMarker<FrameIndexOffset>>::Output
     >;
 }
 
-pub trait UpdateFrameLabel<FrameLabelOffset>
+pub trait UpdateFrameIndex<FrameIndexOffset>
 {
     type Output;
 
     fn update_frame_label(self) -> Self::Output;
 }
-impl<FrameLabelOffset>
-    UpdateFrameLabel<FrameLabelOffset>
+impl<FrameIndexOffset>
+    UpdateFrameIndex<FrameIndexOffset>
     for Nil
 {
     type Output = Nil;
@@ -56,18 +57,18 @@ impl<FrameLabelOffset>
     fn update_frame_label(self) -> Nil { Nil }
 }
 
-impl<RFrameLabel, RFrameFields, RTail, FrameLabelOffset>
-    UpdateFrameLabel<FrameLabelOffset>
-    for ViewFrameCons<RFrameLabel, RFrameFields, RTail>
+impl<RFrameIndex, RFrameFields, RTail, FrameIndexOffset>
+    UpdateFrameIndex<FrameIndexOffset>
+    for ViewFrameCons<RFrameIndex, RFrameFields, RTail>
     where
-        RFrameLabel: Offset<FrameLabelOffset>,
+        RFrameIndex: Offset<FrameIndexOffset>,
         RFrameFields: AssocStorage,
-        RTail: UpdateFrameLabel<FrameLabelOffset>
+        RTail: UpdateFrameIndex<FrameIndexOffset>
 {
     type Output = ViewFrameCons<
-        <RFrameLabel as Offset<FrameLabelOffset>>::Output,
+        <RFrameIndex as Offset<FrameIndexOffset>>::Output,
         RFrameFields,
-        <RTail as UpdateFrameLabel<FrameLabelOffset>>::Output
+        <RTail as UpdateFrameIndex<FrameIndexOffset>>::Output
     >;
 
     fn update_frame_label(self) -> Self::Output
@@ -94,17 +95,17 @@ impl<LLabels, LFrames, RLabels, RFrames>
     for DataView<LLabels, LFrames>
     where
         LFrames: Len,
-        RLabels: UpdateFrameLabelMarker<<LFrames as Len>::Len>,
-        LLabels: Append<<RLabels as UpdateFrameLabelMarker<<LFrames as Len>::Len>>::Output>,
-        RFrames: Clone + UpdateFrameLabel<<LFrames as Len>::Len>,
-        LFrames: Append<<RFrames as UpdateFrameLabel<<LFrames as Len>::Len>>::Output>
+        RLabels: UpdateFrameIndexMarker<<LFrames as Len>::Len>,
+        LLabels: Append<<RLabels as UpdateFrameIndexMarker<<LFrames as Len>::Len>>::Output>,
+        RFrames: Clone + UpdateFrameIndex<<LFrames as Len>::Len>,
+        LFrames: Append<<RFrames as UpdateFrameIndex<<LFrames as Len>::Len>>::Output>
             + Clone,
 {
     type OutLabels = <LLabels as Append<
-        <RLabels as UpdateFrameLabelMarker<<LFrames as Len>::Len>>::Output
+        <RLabels as UpdateFrameIndexMarker<<LFrames as Len>::Len>>::Output
     >>::Appended;
     type OutFrames = <LFrames as Append<
-        <RFrames as UpdateFrameLabel<<LFrames as Len>::Len>>::Output
+        <RFrames as UpdateFrameIndex<<LFrames as Len>::Len>>::Output
     >>::Appended;
 
     fn merge(&self, right: &DataView<RLabels, RFrames>)

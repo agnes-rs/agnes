@@ -31,7 +31,8 @@ use frame::{SerializedField};
 // use frame::{DataFrame, FramedMap, FramedTMap, FramedMapExt, Framed, FramedFunc, SerializedField};
 // use filter::Filter;
 use field::{Value};
-use join::{Merge};// use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list, MergedFields,
+use join::{Merge};
+// use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list, MergedFields,
 //     MergeFields};
 use fieldlist::{FieldCons, FieldPayloadCons};
 use features::{Func, FuncDefault, Implemented, Unimplemented, IsImplemented,
@@ -52,46 +53,38 @@ pub struct DataView<Labels, Frames>
     pub(crate) frames: Frames,
 }
 
-pub type FrameLookupCons<Label, FrameLabel, Tail> = LMCons<Label, FrameLabel, Tail>;
-pub type ViewFrameCons<FrameLabel, FrameFields, Tail>
-    = LVCons<FrameLabel, DataFrame<FrameFields>, Tail>;
+pub type FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
+    = LMCons<Label, FrameDetailMarkers<FrameIndex, FrameLabel>, Tail>;
+pub type ViewFrameCons<FrameIndex, FrameFields, Tail>
+    = LVCons<FrameIndex, DataFrame<FrameFields>, Tail>;
+
+
+// pub type FrameLookupCons<Label, FrameLabel, Tail> = LMCons<Label, FrameLabel, Tail>;
+pub struct FrameDetailMarkers<FrameIndex, FrameLabel>
+{
+    _marker: PhantomData<(FrameIndex, FrameLabel)>
+}
+pub trait FrameDetails
+{
+    type FrameIndex: Identifier;
+    type FrameLabel: Label;
+}
+impl<FrameIndex, FrameLabel> FrameDetails
+    for FrameDetailMarkers<FrameIndex, FrameLabel>
+    where
+        FrameIndex: Identifier,
+        FrameLabel: Label
+{
+    type FrameIndex = FrameIndex;
+    type FrameLabel = FrameLabel;
+}
 
 /// Allow `DataFrame`s to be pulled from `LVCons` as `Value`s
 impl<FrameFields> SelfValued for DataFrame<FrameFields>
     where FrameFields: AssocStorage {}
 
-
-
-// pub trait TyFrom<T>
-// {
-//     //FIXME: Should always be 'Self', but default associated types are unstable
-//     type Output /* = Self */;
-// }
-// pub trait TyInto<T>
-// {
-//     //FIXME: Should always be 'T', but default associated types are unstable
-//     type Output /* = T */;
-// }
-// // TyFrom implies TyInto
-// impl<T, U> TyInto<U> for T where U: TyFrom<T>
-// {
-//     type Output = <U as TyFrom<T>>::Output;
-// }
-// // TyFrom is reflexive
-// impl<T> TyFrom<T> for T
-// {
-//     type Output = T;
-// }
-
-// impl<LblIdx, LblName> TyFrom<Label<LblIdx, LblName>> for LabelCons<Label<LblIdx, LblName>, Nil>
-// {
-//     type Output = Self;
-// }
-
-
-
-impl<FrameLabel, FrameFields, Tail> NRows
-    for ViewFrameCons<FrameLabel, FrameFields, Tail>
+impl<FrameIndex, FrameFields, Tail> NRows
+    for ViewFrameCons<FrameIndex, FrameFields, Tail>
     where FrameFields: AssocStorage,
           DataFrame<FrameFields>: NRows,
 {
@@ -121,23 +114,23 @@ impl<Labels, Frames> DataView<Labels, Frames>
     }
 }
 
-pub trait FieldLabelList
+pub trait FrameIndexList
 {
     type LabelList;
 }
 
-impl FieldLabelList for Nil
+impl FrameIndexList for Nil
 {
     type LabelList = Nil;
 }
 
-impl<Label, FrameLabel, Tail>
-    FieldLabelList
-    for FrameLookupCons<Label, FrameLabel, Tail>
+impl<Label, FrameIndex, FrameLabel, Tail>
+    FrameIndexList
+    for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
     where
-        Tail: FieldLabelList
+        Tail: FrameIndexList
 {
-    type LabelList = LCons<FrameLabel, <Tail as FieldLabelList>::LabelList>;
+    type LabelList = LCons<FrameIndex, <Tail as FrameIndexList>::LabelList>;
 }
 
 
@@ -148,10 +141,10 @@ impl<Labels, Frames> DataView<Labels, Frames>
     pub fn v<LabelList>(&self)
         -> DataView<
             <Labels as Filter<LabelList>>::Filtered,
-            <Frames as FilterClone<<Labels as FieldLabelList>::LabelList>>::Filtered
+            <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Filtered
         >
-        where Labels: HasLabels<LabelList> + Filter<LabelList> + FieldLabelList,
-              Frames: FilterClone<<Labels as FieldLabelList>::LabelList>
+        where Labels: HasLabels<LabelList> + Filter<LabelList> + FrameIndexList,
+              Frames: FilterClone<<Labels as FrameIndexList>::LabelList>
     {
         DataView {
             _labels: PhantomData,
@@ -161,10 +154,10 @@ impl<Labels, Frames> DataView<Labels, Frames>
     pub fn subview<LabelList>(&self)
         -> DataView<
             <Labels as Filter<LabelList>>::Filtered,
-            <Frames as FilterClone<<Labels as FieldLabelList>::LabelList>>::Filtered
+            <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Filtered
         >
-        where Labels: HasLabels<LabelList> + Filter<LabelList> + FieldLabelList,
-              Frames: FilterClone<<Labels as FieldLabelList>::LabelList>
+        where Labels: HasLabels<LabelList> + Filter<LabelList> + FrameIndexList,
+              Frames: FilterClone<<Labels as FrameIndexList>::LabelList>
     {
         self.v::<LabelList>()
     }
@@ -212,8 +205,8 @@ impl StoreRefCounts for Nil
     fn store_ref_counts(&self) -> VecDeque<usize> { VecDeque::new() }
 }
 #[cfg(test)]
-impl<FrameLabel, FrameFields, Tail> StoreRefCounts
-    for ViewFrameCons<FrameLabel, FrameFields, Tail>
+impl<FrameIndex, FrameFields, Tail> StoreRefCounts
+    for ViewFrameCons<FrameIndex, FrameFields, Tail>
     where
         FrameFields: AssocStorage,
         Tail: StoreRefCounts
@@ -236,36 +229,54 @@ impl<Labels, Frames> DataView<Labels, Frames>
     }
 }
 
-pub trait FindFrameLabel<Label>:
-    LookupMarkedElemByLabel<Label>
+
+pub trait FindFrameDetails<Label>: LookupMarkedElemByLabel<Label>
 {
-    type FrameLabel;
+    type FrameDetails: FrameDetails;
 }
-impl<Labels, Label> FindFrameLabel<Label>
+impl<Labels, Label> FindFrameDetails<Label>
     for Labels
     where
         Labels: LookupMarkedElemByLabel<Label>,
+        MarkerOfElemOf<Labels, Label>: FrameDetails
 {
-    type FrameLabel = MarkerOfElemOf<Labels, Label>;
+    type FrameDetails = MarkerOfElemOf<Labels, Label>;
 }
-pub type FrameLabelOf<Labels, Label> = <Labels as FindFrameLabel<Label>>::FrameLabel;
+pub type FrameDetailsOf<Labels, Label> = <Labels as FindFrameDetails<Label>>::FrameDetails;
+pub type FrameIndexOf<Labels, Label>
+    = <<Labels as FindFrameDetails<Label>>::FrameDetails as FrameDetails>::FrameIndex;
+pub type FrameLabelOf<Labels, Label>
+    = <<Labels as FindFrameDetails<Label>>::FrameDetails as FrameDetails>::FrameLabel;
+
+// pub trait FindFrameIndex<Label>: FindFrameDetails<Label>
+// {
+//     type FrameIndex;
+// }
+// impl<Labels, Label> FindFrameIndex<Label>
+//     for Labels
+//     where
+//         Labels: FindFrameDetails<Label>,
+// {
+//     type FrameIndex = FrameDetailsOf<Labels, Label>::FrameIndex;
+// }
+// pub type FrameIndexOf<Labels, Label> = <Labels as FindFrameIndex<Label>>::FrameIndex;
 
 pub trait FindFrame<Labels, Label>:
-    LookupValuedElemByLabel<FrameLabelOf<Labels, Label>>
+    LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>
     where
-        Labels: FindFrameLabel<Label>
+        Labels: FindFrameDetails<Label>
 {}
 impl<Frames, Labels, Label> FindFrame<Labels, Label>
     for Frames
     where
-        Labels: FindFrameLabel<Label>,
-        Frames: LookupValuedElemByLabel<FrameLabelOf<Labels, Label>>,
+        Labels: FindFrameDetails<Label>,
+        Frames: LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>,
 {}
 pub type FrameOf<Frames, Labels, Label> =
-    <<Frames as LookupValuedElemByLabel<FrameLabelOf<Labels, Label>>>::Elem as Valued>::Value;
+    <<Frames as LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>>::Elem as Valued>::Value;
 
 pub type FieldOf<Frames, Labels, Label> =
-    <FrameOf<Frames, Labels, Label> as SelectFieldByLabel<Label>>::Output;
+    <FrameOf<Frames, Labels, Label> as SelectFieldByLabel<FrameLabelOf<Labels, Label>>>::Output;
 
 pub trait SelectFieldFromLabels<Labels, Label>
 {
@@ -275,9 +286,9 @@ pub trait SelectFieldFromLabels<Labels, Label>
 impl<Labels, Frames, Label> SelectFieldFromLabels<Labels, Label>
     for Frames
     where
-        Labels: FindFrameLabel<Label>,
+        Labels: FindFrameDetails<Label>,
         Frames: FindFrame<Labels, Label>,
-        FrameOf<Frames, Labels, Label>: SelectFieldByLabel<Label>,
+        FrameOf<Frames, Labels, Label>: SelectFieldByLabel<FrameLabelOf<Labels, Label>>,
         FieldOf<Frames, Labels, Label>: Typed + SelfValued + Clone,
         TypeOf<FieldOf<Frames, Labels, Label>>: fmt::Debug,
 {
@@ -285,8 +296,8 @@ impl<Labels, Frames, Label> SelectFieldFromLabels<Labels, Label>
 
     fn select_field(&self) -> Self::Output
     {
-        SelectFieldByLabel::<Label>::select_field(
-            LookupValuedElemByLabel::<FrameLabelOf<Labels, Label>>::elem(self).value_ref()
+        SelectFieldByLabel::<FrameLabelOf<Labels, Label>>::select_field(
+            LookupValuedElemByLabel::<FrameIndexOf<Labels, Label>>::elem(self).value_ref()
         ).clone()
     }
 }
@@ -354,23 +365,30 @@ impl<Frames> AssocDataIndexCons<Nil> for Frames
     type Output = Nil;
     fn assoc_data(&self) -> Nil { Nil }
 }
-impl<Label, FrameLabel, LookupTail, Frames>
-    AssocDataIndexCons<FrameLookupCons<Label, FrameLabel, LookupTail>>
+impl<Label, FrameIndex, FrameLabel, LookupTail, Frames>
+    AssocDataIndexCons<FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>>
     for Frames
     where
-          Self: SelectFieldFromLabels<FrameLookupCons<Label, FrameLabel, LookupTail>, Label>
-            + AssocDataIndexCons<LookupTail>,
-          <Self as SelectFieldFromLabels<FrameLookupCons<Label, FrameLabel, LookupTail>, Label>>
-            ::Output: Typed
+        Self: SelectFieldFromLabels<
+            FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>,
+            Label
+        >,
+        Self: AssocDataIndexCons<LookupTail>,
+        <Self as SelectFieldFromLabels<
+            FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>,
+            Label
+        >>::Output: Typed
 {
     type Output = DataIndexCons<
         Label,
         TypeOf<
-            <Frames as SelectFieldFromLabels<FrameLookupCons<Label, FrameLabel, LookupTail>, Label>>
-                ::Output
+            <Frames as SelectFieldFromLabels<
+                FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>, Label>
+            >::Output
         >,
-        <Frames as SelectFieldFromLabels<FrameLookupCons<Label, FrameLabel, LookupTail>, Label>>
-            ::Output,
+        <Frames as SelectFieldFromLabels<
+            FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>, Label>
+        >::Output,
         <Frames as AssocDataIndexCons<LookupTail>>::Output
     >;
     fn assoc_data(&self) -> Self::Output
@@ -378,8 +396,9 @@ impl<Label, FrameLabel, LookupTail, Frames>
         DataIndexCons
         {
             head: TypedValue::from(
-                SelectFieldFromLabels::<FrameLookupCons<Label, FrameLabel, LookupTail>, Label>
-                    ::select_field(self)
+                SelectFieldFromLabels::<
+                    FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>, Label
+                >::select_field(self)
             ).into(),
             tail: AssocDataIndexCons::<LookupTail>::assoc_data(self)
         }
@@ -675,6 +694,65 @@ impl<Labels, Frames> DataView<Labels, Frames>
         // })
     }
 }
+
+impl<Labels, Frames> DataView<Labels, Frames>
+{
+    pub fn relabel<CurrLabel, NewLabel>(self)
+        -> DataView<<Labels as Relabel<CurrLabel, NewLabel>>::Output, Frames>
+        where Labels: Relabel<CurrLabel, NewLabel>
+    {
+        DataView
+        {
+            _labels: PhantomData,
+            frames: self.frames
+        }
+    }
+}
+
+pub trait Relabel<TargetLabel, NewLabel>
+{
+    type Output;
+}
+
+impl<TargetLabel, NewLabel, Label, FrameIndex, FrameLabel, Tail>
+    Relabel<TargetLabel, NewLabel>
+    for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
+    where
+        TargetLabel: LabelEq<Label>,
+        FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>:
+            RelabelMatch<TargetLabel, NewLabel, <TargetLabel as LabelEq<Label>>::Eq>
+{
+    type Output = <FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
+        as RelabelMatch<TargetLabel, NewLabel, <TargetLabel as LabelEq<Label>>::Eq>>::Output;
+}
+
+pub trait RelabelMatch<TargetLabel, NewLabel, Match>
+{
+    type Output;
+}
+// TargetLabel == Label, replace with NewLabel
+impl<TargetLabel, NewLabel, Label, FrameIndex, FrameLabel, Tail>
+    RelabelMatch<TargetLabel, NewLabel, True>
+    for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
+{
+    type Output = FrameLookupCons<NewLabel, FrameIndex, FrameLabel, Tail>;
+}
+// TargetLabel != Label, recurse
+impl<TargetLabel, NewLabel, Label, FrameIndex, FrameLabel, Tail>
+    RelabelMatch<TargetLabel, NewLabel, False>
+    for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
+    where
+        Tail: Relabel<TargetLabel, NewLabel>
+{
+    type Output = FrameLookupCons<
+        Label,
+        FrameIndex,
+        FrameLabel,
+        <Tail as Relabel<TargetLabel, NewLabel>>::Output
+    >;
+}
+
+
 
 
 
@@ -1490,7 +1568,7 @@ mod tests {
         let data_filepath = Path::new(file!()) // start as this file
             .parent().unwrap()                 // navigate up to src directory
             .parent().unwrap()                 // navigate up to root directory
-            .join("tests")                     // navigate into integration tests directory            .join("data")                      // navigate into data directory
+            .join("tests")                     // navigate into integration tests directory
             .join("data")                      // navigate into data directory
             .join(filename);                   // navigate to target file
 
@@ -1498,35 +1576,46 @@ mod tests {
         (CsvReader::new(&source, spec).unwrap(), source.metadata().clone())
     }
 
+    namespace![
+        pub namespace gdp {
+            field CountryName: String;
+            field CountryCode: String;
+            field Year1983: f64;
+        }
+    ];
+
     #[test]
     fn lookup_field()
     {
-        spec![
-            let gdp_spec = {
-                CountryName("Country Name"): String,
-                CountryCode("Country Code"): String,
-                Year1983("1983"): f64,
-            };
+        let gdp_spec = spec![
+            fieldname gdp::CountryName = "Country Name";
+            fieldname gdp::CountryCode = "Country Code";
+            fieldname gdp::Year1983 = "1983";
         ];
+        // spec![
+        //     let gdp_spec = {
+        //         CountryName("Country Name"): String,
+        //         CountryCode("Country Code"): String,
+        //         Year1983("1983"): f64,
+        //     };
+        // ];
 
         let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
         let ds = csv_rdr.read().unwrap();
         let view = ds.into_view();
 
         // println!("{:?}", SelectFieldByLabel::<CountryName::Label>::select_field(&view));
-        let country_name = view.field::<CountryName>();
+        let country_name = view.field::<gdp::CountryName>();
         println!("{:?}", country_name);
     }
 
     #[test]
     fn generate_dataindex_cons()
     {
-        spec![
-            let gdp_spec = {
-                CountryName("Country Name"): String,
-                CountryCode("Country Code"): String,
-                Year1983("1983"): f64,
-            };
+        let gdp_spec = spec![
+            fieldname gdp::CountryName = "Country Name";
+            fieldname gdp::CountryCode = "Country Code";
+            fieldname gdp::Year1983 = "1983";
         ];
 
         let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
@@ -1568,6 +1657,89 @@ mod tests {
             Err(AgnesError::DimensionMismatch(_)) => { /* expected */ },
             Err(e) => { panic!("Incorrect error: {:?}", e); },
         };
+    }
+
+    namespace![
+        pub namespace emp_table2: emp_table {
+            field EmpId: u64;
+            field DeptId: u64;
+            field EmpName: String;
+        }
+    ];
+
+    #[cfg(feature = "test-utils")]
+    #[test]
+    fn merge_different_stores()
+    {
+        let dv1 = sample_emp_table().into_view();
+
+        // would NOT COMPILE due to field name collision (see compile-fail/merge_errors test)
+        // let merge_result = dv1.merge(&sample_emp_table().into_view());
+
+        // if we use a sample employee table generated in another namespace, however:
+        let ds2: emp_table2::Store = sample_emp_table![];
+        let dv2 = ds2.into_view();
+
+        println!("{}", dv1);
+        println!("{}", dv2);
+
+        let merged_dv = dv1.merge(&dv2).unwrap();
+
+        println!("{}", merged_dv);
+        assert_eq!(merged_dv.nrows(), 7);
+        assert_eq!(merged_dv.nfields(), 6);
+        assert_eq!(merged_dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName", "EmpId", "DeptId",
+            "EmpName"]);
+    }
+
+    namespace![
+        pub namespace emp_table3: emp_table2
+        {
+            field EmployeeId: u64;
+            field DepartmentId: u64;
+            field EmployeeName: String;
+        }
+    ];
+    #[test]
+    fn relabel()
+    {
+        let dv1 = sample_emp_table().into_view();
+        let dv2 = sample_emp_table().into_view();
+
+        // much like merge_different_stores, this won't compile
+        // let merged_dv = dv1.merge(&dv2).unwrap();
+        // if we relabel all the fields in one of the two tables, however, we can go ahead and merge
+        let dv1 = dv1.relabel::<emp_table::EmpId, emp_table3::EmployeeId>();
+        let dv1 = dv1.relabel::<emp_table::DeptId, emp_table3::DepartmentId>();
+        let dv1 = dv1.relabel::<emp_table::EmpName, emp_table3::EmployeeName>();
+
+        let merged_dv = dv1.merge(&dv2).unwrap();
+        println!("{}", merged_dv);
+        assert_eq!(merged_dv.nrows(), 7);
+        assert_eq!(merged_dv.nfields(), 6);
+        assert_eq!(merged_dv.fieldnames(), vec!["EmployeeId", "DepartmentId", "EmployeeName",
+            "EmpId", "DeptId", "EmpName"]);
+    }
+
+    namespace![
+        pub namespace emp_table4: emp_table3
+        {
+            field EmplId: u64 = "Employee Id";
+            field DeptId: u64 = "Department Id";
+            field EmpName: String = "Employee Name";
+        }
+    ];
+
+    #[test]
+    fn name_change()
+    {
+        let ds: emp_table4::Store = sample_emp_table![];
+        let dv = ds.into_view();
+
+        println!("{}", dv);
+        assert_eq!(dv.nrows(), 7);
+        assert_eq!(dv.nfields(), 3);
+        assert_eq!(dv.fieldnames(), vec!["Employee Id", "Department Id", "Employee Name"]);
     }
 
     // #[test]

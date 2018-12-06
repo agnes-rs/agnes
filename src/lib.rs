@@ -34,6 +34,10 @@ extern crate typenum;
 #[macro_use] pub mod label;
 #[macro_use] pub mod fieldlist;
 #[macro_use] pub mod store;
+
+#[cfg(feature = "test-utils")]
+#[macro_use] pub mod test_utils;
+
 pub mod source;
 pub mod field;
 pub mod error;
@@ -51,6 +55,4 @@ pub mod select;
 #[cfg(feature = "experimental")]
 pub mod experimental;
 
-#[cfg(feature = "test-utils")]
-pub mod test_utils;
 // #[cfg(test)] pub(crate) mod test_gen_data;
