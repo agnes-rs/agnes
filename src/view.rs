@@ -248,19 +248,6 @@ pub type FrameIndexOf<Labels, Label>
 pub type FrameLabelOf<Labels, Label>
     = <<Labels as FindFrameDetails<Label>>::FrameDetails as FrameDetails>::FrameLabel;
 
-// pub trait FindFrameIndex<Label>: FindFrameDetails<Label>
-// {
-//     type FrameIndex;
-// }
-// impl<Labels, Label> FindFrameIndex<Label>
-//     for Labels
-//     where
-//         Labels: FindFrameDetails<Label>,
-// {
-//     type FrameIndex = FrameDetailsOf<Labels, Label>::FrameIndex;
-// }
-// pub type FrameIndexOf<Labels, Label> = <Labels as FindFrameIndex<Label>>::FrameIndex;
-
 pub trait FindFrame<Labels, Label>:
     LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>
     where
@@ -672,26 +659,12 @@ impl<Labels, Frames> DataView<Labels, Frames>
             RFrames: NRows,
             Frames: NRows,
             <Self as Merge<RLabels, RFrames>>::OutLabels: IsLabelSet<IsSet=True>,
-        // where DTypes::Storage: MaxLen<DTypes>
     {
         if self.nrows() != right.nrows() {
             return Err(error::AgnesError::DimensionMismatch(
                 "number of rows mismatch in merge".into()));
         }
         Ok(Merge::merge(self, right))
-
-        // // compute merged stores (and mapping from 'other' store index references to combined
-        // // store vector)
-        // let (new_frames, other_store_indices) = compute_merged_frames(self, other);
-
-        // // compute merged field list
-        // let MergedFields { mut new_fields, .. } =
-        //     compute_merged_field_list(self, other, &other_store_indices, None)?;
-        // let new_fields = IndexMap::from_iter(new_fields.drain(..));
-        // Ok(DataView {
-        //     frames: new_frames,
-        //     fields: new_fields
-        // })
     }
 }
 
@@ -1700,6 +1673,9 @@ mod tests {
             field EmployeeName: String;
         }
     ];
+
+
+    #[cfg(feature = "test-utils")]
     #[test]
     fn relabel()
     {
@@ -1730,6 +1706,7 @@ mod tests {
         }
     ];
 
+    #[cfg(feature = "test-utils")]
     #[test]
     fn name_change()
     {
@@ -1741,53 +1718,6 @@ mod tests {
         assert_eq!(dv.nfields(), 3);
         assert_eq!(dv.fieldnames(), vec!["Employee Id", "Department Id", "Employee Name"]);
     }
-
-    // #[test]
-    // fn rename() {
-    //     let ds = sample_emp_table();
-    //     let mut dv: DataView = ds.into();
-    //     // println!("{}", dv);
-    //     assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
-    //     dv.rename("DeptId", "Department Id").expect("rename failed");
-    //     // println!("{}", dv);
-    //     assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "Department Id", "EmpName"]);
-    //     dv.rename("Department Id", "DeptId").expect("rename failed");
-    //     // println!("{}", dv);
-    //     assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
-    // }
-
-    // #[test]
-    // fn rename_field_collision() {
-    //     let ds = sample_emp_table();
-    //     let mut dv: DataView = ds.into();
-    //     // println!("{}", dv);
-    //     assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
-    //     match dv.rename("DeptId", "EmpId") {
-    //         Ok(_) => { panic!("Rename expected to fail (field collision), but succeeded"); },
-    //         Err(AgnesError::FieldCollision(fields)) => {
-    //             assert_eq!(fields, vec!["EmpId"]
-    //                 .iter().map(|&s| FieldIdent::Name(s.into())).collect::<Vec<_>>());
-    //         },
-    //         Err(e) => { panic!("Incorrect error: {:?}", e); }
-    //     }
-    //     // println!("{}", dv);
-    // }
-
-    // #[test]
-    // fn rename_field_not_found() {
-    //     let ds = sample_emp_table();
-    //     let mut dv: DataView = ds.into();
-    //     // println!("{}", dv);
-    //     assert_field_lists_match(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
-    //     match dv.rename("Department Id", "DepartmentId") {
-    //         Ok(_) => { panic!("Rename expected to fail (field not found), but succeeded"); },
-    //         Err(AgnesError::FieldNotFound(field)) => {
-    //             assert_eq!(field, FieldIdent::Name("Department Id".to_string()));
-    //         },
-    //         Err(e) => { panic!("Incorrect error: {:?}", e); }
-    //     }
-    //     // println!("{}", dv);
-    // }
 
     #[cfg(feature = "test-utils")]
     #[test]

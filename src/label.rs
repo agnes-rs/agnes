@@ -13,28 +13,10 @@ use typenum::{
 
 use cons::{Cons, Nil};
 
-// /// A label for a value in an `LVCons`. Backed by a type-level natural number `Idx`.
-// #[derive(Debug, Clone)]
-// pub struct Label<Idx, Name>
-// {
-//     index: Idx,
-//     _name: PhantomData<Name>
-// }
-
-// pub trait Id
-// {
-
-//     type NsNat; // = NsNatural<Namespace, Natural>;
-// }
-
 pub trait Label: Identifier
 {
-    // type Ident: Identifier; // = Ident<Self::Namespace, Self::Natural>;
     const NAME: &'static str;
 }
-// pub type LblNsOf<Lbl> = NsOf<<Lbl as Label>::Ident>;
-// pub type LblNatOf<Lbl> = NatOf<<Lbl as Label>::Ident>;
-
 
 
 /// A label for a value in an `LVCons` within a specific namespace `NS`. Backed by a type-level
@@ -86,40 +68,6 @@ impl<T> LabelName
 {
     fn name() -> &'static str { T::NAME }
 }
-
-// impl<Idx, Name> LabelName for Label<Idx, Name>
-//     where Name: LabelName
-// {
-//     fn name() -> &'static str { Name::name() }
-// }
-
-// pub trait LabelIndex
-// {
-//     type Idx;
-// }
-// impl<T> LabelIndex
-//     for T
-//     where
-//         T: Label
-// {
-//     type Idx = <T as Identifier>::Natural;
-// }
-// // impl<Idx, Name> LabelIndex for Label<Idx, Name>
-// // {
-// //     type Idx = Idx;
-// // }
-// impl<Label, Value, Tail> LabelIndex for LVCons<Label, Value, Tail>
-//     where Label: LabelIndex
-// {
-//     type Idx = Label::Idx;
-// }
-
-// pub type NextLabelIndex<T> = Add1<<T as LabelIndex>::Idx>;
-
-
-
-
-
 
 
 
@@ -176,77 +124,6 @@ impl<T, U> LabelEq<U>
 {
     type Eq = <T::Ident as IdentEq<U::Ident>>::Eq;
 }
-
-// /// Equate Labels to backing naturals
-// impl<T> LabelEq<UTerm>
-//     for T
-//     where
-//         T: Label,
-//         NatOf<T>: LabelEq<UTerm>
-// {
-//     type Eq = <NatOf<T> as LabelEq<UTerm>>::Eq;
-// }
-// impl<T, U> LabelEq<UInt<U, B0>>
-//     for T
-//     where
-//         T: Label,
-//         NatOf<T>: LabelEq<UInt<U, B0>>
-// {
-//     type Eq = <NatOf<T> as LabelEq<UInt<U, B0>>>::Eq;
-// }
-// impl<T, U> LabelEq<UInt<U, B1>>
-//     for T
-//     where
-//         T: Label,
-//         NatOf<T>: LabelEq<UInt<U, B1>>
-// {
-//     type Eq = <NatOf<T> as LabelEq<UInt<U, B1>>>::Eq;
-// }
-
-
-// impl<U> LabelEq<U>
-//     for UTerm
-//     where
-//         U: Label,
-//         UTerm: LabelEq<NatOf<U>>
-// {
-//     type Eq = <UTerm as LabelEq<NatOf<U>>>::Eq;
-// }
-// impl<T, U> LabelEq<U>
-//     for UInt<T, B0>
-//     where
-//         U: Label,
-//         UInt<T, B0>: LabelEq<NatOf<U>>
-// {
-//     type Eq = <UInt<T, B0> as LabelEq<NatOf<U>>>::Eq;
-// }
-// impl<T, U> LabelEq<U>
-//     for UInt<T, B1>
-//     where
-//         U: Label,
-//         UInt<T, B1>: LabelEq<NatOf<U>>
-// {
-//     type Eq = <UInt<T, B1> as LabelEq<NatOf<U>>>::Eq;
-// }
-
-
-// /// Two labels are identical if their identifier are identical
-// pub trait LabelEq<Other>
-// {
-//     type Eq: Bit;
-// }
-
-// impl<TLbl, ULbl> LabelEq<ULbl>
-//     for TLbl
-//     where
-//         TLbl: Identifier,
-//         ULbl: Identifier,
-//         TLbl: IdentEq<ULbl>,
-// {
-//     type Eq = <TLbl as IdentEq<ULbl>>::Eq;
-// }
-
-
 
 
 #[derive(Debug, Clone)]
@@ -808,25 +685,6 @@ impl<L, V, T> StrLabels for LVCons<L, V, T>
 }
 
 
-
-
-// #[macro_export]
-// macro_rules! first_ns {
-//     ($name:ident) => {
-//         type $name = typenum::U0;
-//     }
-// }
-
-// #[macro_export]
-// macro_rules! ns {
-//     ($name:ident) => {
-//         first_ns![$name];
-//     };
-//     ($name:ident, $prev:ident) => {
-//         type $name = typenum::Add1<$prev>;
-//     }
-// }
-
 #[macro_export]
 macro_rules! namespace {
     (@fields() -> ($($out:tt)*)) => {
@@ -862,7 +720,6 @@ macro_rules! namespace {
     };
 
     ($vis:vis namespace $ns_name:ident: $prev_ns:ident {
-        // $(field $field_name:ident: $field_ty:ident;)*
         $($body:tt)*
     }) => {
         $vis mod $ns_name
@@ -955,56 +812,13 @@ macro_rules! Labels {
     }
 }
 
-// #[macro_export]
-// macro_rules! declare_fields {
-//     (@step($ns:ty)($prev_label:ident)()) => {
-//     };
-//     (@step
-//         ($ns:ty)
-//         ($prev_label:ident)
-//         ($label:ident: $dtype:ident, $($rest_label:ident: $rest_dtype:ident,)*)
-//     )
-//         =>
-//     {
-//         next_label![$label, $prev_label, $dtype, $name];
-//         declare_fields![@step
-//             ($ns)
-//             ($label)
-//             ($($rest_label: $rest_dtype,)*)
-//         ];
-//     };
-
-//     (@start
-//         ($ns:ty)
-//         ($label:ident: $dtype:ident, $($rest_label:ident: $rest_dtype:ident,)*)
-//     )
-//         =>
-//     {
-//         first_label![$label, $ns, $dtype, $name];
-//         declare_fields![@step
-//             ($ns)
-//             ($label)
-//             ($($rest_label: $rest_dtype,)*)
-//         ];
-//     };
-
-//     ($ns:ty; $($label:ident: $dtype:ident),*$(,)*) =>
-//     {
-//         declare_fields![$ns; $($label: $dtype = stringify![$label],)*];
-//     };
-//     ($ns:ty; $($label:ident: $dtype:ident = $name:expr),*$(,)*) =>
-//     {
-//         declare_fields![@start($ns)($($label: $dtype,)*)];
-//     };
-// }
-
 #[macro_export]
 macro_rules! declare_fields
 {
     // end case
     (@step($ns:ty)($prev_label:ident)()) => {};
 
-    // non-initial label with name string
+    // non-initial label
     (@step
         ($ns:ty)
         ($prev_label:ident)
@@ -1025,30 +839,8 @@ macro_rules! declare_fields
     {
         declare_fields![@step($ns)($prev_label)($label: $dtype,)]
     };
-    // // non-initial label without name string
-    // (@step
-    //     ($ns:ty)
-    //     ($prev_label:ident)
-    //     ($label:ident: $dtype:ident, $($rest:tt)*)
-    // )
-    //     =>
-    // {
-    //     next_label![$label, $prev_label, $dtype, stringify![$label]];
-    //     declare_fields![@step
-    //         ($ns)
-    //         ($label)
-    //         ($($rest)*)
-    //     ];
-    // };
-    // // handle non-trailing comma
-    // (@step($ns:ty)($prev_label:ident)($label:ident: $dtype:ident))
-    //     =>
-    // {
-    //     declare_fields![@step($ns)($prev_label)($label: $dtype,)];
-    // };
 
-
-    // initial label with name string
+    // initial label
     (@start
         ($ns:ty)
         ($label:ident: $dtype:ident = $name:expr, $($rest:tt)*)
@@ -1068,26 +860,6 @@ macro_rules! declare_fields
     {
         declare_fields![@step($ns)($label: $dtype = $name,)]
     };
-    // // initial label, no name string
-    // (@start
-    //     ($ns:ty)
-    //     ($label:ident: $dtype:ident, $($rest:tt)*)
-    // )
-    //     =>
-    // {
-    //     first_label![$label, $ns, $dtype, stringify![$label]];
-    //     declare_fields![@step
-    //         ($ns)
-    //         ($label)
-    //         ($($rest)*)
-    //     ];
-    // };
-    // // handle non-trailing comma
-    // (@start($ns:ty)($label:ident: $dtype:ident))
-    //     =>
-    // {
-    //     declare_fields![@step($ns)($label: $dtype,)]
-    // };
 
     // entry point
     ($ns:ty; $($fields:tt)*) => {
@@ -1139,37 +911,11 @@ mod tests
     first_label![ImALabel, U0, u64];
     next_label![ImAnotherLabel, ImALabel, u64];
 
-    // #[allow(non_snake_case)]
-    // pub mod ImALabel
-    // {
-    //     use typenum::U0;
-    //     // use super::SampleNamespace;
-
-    //     #[derive(Debug, Clone)]
-    //     pub struct Name;
-    //     pub const NAME: &'static str = stringify![ImALabel];
-    //     impl ::label::LabelName for Name
-    //     {
-    //         fn name() -> &'static str { NAME }
-    //     }
-
-    //     pub type Natural = U0;
-    //     pub type Label = ::label::Label<Natural, Name>;
-    //     pub type Namespace = super::SampleNamespace;
-    // }
-
     #[test]
     fn type_eq()
     {
-        use typenum::U0;
         assert!(<U1 as IdentEq<U1>>::Eq::to_bool());
         assert!(!<U1 as IdentEq<U4>>::Eq::to_bool());
-
-        // first_label![ImALabel, SampleNamespace];
-        // next_label![ImAnotherLabel, ImALabel];
-        // type ImALabel = Label<U0>;
-        // type ImAnotherLabel = Label<U1>;
-
         assert!(<ImALabel as LabelEq<ImALabel>>::Eq::to_bool());
         assert!(!<ImALabel as LabelEq<ImAnotherLabel>>::Eq::to_bool());
     }
@@ -1187,12 +933,6 @@ mod tests
     #[test]
     fn lookup()
     {
-        // label![F0, U0];
-        // label![F1, U1];
-        // label![F2, U2];
-        // label![F3, U3];
-        // label![F4, U4];
-
         let list = LVCons {
             head: Labeled::<F0, _>::from(6u64),
             tail: LVCons {
@@ -1251,12 +991,6 @@ mod tests
     #[test]
     fn filter()
     {
-        // label![F0, U0];
-        // label![F1, U1];
-        // label![F2, U2];
-        // label![F3, U3];
-        // label![F4, U4];
-
         type SampleLabels =
             LVCons<
                 F0, u64,
@@ -1319,15 +1053,11 @@ mod tests
             }
         }
         {
-            // label![F5, U5];
             type Filtered = <SampleLabels as Filter<Labels![F1, F2, F4, F5]>>::Filtered;
             // F5 doesn't exist in SampleLabels, so we still should only have 3
             assert_eq!(length![Filtered], 3);
         }
         {
-            // label![F5, U5];
-            // label![F6, U6];
-            // label![F7, U7];
             type Filtered = <SampleLabels as Filter<Labels![F5, F6, F7]>>::Filtered;
             // None of these labels exist in SampleLabels, so we should have 0
             assert_eq!(length![Filtered], 0);
