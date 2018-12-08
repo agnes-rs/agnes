@@ -19,6 +19,8 @@ use error::*;
 pub enum FileLocator {
     /// A web-based location (URI)
     Http(hyper::Uri),
+    /// A secured web-based location (URI)
+    Https(hyper::Uri),
     /// A local file
     File(PathBuf)
 }
@@ -63,7 +65,7 @@ impl LocalFileReader {
                 let file = File::open(path)?;
                 Ok(LocalFileReader { file })
             },
-            FileLocator::Http(_) => {
+            FileLocator::Http(_) | FileLocator::Https(_) => {
                 // download file up to nbytes and save it to temp directory
                 const BUF_SIZE: usize = 1 << 13; // 8 * 1024
                 let mut buffer = vec![0; BUF_SIZE];
@@ -118,11 +120,18 @@ impl HttpFileReader {
             FileLocator::Http(ref uri) => {
                 // establish event loop
                 let mut core = Core::new()?;
-                let handle = core.handle();
                 // configure a HTTP client to retrieve the file
-                let client = Client::configure()
-                    .connector(HttpsConnector::new(4, &handle)?)
-                    .build(&handle);
+                let client = Client::new();
+                // set up a future to retrieve the file.
+                let resp = client.get(uri.clone());
+                Ok(HttpFileReader { core, response_state: State::Awaiting(resp) })
+            }
+            FileLocator::Https(ref uri) => {
+                // establish event loop
+                let mut core = Core::new()?;
+                // configure a HTTP client to retrieve the file
+                let client = Client::builder()
+                    .build::<_, hyper::Body>(HttpsConnector::new(4)?);
                 // set up a future to retrieve the file.
                 let resp = client.get(uri.clone());
                 Ok(HttpFileReader { core, response_state: State::Awaiting(resp) })
@@ -141,7 +150,7 @@ impl Read for HttpFileReader {
                 // run the response future and block until we get it
                 let resp = core.run(resp)
                     .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-                (resp.body().into_future(), vec![])
+                (resp.into_body().into_future(), vec![])
             },
             State::Body { body, buffer } => (body, buffer),
             State::Empty => panic!("double empty!")
@@ -207,7 +216,7 @@ impl Read for HttpFileReader {
 
 #[derive(Debug)]
 enum State {
-    Awaiting(hyper::client::FutureResponse),
+    Awaiting(hyper::client::ResponseFuture),
     Body {
         body: StreamFuture<hyper::Body>,
         buffer: Vec<u8>
@@ -231,7 +240,7 @@ impl FileReader {
             FileLocator::File(_) => {
                 Ok(FileReader::Local(LocalFileReader::new(loc)?))
             },
-            FileLocator::Http(_) => {
+            FileLocator::Http(_) | FileLocator::Https(_) => {
                 Ok(FileReader::Http(Box::new(HttpFileReader::new(loc)?)))
             }
         }

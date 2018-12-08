@@ -16,7 +16,7 @@ fn load_test_sync() {
         let uri: hyper::Uri = "https://gist.githubusercontent.com/jblondin/\
             9e06a2c8e8d6c25a24034c52b4ce103a/raw/\
             1cf9c8b531e11b9bc16f56b88be4c615dc103eb1/sample1.csv".parse().unwrap();
-        let mut reader = FileReader::new(&FileLocator::Http(uri)).unwrap();
+        let mut reader = FileReader::new(&FileLocator::Https(uri)).unwrap();
 
         let mut buf = String::new();
         reader.read_to_string(&mut buf).unwrap();
