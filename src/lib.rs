@@ -34,12 +34,12 @@ extern crate typenum;
 #[macro_use] pub mod label;
 #[macro_use] pub mod fieldlist;
 #[macro_use] pub mod store;
+#[macro_use] pub mod field;
 
 #[cfg(feature = "test-utils")]
 #[macro_use] pub mod test_utils;
 
 pub mod source;
-pub mod field;
 pub mod error;
 pub mod view;
 pub mod join;

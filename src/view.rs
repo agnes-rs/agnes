@@ -692,6 +692,18 @@ impl<Labels, Frames> DataView<Labels, Frames>
         sorted
     }
 
+    pub fn sort_unstable_by_label<Label>(&mut self) -> Vec<usize>
+        where
+            Self: SelectFieldByLabel<Label>,
+            <Self as SelectFieldByLabel<Label>>::Output: SortOrderUnstable
+    {
+        // find sort order for this field
+        let sorted = self.field::<Label>().sort_order_unstable();
+        // apply sort order to each frame
+        self.frames.update_permutation(&sorted);
+        sorted
+    }
+
     pub fn sort_by_label_comparator<Label, F>(&mut self, compare: F) -> Vec<usize>
         where
             Self: SelectFieldByLabel<Label>,
@@ -703,11 +715,30 @@ impl<Labels, Frames> DataView<Labels, Frames>
         self.frames.update_permutation(&sorted);
         sorted
     }
+
+    pub fn sort_unstable_by_label_comparator<Label, F>(&mut self, compare: F) -> Vec<usize>
+        where
+            Self: SelectFieldByLabel<Label>,
+            <Self as SelectFieldByLabel<Label>>::Output: SortOrderUnstableComparator<F>
+    {
+        // find sort order for this field
+        let sorted = self.field::<Label>().sort_order_unstable_by(compare);
+        // apply sort order to each frame
+        self.frames.update_permutation(&sorted);
+        sorted
+    }
+
+    pub fn filter<Label, P>(&mut self, predicate: P)
+        -> Vec<usize>
+        where
+            Self: SelectFieldByLabel<Label>,
+            <Self as SelectFieldByLabel<Label>>::Output: FilterPerm<P>
+    {
+        let perm = self.field::<Label>().filter_perm(predicate);
+        self.frames.update_permutation(&perm);
+        perm
+    }
 }
-
-
-
-
 
 
 
@@ -1646,7 +1677,6 @@ mod tests {
         }
     ];
 
-
     #[cfg(feature = "test-utils")]
     #[test]
     fn relabel()
@@ -1763,6 +1793,7 @@ mod tests {
 
     //TODO: multi-frame subview tests (which filter out no-longer-needed frames)
 
+    #[cfg(feature = "test-utils")]
     #[test]
     fn sort() {
         use test_utils::emp_table::*;
@@ -1773,166 +1804,138 @@ mod tests {
         // sort by name
         let mut dv1 = orig_dv.clone();
         dv1.sort_by_label::<EmpName>();
-        assert_eq![
+        assert_eq!(
             dv1.field::<EmpName>().to_vec(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
-        ];
-        assert_eq![
+        );
+        assert_eq!(
             dv1.field::<EmpId>().to_vec(),
             vec![10u64, 5, 6, 2, 8, 9, 0]
-        ];
+        );
 
         // re-sort by empid
         let mut dv2 = dv1.clone();
         dv2.sort_by_label::<EmpId>();
-        assert_eq![
+        assert_eq!(
             dv2.field::<EmpName>().to_vec(),
             vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"]
-        ];
-        assert_eq![
+        );
+        assert_eq!(
             dv2.field::<EmpId>().to_vec(),
             vec![0u64, 2, 5, 6, 8, 9, 10]
-        ];
+        );
 
         // make sure dv1 is still sorted by EmpName
-        assert_eq![
+        assert_eq!(
             dv1.field::<EmpName>().to_vec(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
-        ];
-        assert_eq![
+        );
+        assert_eq!(
             dv1.field::<EmpId>().to_vec(),
             vec![10u64, 5, 6, 2, 8, 9, 0]
-        ];
+        );
 
         // starting with sorted by name, sort by vacation hours
         let mut dv3 = dv1.clone();
         dv3.sort_by_label_comparator::<VacationHrs, _>(|left: Value<&f32>, right: Value<&f32>| {
             left.partial_cmp(&right).unwrap()
         });
-        assert_eq![
+        assert_eq!(
             dv3.field::<EmpName>().to_vec(),
             vec!["Louis", "Louise", "Cara", "Ann", "Sally", "Jamie", "Bob"]
-        ];
-        assert_eq![
+        );
+        assert_eq!(
             dv3.field::<EmpId>().to_vec(),
             vec![8u64, 9, 6, 10, 0, 2, 5]
-        ];
+        );
     }
 
-    // #[test]
-    // fn filter() {
-    //     let ds = sample_emp_table();
-    //     let orig_dv: DataView = ds.into();
-    //     assert_eq!(orig_dv.nrows(), 7);
+    #[cfg(feature = "test-utils")]
+    #[test]
+    fn filter() {
+        use test_utils::emp_table::*;
+        let orig_dv = sample_emp_table().into_view();
+        assert_eq!(orig_dv.nrows(), 7);
 
-    //     // set filtering by department ID
-    //     let mut dv1 = orig_dv.clone();
-    //     dv1.filter("DeptId", |val: &u64| *val == 1).unwrap();
-    //     println!("{}", dv1);
-    //     assert_eq!(dv1.nrows(), 3);
-    //     text::assert_dv_sorted_eq(&dv1, &"EmpName".into(), vec!["Sally", "Bob", "Cara"]);
+        // set filtering by department ID
+        let mut dv1 = orig_dv.clone();
+        dv1.filter::<DeptId, _>(|val: Value<&u64>| val == valref![1]);
+        println!("{}", dv1);
+        assert_eq!(dv1.nrows(), 3);
+        assert_eq!(dv1.field::<EmpName>().to_vec(), vec!["Sally", "Bob", "Cara"]);
 
-    //     // filter a second time
-    //     dv1.filter("EmpId", |val: &u64| *val >= 6).unwrap();
-    //     assert_eq!(dv1.nrows(), 1);
-    //     text::assert_dv_sorted_eq(&dv1, &"EmpName".into(), vec!["Cara"]);
+        // filter a second time
+        dv1.filter::<EmpId, _>(|val: Value<&u64>| val >= valref![6]);
+        assert_eq!(dv1.nrows(), 1);
+        assert_eq!(dv1.field::<EmpName>().to_vec(), vec!["Cara"]);
 
-    //     // that same filter on the original DV has different results
-    //     let mut dv2 = orig_dv.clone();
-    //     dv2.filter("EmpId", |val: &u64| *val >= 6).unwrap();
-    //     assert_eq!(dv2.nrows(), 4);
-    //     text::assert_dv_sorted_eq(&dv2, &"EmpName".into(), vec!["Cara", "Louis", "Louise", "Ann"]);
+        // that same filter on the original DV has different results
+        let mut dv2 = orig_dv.clone();
+        dv2.filter::<EmpId, _>(|val: Value<&u64>| val >= valref![6]);
+        assert_eq!(dv2.nrows(), 4);
+        assert_eq!(dv2.field::<EmpName>().to_vec(), vec!["Cara", "Louis", "Louise", "Ann"]);
 
-    //     // let's try filtering by a different department on dv2
-    //     dv2.filter("DeptId", |val: &u64| *val == 4).unwrap();
-    //     assert_eq!(dv2.nrows(), 2);
-    //     text::assert_dv_sorted_eq(&dv2, &"EmpName".into(), vec!["Louise", "Ann"]);
-    // }
+        // let's try filtering by a different department on dv2
+        dv2.filter::<DeptId, _>(|val: Value<&u64>| val == valref![4]);
+        assert_eq!(dv2.nrows(), 2);
+        assert_eq!(dv2.field::<EmpName>().to_vec(), vec!["Louise", "Ann"]);
+    }
 
-    // #[test]
-    // fn sort() {
-    //     let orig_dv = sample_merged_emp_table();
-    //     assert_eq!(orig_dv.nrows(), 7);
+    #[cfg(feature = "test-utils")]
+    #[test]
+    fn filter_sort() {
+        use test_utils::emp_table::*;
+        use test_utils::extra_emp::*;
+        let orig_dv = sample_merged_emp_table();
+        assert_eq!(orig_dv.nrows(), 7);
 
-    //     // sort by name
-    //     let mut dv1 = orig_dv.clone();
-    //     dv1.sort_by(&"EmpName".into()).unwrap();
-    //     text::assert_dv_eq_vec(&dv1, &"EmpName".into(),
-    //         vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
-    //     );
-    //     unsigned::assert_dv_eq_vec(&dv1, &"EmpId".into(),
-    //         vec![10u64, 5, 6, 2, 8, 9, 0]);
+        // start by filtering for employees with remaining vacation hours
+        let mut dv1 = orig_dv.clone();
+        dv1.filter::<VacationHrs, _>(|val: Value<&f32>| val >= 0.0);
+        assert_eq!(dv1.nrows(), 6);
+        // only Louis has negative hours, so rest of employees still remain
+        assert_eq!(
+            dv1.field::<EmpName>().to_vec(),
+            vec!["Sally", "Jamie", "Bob", "Cara", "Louise", "Ann"]
+        );
 
-    //     // re-sort by empid
-    //     let mut dv2 = dv1.clone();
-    //     dv2.sort_by(&"EmpId".into()).unwrap();
-    //     text::assert_dv_eq_vec(&dv2, &"EmpName".into(),
-    //         vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"]
-    //     );
-    //     unsigned::assert_dv_eq_vec(&dv2, &"EmpId".into(),
-    //         vec![0u64, 2, 5, 6, 8, 9, 10]);
+        // next, sort by employee name
+        let mut dv2 = dv1.clone();
+        dv2.sort_by_label::<EmpName>();
+        assert_eq!(
+            dv2.field::<EmpName>().to_vec(),
+            vec!["Ann", "Bob", "Cara", "Jamie", "Louise", "Sally"]
+        );
 
-    //     // make sure dv1 is still sorted by EmpName
-    //     text::assert_dv_eq_vec(&dv1, &"EmpName".into(),
-    //         vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
-    //     );
-    //     unsigned::assert_dv_eq_vec(&dv1, &"EmpId".into(),
-    //         vec![10u64, 5, 6, 2, 8, 9, 0]);
+        // filter by people in department 1
+        let mut dv3 = dv2.clone();
+        dv3.filter::<DeptId, _>(|val: Value<&u64>| val == 1);
+        assert_eq!(dv3.nrows(), 3);
+        // should just be the people in department 1, in employee name order
+        assert_eq!(
+            dv3.field::<EmpName>().to_vec(), vec!["Bob", "Cara", "Sally"]
+        );
 
-    //     // starting with sorted by name, sort by vacation hours
-    //     let mut dv3 = dv1.clone();
-    //     dv3.sort_by(&"VacationHrs".into()).unwrap();
-    //     text::assert_dv_eq_vec(&dv3, &"EmpName".into(),
-    //         vec!["Louis", "Louise", "Cara", "Ann", "Sally", "Jamie", "Bob"]
-    //     );
-    //     unsigned::assert_dv_eq_vec(&dv3, &"EmpId".into(),
-    //         vec![8u64, 9, 6, 10, 0, 2, 5]);
-    // }
+        // check that dv1 still has the original ordering
+        assert_eq!(
+            dv1.field::<EmpName>().to_vec(),
+            vec!["Sally", "Jamie", "Bob", "Cara", "Louise", "Ann"]
+        );
 
-    // #[test]
-    // fn filter_sort() {
-    //     let orig_dv = sample_merged_emp_table();
-    //     assert_eq!(orig_dv.nrows(), 7);
+        // ok, now filter dv1 by department 1
+        dv1.filter::<DeptId, _>(|val: Value<&u64>| val == 1);
+        assert_eq!(dv1.nrows(), 3);
+        // should be the people in department 1, but in original name order
+        assert_eq!(
+            dv1.field::<EmpName>().to_vec(), vec!["Sally", "Bob", "Cara"]
+        );
 
-    //     // start by filtering for employees with remaining vacation hours
-    //     let mut dv1 = orig_dv.clone();
-    //     dv1.filter("VacationHrs", |&val: &f64| val >= 0.0).unwrap();
-    //     assert_eq!(dv1.nrows(), 6);
-    //     // only Louis has negative hours, so rest of employees still remain
-    //     text::assert_dv_eq_vec(&dv1, &"EmpName".into(),
-    //         vec!["Sally", "Jamie", "Bob", "Cara", "Louise", "Ann"]
-    //     );
-
-    //     // next, sort by employee name
-    //     let mut dv2 = dv1.clone();
-    //     dv2.sort_by(&"EmpName".into()).unwrap();
-    //     text::assert_dv_eq_vec(&dv2, &"EmpName".into(),
-    //         vec!["Ann", "Bob", "Cara", "Jamie", "Louise", "Sally"]
-    //     );
-
-    //     // filter by people in department 1
-    //     let mut dv3 = dv2.clone();
-    //     dv3.filter("DeptId", |&val: &u64| val == 1).unwrap();
-    //     assert_eq!(dv3.nrows(), 3);
-    //     // should just be the people in department 1, in employee name order
-    //     text::assert_dv_eq_vec(&dv3, &"EmpName".into(), vec!["Bob", "Cara", "Sally"]);
-
-    //     // check that dv1 still has the original ordering
-    //     text::assert_dv_eq_vec(&dv1, &"EmpName".into(),
-    //         vec!["Sally", "Jamie", "Bob", "Cara", "Louise", "Ann"]
-    //     );
-
-    //     // ok, now filter dv1 by department 1
-    //     dv1.filter("DeptId", |&val: &u64| val == 1).unwrap();
-    //     assert_eq!(dv1.nrows(), 3);
-    //     // should be the people in department 1, but in original name order
-    //     text::assert_dv_eq_vec(&dv1, &"EmpName".into(), vec!["Sally", "Bob", "Cara"]);
-
-    //     // make sure dv2 hasn't been affected by any of the other changes
-    //     text::assert_dv_eq_vec(&dv2, &"EmpName".into(),
-    //         vec!["Ann", "Bob", "Cara", "Jamie", "Louise", "Sally"]
-    //     );
-    // }
+        // make sure dv2 hasn't been affected by any of the other changes
+        assert_eq!(
+            dv2.field::<EmpName>().to_vec(),
+            vec!["Ann", "Bob", "Cara", "Jamie", "Louise", "Sally"]
+        );
+    }
 
     // #[test]
     // fn tmap_closure() {

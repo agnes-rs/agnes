@@ -179,31 +179,22 @@ impl<DI, F> SortOrderUnstableComparator<F>
     }
 }
 
-// /// Either an owned data structure or reference to a data structure that implements `DataIndex`.
-// #[derive(Debug)]
-// pub enum OwnedOrRef<'a, T>
-//     where T: 'a
-// {
-//     /// A boxed data structure that implemented `DataIndex`.
-//     Owned(Box<dyn DataIndex<DType=T> + 'a>),
-//     /// A reference to a data structure that implements `DataIndex`.
-//     Ref(&'a dyn DataIndex<DType=T>),
-// }
-// impl<'a, T> DataIndex for OwnedOrRef<'a, T>
-//     where T: 'a + Debug
-// {
-//     type DType = T;
+pub trait FilterPerm<P>
+{
+    fn filter_perm(&self, predicate: P) -> Vec<usize>;
+}
 
-//     fn get_datum(&self, idx: usize) -> Result<Value<&T>> {
-//         match *self {
-//             OwnedOrRef::Owned(ref data) => data.get_datum(idx),
-//             OwnedOrRef::Ref(ref data) => data.get_datum(idx),
-//         }
-//     }
-//     fn len(&self) -> usize {
-//         match *self {
-//             OwnedOrRef::Owned(ref data) => data.len(),
-//             OwnedOrRef::Ref(ref data) => data.len(),
-//         }
-//     }
-// }
+impl<DI, P> FilterPerm<P>
+    for DI
+    where
+        DI: DataIndex,
+        P: FnMut(Value<&DI::DType>) -> bool
+{
+    fn filter_perm(&self, mut predicate: P) -> Vec<usize>
+    {
+        let order = (0..self.len()).collect::<Vec<_>>();
+        order.iter().filter(|&&idx| {
+            predicate(self.get_datum(idx).unwrap())
+        }).map(|&idx| idx).collect()
+    }
+}

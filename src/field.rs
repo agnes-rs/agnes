@@ -79,6 +79,10 @@ impl<'a, T: Clone> Value<&'a T> {
     }
 }
 
+macro_rules! valref {
+    ($value:expr) => (Value::Exists(&$value))
+}
+
 impl<'a, T> PartialEq<T> for Value<&'a T>
     where T: PartialEq<T>
 {
