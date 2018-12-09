@@ -3,6 +3,7 @@
 Traits for accessing data within agnes data structures. Includes `DataIndex` for index-based access
 and `DataIterator` for iterator access.
 */
+use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -24,6 +25,30 @@ pub trait DataIndex: Debug
     /// Returns an iterator over the values in this field.
     fn iter(&self) -> DataIterator<Self::DType> where Self: Sized {
         DataIterator::new(self)
+    }
+    /// Copies existing values in this field into a new `Vec`.
+    ///
+    /// If this field has missing values, this method will return a vector of length less than that
+    /// returned by the `len` method.
+    fn to_vec(&self) -> Vec<Self::DType>
+        where
+            Self: Sized,
+            Self::DType: Clone
+    {
+        self.iter().filter_map(|value| {
+            match value {
+                Value::Exists(value) => Some(value.clone()),
+                Value::Na => None
+            }
+        }).collect()
+    }
+    /// Copies values (missing or existing) in this field into a new `Vec`.
+    fn to_value_vec(&self) -> Vec<Value<Self::DType>>
+        where
+            Self: Sized,
+            Self::DType: Clone
+    {
+        self.iter().map(|value| value.cloned()).collect()
     }
 }
 /// Trait that provides mutable access to values in a data field.
@@ -66,6 +91,91 @@ impl<'a, T> Iterator for DataIterator<'a, T>
         } else {
             None
         }
+    }
+}
+
+pub trait SortOrder
+{
+    fn sort_order(&self) -> Vec<usize>;
+}
+
+impl<DI> SortOrder
+    for DI
+    where
+        DI: DataIndex,
+        <DI as DataIndex>::DType: Ord
+{
+    fn sort_order(&self) -> Vec<usize>
+    {
+        let mut order = (0..self.len()).collect::<Vec<_>>();
+        order.sort_by(|&left, &right| {
+            // a, b are always in range, so unwraps are safe
+            self.get_datum(left).unwrap().cmp(&self.get_datum(right).unwrap())
+        });
+        order
+    }
+}
+
+pub trait SortOrderUnstable
+{
+    fn sort_order_unstable(&self) -> Vec<usize>;
+}
+
+impl<DI> SortOrderUnstable
+    for DI
+    where
+        DI: DataIndex,
+        <DI as DataIndex>::DType: Ord
+{
+    fn sort_order_unstable(&self) -> Vec<usize>
+    {
+        let mut order = (0..self.len()).collect::<Vec<_>>();
+        order.sort_unstable_by(|&left, &right| {
+            // a, b are always in range, so unwraps are safe
+            self.get_datum(left).unwrap().cmp(&self.get_datum(right).unwrap())
+        });
+        order
+    }
+}
+
+pub trait SortOrderComparator<F>
+{
+    fn sort_order_by(&self, compare: F) -> Vec<usize>;
+}
+
+impl<DI, F> SortOrderComparator<F>
+    for DI
+    where
+        DI: DataIndex,
+        F: FnMut(Value<&DI::DType>, Value<&DI::DType>) -> Ordering
+{
+    fn sort_order_by(&self, mut compare: F) -> Vec<usize> {
+        let mut order = (0..self.len()).collect::<Vec<_>>();
+        order.sort_by(|&left, &right| {
+            compare(self.get_datum(left).unwrap(), self.get_datum(right).unwrap())
+        });
+        order
+    }
+}
+
+pub trait SortOrderUnstableComparator<F>
+{
+    fn sort_order_unstable_by(&self, compare: F) -> Vec<usize>;
+}
+
+
+impl<DI, F> SortOrderUnstableComparator<F>
+    for DI
+    where
+        DI: DataIndex,
+        F: FnMut(Value<&DI::DType>, Value<&DI::DType>) -> Ordering
+{
+    fn sort_order_unstable_by(&self, mut compare: F) -> Vec<usize> {
+        let mut order = (0..self.len()).collect::<Vec<_>>();
+        order.sort_unstable_by(|&left, &right| {
+            compare(self.get_datum(left).unwrap(), self.get_datum(right).unwrap())
+        });
+        order
     }
 }
 

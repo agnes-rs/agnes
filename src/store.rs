@@ -564,7 +564,27 @@ impl<Fields> DataStore<Fields>
     where Fields: AssocStorage + AssocFrameLookup
 {
     pub fn into_view(self)
-        -> DataView<<Fields as AssocFrameLookup>::Output, ViewFrameCons<UTerm, Fields, Nil>>
+        -> <Self as IntoView>::Output
+        where
+            Self: IntoView
+    {
+        IntoView::into_view(self)
+    }
+}
+pub trait IntoView
+{
+    type Output;
+    fn into_view(self) -> Self::Output;
+}
+impl<Fields>
+    IntoView
+    for DataStore<Fields>
+    where
+        Fields: AssocStorage + AssocFrameLookup
+{
+    type Output = DataView<<Fields as AssocFrameLookup>::Output, ViewFrameCons<UTerm, Fields, Nil>>;
+
+    fn into_view(self) -> Self::Output
     {
         DataView::new(
             ViewFrameCons

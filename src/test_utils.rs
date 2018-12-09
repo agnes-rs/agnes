@@ -8,6 +8,7 @@ use fieldlist::FieldCons;
 use cons::Nil;
 use field::Value;
 use store::DataStore;
+use view::ViewMerge;
 
 namespace![
     pub namespace emp_table {
@@ -118,11 +119,14 @@ pub fn dept_table_from_field(
         .add_field(names)
 }
 
-
+pub fn sample_merged_emp_table() -> <emp_table::View as ViewMerge<extra_emp::View>>::Output
+{
+    sample_emp_table().into_view().merge(&sample_emp_table_extra().into_view()).unwrap()
+}
 // pub fn sample_merged_emp_table() -> dt_std::DataView {
-//     let ds = sample_emp_table();
-//     let orig_dv: dt_std::DataView = ds.into();
-//     orig_dv.merge(&sample_emp_table_extra().into()).unwrap()
+    // let ds = sample_emp_table();
+    // let orig_dv: dt_std::DataView = ds.into();
+    // orig_dv.merge(&sample_emp_table_extra().into()).unwrap()
 // }
 // pub trait MergedWithSample {
 //     fn merged_with_sample_emp_table(self, name: &str) -> dt_std::DataView;

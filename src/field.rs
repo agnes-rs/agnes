@@ -3,6 +3,7 @@ Data structures and implementations for field information, both identifiers (`Fi
 field storage (`FieldData` and `Value`).
 */
 
+use std::cmp::Ordering;
 use std::rc::Rc;
 use std::fmt::{Debug};
 use std::marker::PhantomData;
@@ -24,7 +25,7 @@ use error;
 // impl<T> DataType for T where T: Debug + Display {}
 
 /// (Possibly missing) data value container.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Value<T> {
     /// Indicates a missing (NA) value.
     Na,
@@ -77,6 +78,7 @@ impl<'a, T: Clone> Value<&'a T> {
         }
     }
 }
+
 impl<'a, T> PartialEq<T> for Value<&'a T>
     where T: PartialEq<T>
 {
@@ -87,6 +89,20 @@ impl<'a, T> PartialEq<T> for Value<&'a T>
         }
     }
 }
+impl<'a, T> PartialOrd<T> for Value<&'a T>
+    where
+        T: PartialOrd<T>
+{
+    fn partial_cmp(&self, other: &T) -> Option<Ordering>
+    {
+        match *self
+        {
+            Value::Exists(value) => value.partial_cmp(other),
+            Value::Na => None
+        }
+    }
+}
+
 impl<T> fmt::Display for Value<T> where T: fmt::Display {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -130,6 +146,7 @@ impl<T> From<Option<T>> for Value<T> {
         }
     }
 }
+
 
 /// Data vector containing the data for a single field (column) of an agnes data store.
 ///

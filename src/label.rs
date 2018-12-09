@@ -213,11 +213,13 @@ pub trait Valued
 {
     type Value;
     fn value_ref(&self) -> &Self::Value;
+    fn value_mut(&mut self) -> &mut Self::Value;
     fn value(self) -> Self::Value;
 }
 impl<T> Valued for T where  T: SelfValued {
     type Value = Self;
     fn value_ref(&self) -> &Self { self }
+    fn value_mut(&mut self) -> &mut Self { self }
     fn value(self) -> Self::Value { self }
 }
 impl<D, V> Valued for TypedValue<D, V>
@@ -225,6 +227,7 @@ impl<D, V> Valued for TypedValue<D, V>
 {
     type Value = V::Value;
     fn value_ref(&self) -> &Self::Value { &self.value.value_ref() }
+    fn value_mut(&mut self) -> &mut Self::Value { self.value.value_mut() }
     fn value(self) -> Self::Value { self.value.value() }
 }
 impl<L, V> Valued for Labeled<L, V>
@@ -232,6 +235,7 @@ impl<L, V> Valued for Labeled<L, V>
 {
     type Value = V::Value;
     fn value_ref(&self) -> &V::Value { self.value.value_ref() }
+    fn value_mut(&mut self) -> &mut V::Value { self.value.value_mut() }
     fn value(self) -> V::Value { self.value.value() }
 }
 
@@ -729,6 +733,8 @@ macro_rules! namespace {
             pub type Namespace = typenum::Add1<$prev_ns::Namespace>;
             pub type Store = $crate::store::DataStore<Fields>;
             pub type DataStore = Store;
+            pub type View = <Store as $crate::store::IntoView>::Output;
+            pub type DataView = View;
 
             namespace![@body($($body)*)];
         }
@@ -742,6 +748,8 @@ macro_rules! namespace {
             pub type Namespace = typenum::U0;
             pub type Store = $crate::store::DataStore<Fields>;
             pub type DataStore = Store;
+            pub type View = <Store as $crate::store::IntoView>::Output;
+            pub type DataView = View;
 
             namespace![@body($($body)*)];
         }

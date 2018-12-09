@@ -90,6 +90,20 @@ impl<List, H, T> Append<List> for Cons<H, T> where T: Append<List> {
 //     }}
 // }
 
+
+// doesn't work
+// #[macro_export]
+// macro_rules! apply_to {
+//     (@step(Nil)($value:ident)($($f:tt)*)) => {};
+//     (@step($elems:expr)($value:ident)($($f:tt)*)) => {{
+//         |$value| {$($f)*}($value);
+//         apply_to![@step($elems.tail)($value)($($f)*)]
+//     }};
+//     ($elems:expr; |$value:ident| $($f:tt)*) => {{
+//         apply_to![@step($elems)($value)($($f)*)]
+//     }}
+// }
+
 pub trait Len {
     type Len: Unsigned;
 

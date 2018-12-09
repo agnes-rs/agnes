@@ -22,7 +22,7 @@ use std::fmt::{self, Display, Formatter};
 use serde::ser::{self, Serialize, Serializer, SerializeMap};
 use prettytable as pt;
 
-use access::DataIndex;
+use access::*;
 use error;
 use frame::{DataFrame, Framed, FrameFields, FrameFieldsOf};
 
@@ -259,11 +259,48 @@ impl<Frames, Labels, Label> FindFrame<Labels, Label>
         Labels: FindFrameDetails<Label>,
         Frames: LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>,
 {}
+pub type FrameElemOf<Frames, Labels, Label> =
+    <Frames as LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>>::Elem;
 pub type FrameOf<Frames, Labels, Label> =
-    <<Frames as LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>>::Elem as Valued>::Value;
+    <FrameElemOf<Frames, Labels, Label> as Valued>::Value;
 
 pub type FieldOf<Frames, Labels, Label> =
     <FrameOf<Frames, Labels, Label> as SelectFieldByLabel<FrameLabelOf<Labels, Label>>>::Output;
+
+pub trait FrameRef<'a, Labels, Frames, Label>
+{
+    type Output: 'a;
+    fn frame_ref(&'a self) -> &'a Self::Output;
+}
+impl<Labels, Frames>
+    DataView<Labels, Frames>
+{
+    fn frame_ref<'a, Label>(&'a self) -> &'a <Self as FrameRef<'a, Labels, Frames, Label>>::Output
+        where
+            Self: FrameRef<'a, Labels, Frames, Label>,
+            Labels: FindFrameDetails<Label>,
+            Frames: FindFrame<Labels, Label>,
+            FrameOf<Frames, Labels, Label>: 'a
+    {
+        FrameRef::<_, _, Label>::frame_ref(self)
+    }
+}
+impl<'a, Labels, Frames, Label>
+    FrameRef<'a, Labels, Frames, Label>
+    for DataView<Labels, Frames>
+    where
+        Labels: FindFrameDetails<Label>,
+        Frames: FindFrame<Labels, Label>,
+        FrameElemOf<Frames, Labels, Label>: 'a,
+        FrameOf<Frames, Labels, Label>: 'a
+{
+    type Output = FrameOf<Frames, Labels, Label>;
+    fn frame_ref(&'a self) -> &'a Self::Output
+    {
+        LookupValuedElemByLabel::<FrameIndexOf<Labels, Label>>::elem(&self.frames).value_ref()
+    }
+}
+
 
 pub trait SelectFieldFromLabels<Labels, Label>
 {
@@ -394,179 +431,7 @@ impl<Label, FrameIndex, FrameLabel, LookupTail, Frames>
 
 pub type AssocDataIndexConsOf<Frames, Labels> = <Frames as AssocDataIndexCons<Labels>>::Output;
 
-
-// pub trait AssocPartialMappable<Labels, F>
-// {
-//     type Output: DeriveCapabilities<F>;
-//     fn fields_data(&self) -> Self::Output;
-// }
-// impl<'a, Frames, F> AssocPartialMappable<Nil, F> for Frames
-// {
-//     type Output = Nil;
-//     fn fields_data(&self) -> Nil { Nil }
-// }
-// impl<'a, Label, FrameLabel, LookupTail, Frames, F>
-//     AssocPartialMappable<FrameLookupCons<Label, FrameLabel, LookupTail>, F>
-//     for Frames
-//     where
-//           Frames: LookupFrameByFrameLabel<FrameLabel> + AssocPartialMappable<LookupTail, F>,
-//           FrameByFrameLabelOf<Frames, FrameLabel>: SelectFieldByLabel<Label> + FieldSelect,
-//           <FrameByFrameLabelOf<Frames, FrameLabel> as SelectFieldByLabel<Label>>::Output:
-//             'a + Typed + SelfValued,
-//           DataIndexCons<
-//             Label,
-//             TypeOf<
-//                 <FrameByFrameLabelOf<Frames, FrameLabel> as SelectFieldByLabel<Label>>
-//                     ::Output
-//             >,
-//             <FrameByFrameLabelOf<Frames, FrameLabel> as SelectFieldByLabel<Label>>::Output,
-//             <Frames as AssocPartialMappable<LookupTail, F>>::Output
-//           >: DeriveCapabilities<F>
-//             // + DataIndex<DType=TypeOf<
-//             //     <FrameByFrameLabelOf<Frames, FrameLabel>
-//             //         as SelectFieldByLabel<Label>>::Output
-//             // >>
-//           ,
-
-//           // Frames: LookupElemByLabel<FrameLabel> + AssocPartialMappable<LookupTail>,
-//           // ElemOf<Frames, FrameLabel>: Valued,
-//           // ValueOfElemOf<Frames, FrameLabel>: FrameFields + SelectFieldByLabel<Label>
-//           //   + FieldSelect,
-//           // FrameFieldsOf<ValueOfElemOf<Frames, FrameLabel>>: LookupElemByLabel<Label>,
-//           // ElemOf<FrameFieldsOf<ValueOfElemOf<Frames, FrameLabel>>, Label>: 'a + Typed,
-// {
-//     type Output = DataIndexCons<
-//         Label,
-//         // TypeOf<ElemOf<FrameFieldsOf<ValueOfElemOf<Frames, FrameLabel>>, Label>>,
-//         TypeOf<
-//             <FrameByFrameLabelOf<Frames, FrameLabel> as SelectFieldByLabel<Label>>::Output
-//         >,
-//         <FrameByFrameLabelOf<Frames, FrameLabel> as SelectFieldByLabel<Label>>::Output,
-//         <Frames as AssocPartialMappable<LookupTail, F>>::Output
-//     >;
-//     fn fields_data(&self) -> Self::Output
-//     {
-//         DataIndexCons
-//         {
-//             head: TypedValue::from(
-//                 LookupFrameByFrameLabel::<FrameLabel>::select_frame(self).field::<Label>()
-//             ).into(),
-//             tail: AssocPartialMappable::<LookupTail, F>::fields_data(self),
-//         }
-//     }
-// }
-
-// impl<Labels, Frames> DataView<Labels, Frames>
-// {
-//     fn assoc_fields_data<'a, F>(&'a self) -> <Frames as AssocPartialMappable<'a, Labels, F>>::Output
-//         where Frames: AssocPartialMappable<'a, Labels, F>
-//     {
-//         AssocPartialMappable::<Labels, F>::fields_data(&self.frames)
-//     }
-// }
-
-// pub type AssocPartialMappableOf<'a, Fields, Labels, F> =
-//     <Fields as AssocPartialMappable<'a, Labels, F>>::Output;
-
-// impl Display
-//     for Nil
-// {
-//     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error>
-//     {
-//         writeln!(f, "Nil")
-//     }
-// }
-// impl<'a, Label, DType, DI, Feature, Impl, Tail>
-//     Display
-//     for StorageCapabilitiesCons<'a, Label, DType, DI, Feature, Impl, Tail>
-//     where Self: PartialMap<AddCellToRowFn>,
-//           DI: DataIndex<DType=DType>,
-// {
-//     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error>
-//     {
-
-//     }
-// }
-// impl<Label, DType, DI, Tail>
-//     Display
-//     for DataIndexCons<Label, DType, DI, Tail>
-//     where for<'a> Self: DeriveCapabilities<'a, DisplayFeat>,
-//         for<'a> <Self as DeriveCapabilities<'a, DisplayFeat>>::Output: Display,
-//         // DType: Debug,
-//         DI: DataIndex<DType=DType> + SelfValued
-// {
-//     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error>
-//     {
-//         write!(f, "{}", self.derive())
-//     }
-// }
-
 const MAX_DISP_ROWS: usize = 1000;
-
-// pub trait CapableOf<Labels, F>:
-//     AssocPartialMappable<Labels, F>
-//     where <Self as AssocPartialMappable<Labels, F>>::Output: DeriveCapabilities<F>
-// {}
-// impl<Frames, Labels, F> CapableOf<Labels, F>
-//     for Frames
-//     where Frames: AssocPartialMappable<Labels, F>,
-//           <Frames as AssocPartialMappable<Labels, F>>::Output: DeriveCapabilities<F>
-// {}
-
-// pub type FindFieldFromFrames<Frames, Labels, Label> =
-    // <Frames as FindFieldFromFrames<Labels, Label>>::Output;
-
-// pub type FindField<'a, Frames, FrameLabel, Label> =
-//     <FrameByFrameLabelOf<'a, Frames, FrameLabel> as SelectFieldByLabel<Label>>::Output;
-// pub type FindFieldType<'a, Frames, FrameLabel, Label> =
-//     TypeOf<FindField<'a, Frames, FrameLabel, Label>>;
-
-// pub trait PMap<'a, Labels, F>
-// {
-//     type Output;
-//     fn pmap(&'a self, f: &mut F) -> Self::Output;
-// }
-// impl<'a, Frames, Impl, F> PMap<'a, Nil, F> for (Frames, Impl)
-// {
-//     type Output = Nil;
-//     fn pmap(&self, _f: &mut F) -> Nil { Nil }
-// }
-// impl<'a, Frames, Label, FrameLabel, LookupTail, F>
-//     PMap<'a, FrameLookupCons<Label, FrameLabel, LookupTail>, F>
-//     for (Frames, Implemented)
-//     where Frames: PMap<'a, LookupTail, F>,
-//           Frames: LookupFrameByFrameLabel<'a, FrameLabel>,
-//           FrameByFrameLabelOf<'a, Frames, FrameLabel>: SelectFieldByLabel<Label> + FieldSelect,
-//           FindField<'a, Frames, FrameLabel, Label>: Typed + SelfValued,
-//           FindField<'a, Frames, FrameLabel, Label>:
-//             DataIndex<DType=FindFieldType<'a, Frames, FrameLabel, Label>>,
-//           FindFieldType<'a, Frames, FrameLabel, Label>: IsImplemented<F, IsImpl=Implemented>,
-//           F: Func<FindFieldType<'a, Frames, FrameLabel, Label>>
-// {
-//     type Output = ();
-//     fn pmap(&self, f: &mut F) -> ()
-//     {
-//         f.call(&self.0.select_frame().field::<Label>());
-//     }
-// }
-// impl<'a, Frames, Label, FrameLabel, LookupTail, F>
-//     PMap<'a, FrameLookupCons<Label, FrameLabel, LookupTail>, F>
-//     for (Frames, Unimplemented)
-//     where Frames: PMap<'a, LookupTail, F>,
-//           Frames: LookupFrameByFrameLabel<'a, FrameLabel>,
-//           FrameByFrameLabelOf<'a, Frames, FrameLabel>: SelectFieldByLabel<Label> + FieldSelect,
-//           FindField<'a, Frames, FrameLabel, Label>: Typed + SelfValued,
-//           FindField<'a, Frames, FrameLabel, Label>:
-//             DataIndex<DType=FindFieldType<'a, Frames, FrameLabel, Label>>,
-//           FindFieldType<'a, Frames, FrameLabel, Label>: IsImplemented<F, IsImpl=Unimplemented>,
-//           F: FuncDefault
-// {
-//     type Output = ();
-//     fn pmap(&self, f: &mut F) -> ()
-//     {
-//         f.call();
-//     }
-// }
 
 impl<Labels, Frames>
     Display
@@ -647,29 +512,6 @@ impl IsImplemented<AddCellToRowFn> for bool {
 
 impl<Labels, Frames> DataView<Labels, Frames>
 {
-    /// merge this `DataView` with another `DataView` object, creating a new `DataView` with the
-    /// same number of rows and all the fields from both source `DataView` objects.
-    pub fn merge<RLabels, RFrames>(&self, right: &DataView<RLabels, RFrames>)
-        -> error::Result<DataView<
-            <Self as Merge<RLabels, RFrames>>::OutLabels,
-            <Self as Merge<RLabels, RFrames>>::OutFrames,
-        >>
-        where
-            Self: Merge<RLabels, RFrames>,
-            RFrames: NRows,
-            Frames: NRows,
-            <Self as Merge<RLabels, RFrames>>::OutLabels: IsLabelSet<IsSet=True>,
-    {
-        if self.nrows() != right.nrows() {
-            return Err(error::AgnesError::DimensionMismatch(
-                "number of rows mismatch in merge".into()));
-        }
-        Ok(Merge::merge(self, right))
-    }
-}
-
-impl<Labels, Frames> DataView<Labels, Frames>
-{
     pub fn relabel<CurrLabel, NewLabel>(self)
         -> DataView<<Labels as Relabel<CurrLabel, NewLabel>>::Output, Frames>
         where Labels: Relabel<CurrLabel, NewLabel>
@@ -725,13 +567,143 @@ impl<TargetLabel, NewLabel, Label, FrameIndex, FrameLabel, Tail>
     >;
 }
 
+pub trait ViewMerge<Other>
+{
+    type Output;
+    fn merge(&self, right: &Other) -> error::Result<Self::Output>;
+}
+impl<Labels, Frames, RLabels, RFrames>
+    ViewMerge<DataView<RLabels, RFrames>>
+    for DataView<Labels, Frames>
+    where
+        Self: Merge<RLabels, RFrames>,
+        RFrames: NRows,
+        Frames: NRows,
+        <Self as Merge<RLabels, RFrames>>::OutLabels: IsLabelSet<IsSet=True>,
+{
+    type Output = DataView<
+        <Self as Merge<RLabels, RFrames>>::OutLabels,
+        <Self as Merge<RLabels, RFrames>>::OutFrames,
+    >;
 
+    fn merge(&self, right: &DataView<RLabels, RFrames>) -> error::Result<Self::Output>
+    {
+        if self.nrows() != right.nrows() {
+            return Err(error::AgnesError::DimensionMismatch(
+                "number of rows mismatch in merge".into()));
+        }
+        Ok(Merge::merge(self, right))
+    }
+}
 
+impl<Labels, Frames> DataView<Labels, Frames>
+{
+    /// merge this `DataView` with another `DataView` object, creating a new `DataView` with the
+    /// same number of rows and all the fields from both source `DataView` objects.
+    pub fn merge<RLabels, RFrames>(&self, right: &DataView<RLabels, RFrames>)
+        -> error::Result<<Self as ViewMerge<DataView<RLabels, RFrames>>>::Output>
+        where
+            Self: ViewMerge<DataView<RLabels, RFrames>>,
+            // Self: Merge<RLabels, RFrames>,
+            // RFrames: NRows,
+            // Frames: NRows,
+            // <Self as Merge<RLabels, RFrames>>::OutLabels: IsLabelSet<IsSet=True>,
+    {
+        ViewMerge::merge(self, right)
+    }
+}
 
+impl<Labels, Frames> DataView<Labels, Frames>
+{
+    // /// Combine two `DataView` objects using specified join, creating a new `DataStore` object with
+    // /// a subset of records from the two source `DataView`s according to the join parameters.
+    // ///
+    // /// Note that since this is creating a new `DataStore` object, it will be allocated new data to
+    // /// store the contents of the joined `DataView`s.
+    // pub fn join<RLabels, RFrames>(
+    //     &self, right: &DataView<RIdents, RFrames>, join: &Join
+    // )
+    //     -> DataStore<<Self as ViewJoin<RLabels, RFrames>>::OutFields>
+    // {
+    //     match join.predicate {
+    //         // TODO: implement hash join
+    //         // Predicate::Equal => {
+    //         //     hash_join(self, other, join)
+    //         // },
+    //         _ => {
+    //             sort_merge_join(self, other, join)
+    //         }
+    //     }
+    // }
+}
 
+pub trait UpdatePermutation
+{
+    fn update_permutation(&mut self, _order: &[usize]) {}
+}
+impl UpdatePermutation
+    for Nil
+{}
+impl<FrameIndex, FrameFields, Tail>
+    UpdatePermutation
+    for ViewFrameCons<FrameIndex, FrameFields, Tail>
+    where
+        FrameFields: AssocStorage,
+        Tail: UpdatePermutation
+{
+    fn update_permutation(&mut self, order: &[usize])
+    {
+        self.head.value_mut().update_permutation(order);
+        self.tail.update_permutation(order);
+    }
+}
 
+// TODO: idea for macro framework for applying function to each value in a cons-list
+//
+// list_apply![
+//     self.frames;
+//     |&mut value, order: &[usize]| {
+//         value.update_permutation(order);
+//         self.tail.update_permutation(order);
+//     }
+//     |order: &[usize]| {}
+// ]
 
+impl<Labels, Frames> DataView<Labels, Frames>
+    where Frames: UpdatePermutation
+{
+    /// Sorts this `DataView` by the provided label. Returns the permutation (list of indices in
+    /// sorted order) of values in field identified by `ident`.
+    ///
+    /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
+    /// values at the beginning of the order (considered to be of 'lesser' value than existing
+    /// values).
+    ///
+    /// Fails if the field is not found in this `DataView`.
+    pub fn sort_by_label<Label>(&mut self) -> Vec<usize>
+        where
+            Self: SelectFieldByLabel<Label>,
+            <Self as SelectFieldByLabel<Label>>::Output: SortOrder
+    {
+        // find sort order for this field
+        let sorted = self.field::<Label>().sort_order();
+        // apply sort order to each frame
+        self.frames.update_permutation(&sorted);
+        sorted
+    }
 
+    pub fn sort_by_label_comparator<Label, F>(&mut self, compare: F) -> Vec<usize>
+        where
+            Self: SelectFieldByLabel<Label>,
+            <Self as SelectFieldByLabel<Label>>::Output: SortOrderComparator<F>
+    {
+        // find sort order for this field
+        let sorted = self.field::<Label>().sort_order_by(compare);
+        // apply sort order to each frame
+        self.frames.update_permutation(&sorted);
+        sorted
+    }
+}
 
 
 
@@ -1790,6 +1762,62 @@ mod tests {
     }
 
     //TODO: multi-frame subview tests (which filter out no-longer-needed frames)
+
+    #[test]
+    fn sort() {
+        use test_utils::emp_table::*;
+        use test_utils::extra_emp::*;
+        let orig_dv = sample_merged_emp_table();
+        assert_eq!(orig_dv.nrows(), 7);
+
+        // sort by name
+        let mut dv1 = orig_dv.clone();
+        dv1.sort_by_label::<EmpName>();
+        assert_eq![
+            dv1.field::<EmpName>().to_vec(),
+            vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
+        ];
+        assert_eq![
+            dv1.field::<EmpId>().to_vec(),
+            vec![10u64, 5, 6, 2, 8, 9, 0]
+        ];
+
+        // re-sort by empid
+        let mut dv2 = dv1.clone();
+        dv2.sort_by_label::<EmpId>();
+        assert_eq![
+            dv2.field::<EmpName>().to_vec(),
+            vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"]
+        ];
+        assert_eq![
+            dv2.field::<EmpId>().to_vec(),
+            vec![0u64, 2, 5, 6, 8, 9, 10]
+        ];
+
+        // make sure dv1 is still sorted by EmpName
+        assert_eq![
+            dv1.field::<EmpName>().to_vec(),
+            vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
+        ];
+        assert_eq![
+            dv1.field::<EmpId>().to_vec(),
+            vec![10u64, 5, 6, 2, 8, 9, 0]
+        ];
+
+        // starting with sorted by name, sort by vacation hours
+        let mut dv3 = dv1.clone();
+        dv3.sort_by_label_comparator::<VacationHrs, _>(|left: Value<&f32>, right: Value<&f32>| {
+            left.partial_cmp(&right).unwrap()
+        });
+        assert_eq![
+            dv3.field::<EmpName>().to_vec(),
+            vec!["Louis", "Louise", "Cara", "Ann", "Sally", "Jamie", "Bob"]
+        ];
+        assert_eq![
+            dv3.field::<EmpId>().to_vec(),
+            vec![8u64, 9, 6, 10, 0, 2, 5]
+        ];
+    }
 
     // #[test]
     // fn filter() {
