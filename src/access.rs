@@ -179,6 +179,25 @@ impl<DI, F> SortOrderUnstableComparator<F>
     }
 }
 
+pub fn sort_float(left: &f64, right: &f64) -> Ordering {
+    left.partial_cmp(&right).unwrap_or_else(|| {
+        if left.is_nan() && !right.is_nan() {
+            Ordering::Less
+        } else {
+            // since partial_cmp only fails for NAN, then !self.is_nan() && other.is_nan()
+            Ordering::Greater
+        }
+    })
+}
+pub fn sort_float_values(left: Value<&f64>, right: Value<&f64>) -> Ordering {
+    match (left, right){
+        (Value::Na, Value::Na) => Ordering::Equal,
+        (Value::Na, Value::Exists(_)) => Ordering::Less,
+        (Value::Exists(_), Value::Na) => Ordering::Greater,
+        (Value::Exists(ref left), Value::Exists(ref right)) => sort_float(left, right)
+    }
+}
+
 pub trait FilterPerm<P>
 {
     fn filter_perm(&self, predicate: P) -> Vec<usize>;
@@ -196,5 +215,76 @@ impl<DI, P> FilterPerm<P>
         order.iter().filter(|&&idx| {
             predicate(self.get_datum(idx).unwrap())
         }).map(|&idx| idx).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use field::FieldData;
+
+    #[test]
+    fn sort_order_no_na() {
+        let field_data: FieldData<u64> = FieldData::from_vec(vec![2u64, 5, 3, 1, 8]);
+        let sorted_order = field_data.sort_order();
+        assert_eq!(sorted_order, vec![3, 0, 2, 1, 4]);
+
+        let field_data: FieldData<f64> =
+            FieldData::from_vec(vec![2.0, 5.4, 3.1, 1.1, 8.2]);
+        let sorted_order = field_data.sort_order_by(sort_float_values);
+        assert_eq!(sorted_order, vec![3, 0, 2, 1, 4]);
+
+        let field_data: FieldData<f64> =
+            FieldData::from_vec(vec![2.0, ::std::f64::NAN, 3.1, 1.1, 8.2]);
+        let sorted_order = field_data.sort_order_by(sort_float_values);
+        assert_eq!(sorted_order, vec![1, 3, 0, 2, 4]);
+
+        let field_data: FieldData<f64> =
+            FieldData::from_vec(vec![2.0, ::std::f64::NAN, 3.1, ::std::f64::INFINITY, 8.2]);
+        let sorted_order = field_data.sort_order_by(sort_float_values);
+        assert_eq!(sorted_order, vec![1, 0, 2, 4, 3]);
+    }
+
+    #[test]
+    fn sort_order_na() {
+        let field_data = FieldData::from_field_vec(vec![
+            Value::Exists(2u64),
+            Value::Exists(5),
+            Value::Na,
+            Value::Exists(1),
+            Value::Exists(8)
+        ]);
+        let sorted_order = field_data.sort_order();
+        assert_eq!(sorted_order, vec![2, 3, 0, 1, 4]);
+
+        let field_data = FieldData::from_field_vec(vec![
+            Value::Exists(2.1),
+            Value::Exists(5.5),
+            Value::Na,
+            Value::Exists(1.1),
+            Value::Exists(8.2930)
+        ]);
+        let sorted_order = field_data.sort_order_by(sort_float_values);
+        assert_eq!(sorted_order, vec![2, 3, 0, 1, 4]);
+
+        let field_data = FieldData::from_field_vec(vec![
+            Value::Exists(2.1),
+            Value::Exists(::std::f64::NAN),
+            Value::Na,
+            Value::Exists(1.1),
+            Value::Exists(8.2930)
+        ]);
+        let sorted_order = field_data.sort_order_by(sort_float_values);
+        assert_eq!(sorted_order, vec![2, 1, 3, 0, 4]);
+
+        let field_data = FieldData::from_field_vec(vec![
+            Value::Exists(2.1),
+            Value::Exists(::std::f64::NAN),
+            Value::Na,
+            Value::Exists(::std::f64::INFINITY),
+            Value::Exists(8.2930)
+        ]);
+        let sorted_order = field_data.sort_order_by(sort_float_values);
+        assert_eq!(sorted_order, vec![2, 1, 0, 4, 3]);
     }
 }
