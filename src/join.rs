@@ -129,164 +129,121 @@ impl<LLabels, LFrames, RLabels, RFrames>
 
 
 
-
-
-
-
-
-/// Join information used to describe the type of join being used.
-#[derive(Debug, Clone)]
-pub struct Join<LLabel, RLabel> {
-    /// Join kind: Inner, Outer, or Cross
-    pub kind: JoinKind,
-    /// Join predicate: equijoin, inequality join
-    pub predicate: Predicate,
-    _llabel: PhantomData<LLabel>,
-    _rlabel: PhantomData<RLabel>,
-}
-impl<LLabel, RLabel> Join<LLabel, RLabel> {
-    /// Create a new `Join` over the specified fields.
-    pub fn new(kind: JoinKind, predicate: Predicate) -> Join<LLabel, RLabel>
-    {
-        Join {
-            kind,
-            predicate,
-            _llabel: PhantomData,
-            _rlabel: PhantomData,
-        }
-    }
-
-    /// Helper function to create a new `Join` with an 'Equal' predicate.
-    pub fn equal(kind: JoinKind) -> Join<LLabel, RLabel>
-    {
-        Join {
-            kind,
-            predicate: Predicate::Equal,
-            _llabel: PhantomData,
-            _rlabel: PhantomData,
-        }
-    }
-    /// Helper function to create a new `Join` with an 'Less Than' predicate.
-    pub fn less_than(kind: JoinKind) -> Join<LLabel, RLabel>
-    {
-        Join {
-            kind,
-            predicate: Predicate::LessThan,
-            _llabel: PhantomData,
-            _rlabel: PhantomData,
-        }
-    }
-    /// Helper function to create a new `Join` with an 'Less Than or Equal' predicate.
-    pub fn less_than_equal(kind: JoinKind) -> Join<LLabel, RLabel>
-    {
-        Join {
-            kind,
-            predicate: Predicate::LessThanEqual,
-            _llabel: PhantomData,
-            _rlabel: PhantomData,
-        }
-    }
-    /// Helper function to create a new `Join` with an 'Greater Than' predicate.
-    pub fn greater_than(kind: JoinKind) -> Join<LLabel, RLabel>
-    {
-        Join {
-            kind,
-            predicate: Predicate::GreaterThan,
-            _llabel: PhantomData,
-            _rlabel: PhantomData,
-        }
-    }
-    /// Helper function to create a new `Join` with an 'Greater Than or Equal' predicate.
-    pub fn greater_than_equal(kind: JoinKind) -> Join<LLabel, RLabel>
-    {
-        Join {
-            kind,
-            predicate: Predicate::GreaterThanEqual,
-            _llabel: PhantomData,
-            _rlabel: PhantomData,
-        }
-    }
-
-
+pub struct Join<LLabel, RLabel, Predicate>
+{
+    _marker: PhantomData<(LLabel, RLabel, Predicate)>
 }
 
-/// The kind of join
-#[derive(Debug, Clone, Copy)]
-pub enum JoinKind {
-    /// Inner Join
-    Inner,
-    /// Left Outer Join (simply reverse order of call to join() for right outer join)
-    Outer,
-    /// Full Outer Join, not yet implemented
-    // FullOuter,
-    /// Cross Join (cartesian product)
-    Cross,
+// Predicates
+pub trait Predicate
+{
+    fn is_equality_pred() -> bool;
+    fn is_greater_than_pred() -> bool;
+    fn is_less_than_pred() -> bool;
+    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredResults
+        where T: PartialEq + Ord;
+    fn advance(left_idx: &mut usize, right_idx: &mut usize, left_end: usize, right_end: usize);
 }
-/// Join predicate (comparison operator between two sides of the join)
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Predicate {
-    /// Comparison 'left == right'
-    Equal,
-    /// Comparison 'left < right'
-    LessThan,
-    /// Comparison 'left <= right'
-    LessThanEqual,
-    /// Comparison 'left > right'
-    GreaterThan,
-    /// Comparison 'left >= right'
-    GreaterThanEqual,
-}
-impl Predicate {
-    fn is_equality_pred(self) -> bool {
-        self == Predicate::Equal || self == Predicate::GreaterThanEqual
-            || self == Predicate::LessThanEqual
-    }
-    fn is_greater_than_pred(self) -> bool {
-        self == Predicate::GreaterThan || self == Predicate::GreaterThanEqual
-    }
-    fn is_less_than_pred(self) -> bool {
-        self == Predicate::LessThan || self == Predicate::LessThanEqual
-    }
-    fn apply<T>(self, left: Value<&T>, right: Value<&T>) -> PredResults
+
+pub struct Equal;
+impl Predicate for Equal
+{
+    fn is_equality_pred() -> bool { true }
+    fn is_greater_than_pred() -> bool { false }
+    fn is_less_than_pred() -> bool { false }
+    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredResults
         where T: PartialEq + Ord
     {
-        match self {
-            Predicate::Equal => {
-                match left.cmp(&right) {
-                    Ordering::Less => PredResults::Advance { left: true, right: false },
-                    Ordering::Equal => PredResults::Add,
-                    Ordering::Greater => PredResults::Advance { left: false, right: true },
-                }
-            },
-            Predicate::LessThan => {
-                match left.cmp(&right) {
-                    Ordering::Less => PredResults::Add,
-                    _ => PredResults::Advance { left: false, right: true },
-                }
-            },
-            Predicate::LessThanEqual => {
-                match left.cmp(&right) {
-                    Ordering::Greater => PredResults::Advance { left: false, right: true },
-                    _ => PredResults::Add
-                }
-            },
-            Predicate::GreaterThan => {
-                match left.cmp(&right) {
-                    Ordering::Greater => PredResults::Add,
-                    _ => PredResults::Advance { left: true, right: false }
-                }
-            },
-            Predicate::GreaterThanEqual => {
-                match left.cmp(&right) {
-                    Ordering::Less => PredResults::Advance { left: true, right: false },
-                    _ => PredResults::Add
-                }
-            }
+        match left.cmp(&right) {
+            Ordering::Less => PredResults::Advance { left: true, right: false },
+            Ordering::Equal => PredResults::Add,
+            Ordering::Greater => PredResults::Advance { left: false, right: true },
         }
     }
+    fn advance(left_idx: &mut usize, right_idx: &mut usize, left_end: usize, right_end: usize) {
+        *left_idx = left_end;
+        *right_idx = right_end;
+    }
 }
+
+pub struct LessThan;
+impl Predicate for LessThan
+{
+    fn is_equality_pred() -> bool { false }
+    fn is_greater_than_pred() -> bool { false }
+    fn is_less_than_pred() -> bool { true }
+    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredResults
+        where T: PartialEq + Ord
+    {
+        match left.cmp(&right) {
+            Ordering::Less => PredResults::Add,
+            _ => PredResults::Advance { left: false, right: true },
+        }
+    }
+    fn advance(left_idx: &mut usize, _right_idx: &mut usize, _left_end: usize, _right_end: usize) {
+        *left_idx += 1;
+    }
+}
+
+pub struct LessThanEqual;
+impl Predicate for LessThanEqual
+{
+    fn is_equality_pred() -> bool { true }
+    fn is_greater_than_pred() -> bool { false }
+    fn is_less_than_pred() -> bool { true }
+    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredResults
+        where T: PartialEq + Ord
+    {
+        match left.cmp(&right) {
+            Ordering::Greater => PredResults::Advance { left: false, right: true },
+            _ => PredResults::Add
+        }
+    }
+    fn advance(left_idx: &mut usize, _right_idx: &mut usize, left_end: usize, _right_end: usize) {
+        *left_idx = left_end;
+    }
+}
+
+pub struct GreaterThan;
+impl Predicate for GreaterThan
+{
+    fn is_equality_pred() -> bool { false }
+    fn is_greater_than_pred() -> bool { true }
+    fn is_less_than_pred() -> bool { false }
+    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredResults
+        where T: PartialEq + Ord
+    {
+        match left.cmp(&right) {
+            Ordering::Greater => PredResults::Add,
+            _ => PredResults::Advance { left: true, right: false }
+        }
+    }
+    fn advance(_left_idx: &mut usize, right_idx: &mut usize, _left_end: usize, _right_end: usize) {
+        *right_idx += 1;
+    }
+}
+
+pub struct GreaterThanEqual;
+impl Predicate for GreaterThanEqual
+{
+    fn is_equality_pred() -> bool { true }
+    fn is_greater_than_pred() -> bool { true }
+    fn is_less_than_pred() -> bool { false }
+    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredResults
+        where T: PartialEq + Ord
+    {
+        match left.cmp(&right) {
+            Ordering::Less => PredResults::Advance { left: true, right: false },
+            _ => PredResults::Add
+        }
+    }
+    fn advance(_left_idx: &mut usize, right_idx: &mut usize, _left_end: usize, right_end: usize) {
+        *right_idx = right_end;
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq)]
-enum PredResults {
+pub enum PredResults {
     Add,
     Advance {
         left: bool,
@@ -300,11 +257,11 @@ pub trait SortMergeJoin<RLabels, RFrames, Join>
 {
     type Output;
 
-    fn join(&self, right: &DataView<RLabels, RFrames>, join: &Join)
+    fn join(&self, right: &DataView<RLabels, RFrames>)
         -> Self::Output;
 }
-impl<LLabels, LFrames, RLabels, RFrames, LLabel, RLabel>
-    SortMergeJoin<RLabels, RFrames, Join<LLabel, RLabel>>
+impl<LLabels, LFrames, RLabels, RFrames, LLabel, RLabel, Pred>
+    SortMergeJoin<RLabels, RFrames, Join<LLabel, RLabel, Pred>>
     for DataView<LLabels, LFrames>
     where
         LFrames: JoinIntoStore<LLabels, DataStore<Nil>>,
@@ -321,7 +278,8 @@ impl<LLabels, LFrames, RLabels, RFrames, LLabel, RLabel>
         VFieldTypeOf<Self, LLabel>: Ord + PartialEq,
         DataView<RLabels, RFrames>: SelectFieldByLabel<RLabel>,
         <DataView<RLabels, RFrames> as SelectFieldByLabel<RLabel>>::Output: SortOrder,
-        VFieldOf<DataView<RLabels, RFrames>, RLabel>: DataIndex<DType=VFieldTypeOf<Self, LLabel>>
+        VFieldOf<DataView<RLabels, RFrames>, RLabel>: DataIndex<DType=VFieldTypeOf<Self, LLabel>>,
+        Pred: Predicate
 {
     type Output = <
         <RFrames as JoinIntoStore<
@@ -333,17 +291,15 @@ impl<LLabels, LFrames, RLabels, RFrames, LLabel, RLabel>
     fn join(
         &self,
         right: &DataView<RLabels, RFrames>,
-        join: &Join<LLabel, RLabel>
     )
         -> Self::Output
     {
         let left = self;
         //TODO: return empty dataview if left or right is empty
 
-        let merge_indices = merge_indices(
+        let merge_indices = merge_indices::<Pred, _, _>(
             &left.field::<LLabel>(),
             &right.field::<RLabel>(),
-            join.predicate
         );
 
         let store = DataStore::<Nil>::empty();
@@ -354,13 +310,13 @@ impl<LLabels, LFrames, RLabels, RFrames, LLabel, RLabel>
     }
 }
 
-fn merge_indices<T, U>(
+fn merge_indices<Pred, T, U>(
     left_key_data: &T,
     right_key_data: &U,
-    predicate: Predicate,
 )
     -> (Vec<usize>, Vec<usize>)
     where
+        Pred: Predicate,
         T: DataIndex + SortOrder,
         U: DataIndex<DType=<T as DataIndex>::DType> + SortOrder,
         <T as DataIndex>::DType: PartialEq + Ord,
@@ -382,14 +338,14 @@ fn merge_indices<T, U>(
     while left_idx < left_order.len() && right_idx < right_order.len() {
         let left_val = lval(left_idx);
         let right_val = rval(right_idx);
-        let pred_results = predicate.apply(left_val, right_val);
+        let pred_results = Pred::apply(left_val, right_val);
         match pred_results {
             PredResults::Add => {
                 // figure out subsets
                 let mut left_subset = vec![left_idx];
                 let mut right_subset = vec![right_idx];
                 let (mut left_idx_end, mut right_idx_end);
-                if predicate.is_equality_pred() {
+                if Pred::is_equality_pred() {
                     // for equality predicates, add all records with same value
                     left_idx_end = left_idx + 1;
                     while left_idx_end < left_order.len() && left_val == lval(left_idx_end) {
@@ -407,14 +363,14 @@ fn merge_indices<T, U>(
                     right_idx_end = right_idx + 1;
                 }
                 let (left_eq_end, right_eq_end) = (left_idx_end, right_idx_end);
-                if predicate.is_greater_than_pred() {
+                if Pred::is_greater_than_pred() {
                     // for greater-than predicates, we can add the rest of the left values
                     while left_idx_end < left_order.len() {
                         left_subset.push(left_idx_end);
                         left_idx_end += 1;
                     }
                 }
-                if predicate.is_less_than_pred() {
+                if Pred::is_less_than_pred() {
                     // for less-than predicates, we can add the rest of the right values
                     while right_idx_end < right_order.len() {
                         right_subset.push(right_idx_end);
@@ -435,24 +391,7 @@ fn merge_indices<T, U>(
                     }
                 }
                 // advance as needed
-                match predicate {
-                    Predicate::Equal => {
-                        left_idx = left_eq_end;
-                        right_idx = right_eq_end;
-                    },
-                    Predicate::GreaterThanEqual => {
-                        right_idx = right_eq_end;
-                    },
-                    Predicate::GreaterThan => {
-                        right_idx += 1;
-                    },
-                    Predicate::LessThanEqual => {
-                        left_idx = left_eq_end;
-                    },
-                    Predicate::LessThan => {
-                        left_idx += 1;
-                    }
-                }
+                Pred::advance(&mut left_idx, &mut right_idx, left_eq_end, right_eq_end);
             },
             PredResults::Advance { left, right } => {
                 if left {
@@ -529,9 +468,8 @@ mod tests {
         println!("{}", dv_emp);
         println!("{}", dv_dept);
 
-        let joined_dv = dv_emp.join::<emp_table::DeptId, dept_table::DeptId, _, _>(
+        let joined_dv = dv_emp.join::<Join<emp_table::DeptId, dept_table::DeptId, Equal>, _, _>(
             &dv_dept,
-            &Join::<emp_table::DeptId, dept_table::DeptId>::equal(JoinKind::Inner)
         );
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 7);
@@ -570,9 +508,8 @@ mod tests {
         println!("{}", dv_emp);
         println!("{}", dv_dept);
 
-        let joined_dv = dv_emp.join(
+        let joined_dv = dv_emp.join::<Join<emp_table::DeptId, dept_table::DeptId, Equal>, _, _>(
             &dv_dept,
-            &Join::<emp_table::DeptId, dept_table::DeptId>::equal(JoinKind::Inner)
         );
         println!("{}", joined_dv);
 
@@ -629,9 +566,8 @@ mod tests {
         let dv_dept = sample_dept_table().into_view();
         println!("{}", dv_emp);
         println!("{}", dv_dept);
-        let joined_dv = dv_emp.join(
+        let joined_dv = dv_emp.join::<Join<emp_table::DeptId, dept_table::DeptId, Equal>, _, _>(
             &dv_dept,
-            &Join::<emp_table::DeptId, dept_table::DeptId>::equal(JoinKind::Inner)
         );
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 6);
@@ -662,9 +598,8 @@ mod tests {
 
         dv_dept.filter::<dept_table::DeptId, _>(|val: Value<&u64>| val != valref![1u64]);
         println!("{}", dv_dept);
-        let joined_dv = dv_emp.join(
+        let joined_dv = dv_emp.join::<Join<emp_table::DeptId, dept_table::DeptId, Equal>, _, _>(
             &dv_dept,
-            &Join::<emp_table::DeptId, dept_table::DeptId>::equal(JoinKind::Inner)
         );
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 4);
@@ -703,9 +638,10 @@ mod tests {
 
         let dv_dept = dv_dept.relabel::<dept_table::DeptId, dept_rename::RDeptId>();
         // also test relabeling
-        let joined_dv = dv_emp.join(
+        let joined_dv = dv_emp.join::<
+            Join<emp_table::DeptId, dept_rename::RDeptId, GreaterThan>, _, _
+        >(
             &dv_dept,
-            &Join::<emp_table::DeptId, dept_rename::RDeptId>::greater_than(JoinKind::Inner)
         );
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 7);
@@ -718,9 +654,10 @@ mod tests {
         // greater than equal
         let dv_emp = sample_emp_table().into_view();
         let dv_dept = dept_table(vec![2], vec!["Sales"]).into_view();
-        let joined_dv = dv_emp.join(
+        let joined_dv = dv_emp.join::<
+            Join<emp_table::DeptId, dept_table::DeptId, GreaterThanEqual>, _, _
+        >(
             &dv_dept,
-            &Join::<emp_table::DeptId, dept_table::DeptId>::greater_than_equal(JoinKind::Inner)
         );
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 4);
@@ -733,9 +670,8 @@ mod tests {
         // less than
         let dv_emp = sample_emp_table().into_view();
         let dv_dept = dept_table(vec![2], vec!["Sales"]).into_view();
-        let joined_dv = dv_emp.join(
+        let joined_dv = dv_emp.join::<Join<emp_table::DeptId, dept_table::DeptId, LessThan>, _, _>(
             &dv_dept,
-            &Join::<emp_table::DeptId, dept_table::DeptId>::less_than(JoinKind::Inner)
         );
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 3);
@@ -748,9 +684,10 @@ mod tests {
         // less than equal
         let dv_emp = sample_emp_table().into_view();
         let dv_dept = dept_table(vec![2], vec!["Sales"]).into_view();
-        let joined_dv = dv_emp.join(
+        let joined_dv = dv_emp.join::<
+            Join<emp_table::DeptId, dept_table::DeptId, LessThanEqual>, _, _
+        >(
             &dv_dept,
-            &Join::<emp_table::DeptId, dept_table::DeptId>::less_than_equal(JoinKind::Inner)
         );
         println!("{}", joined_dv);
         assert_eq!(joined_dv.nrows(), 4);

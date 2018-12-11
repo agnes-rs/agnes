@@ -634,13 +634,13 @@ impl<Labels, Frames> DataView<Labels, Frames>
     ///
     /// Note that since this is creating a new `DataStore` object, it will be allocated new data to
     /// store the contents of the joined `DataView`s.
-    pub fn join<LLabel, RLabel, RLabels, RFrames>(
-        &self, right: &DataView<RLabels, RFrames>, join: &Join<LLabel, RLabel>
+    pub fn join<Join, RLabels, RFrames>(
+        &self, right: &DataView<RLabels, RFrames>
     )
-        -> <Self as SortMergeJoin<RLabels, RFrames, Join<LLabel, RLabel>>>::Output
-        where Self: SortMergeJoin<RLabels, RFrames, Join<LLabel, RLabel>>
+        -> <Self as SortMergeJoin<RLabels, RFrames, Join>>::Output
+        where Self: SortMergeJoin<RLabels, RFrames, Join>
     {
-        SortMergeJoin::join(self, right, join)
+        SortMergeJoin::join(self, right)
         // match join.predicate {
         //     // TODO: implement hash join
         //     // Predicate::Equal => {
