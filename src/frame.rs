@@ -2,19 +2,19 @@
 Structs and implementation for Frame-level data structure. A `DataFrame` is a reference to an
 underlying data store, along with record-based filtering and sorting details.
 */
-use std::rc::Rc;
-use std::fmt::Debug;
-use std::sync::Arc;
 #[cfg(serialize)]
 use serde::{Serialize, Serializer};
+use std::fmt::Debug;
+use std::rc::Rc;
+use std::sync::Arc;
 
 // use filter::{Filter, DataFilter};
-use store::{NRows, DataStore, AssocStorage};
+use store::{AssocStorage, DataStore, NRows};
 // use data_types::*;
-use field::{FieldData, Value};
 use access::{self, DataIndex};
-use select::{SelectFieldByLabel, FieldSelect};
-use label::{LookupElemByLabel, TypeOf, Typed, ElemOf, Valued, TypeOfElemOf};
+use field::{FieldData, Value};
+use label::{ElemOf, LookupElemByLabel, TypeOf, TypeOfElemOf, Typed, Valued};
+use select::{FieldSelect, SelectFieldByLabel};
 // use apply::sort::SortOrderFn;
 use error;
 // use field::{Value};
@@ -24,47 +24,49 @@ type Permutation = access::Permutation<Vec<usize>>;
 /// A data frame. A `DataStore` reference along with record-based filtering and sorting details.
 #[derive(Debug, Clone)]
 pub struct DataFrame<Fields>
-    where Fields: AssocStorage,
-          Fields::Storage: Debug
+where
+    Fields: AssocStorage,
+    Fields::Storage: Debug,
 {
     permutation: Rc<Permutation>,
     store: Arc<DataStore<Fields>>,
 }
 impl<Fields> DataFrame<Fields>
-    where Fields: AssocStorage,
-          DataStore<Fields>: NRows,
+where
+    Fields: AssocStorage,
+    DataStore<Fields>: NRows,
 {
-    pub fn len(&self) -> usize
-    {
+    pub fn len(&self) -> usize {
         match self.permutation.len() {
             Some(len) => len,
-            None => self.store.nrows()
+            None => self.store.nrows(),
         }
     }
-    pub fn is_empty(&self) -> bool
-    {
+    pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 }
 impl<Fields> NRows for DataFrame<Fields>
-    where Fields: AssocStorage,
-          DataStore<Fields>: NRows,
+where
+    Fields: AssocStorage,
+    DataStore<Fields>: NRows,
 {
-    fn nrows(&self) -> usize
-    {
+    fn nrows(&self) -> usize {
         self.len()
     }
 }
 #[cfg(test)]
 impl<Fields> DataFrame<Fields>
-    where Fields: AssocStorage
+where
+    Fields: AssocStorage,
 {
     pub fn store_ref_count(&self) -> usize {
         Arc::strong_count(&self.store)
     }
 }
 impl<Fields> DataFrame<Fields>
-    where Fields: AssocStorage
+where
+    Fields: AssocStorage,
 {
     // /// Get the field type of a particular field in the underlying `DataStore`.
     // pub fn get_field_type(&self, ident: &FieldIdent) -> Option<DTypes::DType> {
@@ -83,82 +85,81 @@ impl<Fields> DataFrame<Fields>
     }
 }
 
-pub trait FrameFields
-{
+pub trait FrameFields {
     type FrameFields;
 }
 impl<Fields> FrameFields for DataFrame<Fields>
-    where Fields: AssocStorage
+where
+    Fields: AssocStorage,
 {
     type FrameFields = Fields;
 }
 pub type FrameFieldsOf<T> = <T as FrameFields>::FrameFields;
 
+// /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+// /// implemented for all types in `DTypes`.
+// ///
+// /// Fails if the specified identifier is not found in this `DataFrame`.
+// pub fn map<F, FOut>(&self, ident: &FieldIdent, f: F)
+//     -> error::Result<FOut>
+//     where DTypes::Storage: FramedMap<DTypes, F, FOut>,
+// {
+//     self.store.map(ident, FramedFunc::new(self, f))
+// }
 
-    // /// Applies the provided `Func` to the data in the specified field. This `Func` must be
-    // /// implemented for all types in `DTypes`.
-    // ///
-    // /// Fails if the specified identifier is not found in this `DataFrame`.
-    // pub fn map<F, FOut>(&self, ident: &FieldIdent, f: F)
-    //     -> error::Result<FOut>
-    //     where DTypes::Storage: FramedMap<DTypes, F, FOut>,
-    // {
-    //     self.store.map(ident, FramedFunc::new(self, f))
-    // }
+// /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+// /// implemented for type `T`.
+// ///
+// /// Fails if the specified identifier is not found in this `DataFrame` or the incorrect type `T`
+// /// is used.
+// pub fn tmap<T, F>(&self, ident: &FieldIdent, f: F)
+//     -> error::Result<F::Output>
+//     where F: Func<DTypes, T>,
+//           T: DataType<DTypes>,
+//           DTypes::Storage: MaxLen<DTypes> + FramedTMap<DTypes, T, F>,
+// {
+//     self.store.tmap(ident, FramedFunc::new(self, f))
+// }
 
-    // /// Applies the provided `Func` to the data in the specified field. This `Func` must be
-    // /// implemented for type `T`.
-    // ///
-    // /// Fails if the specified identifier is not found in this `DataFrame` or the incorrect type `T`
-    // /// is used.
-    // pub fn tmap<T, F>(&self, ident: &FieldIdent, f: F)
-    //     -> error::Result<F::Output>
-    //     where F: Func<DTypes, T>,
-    //           T: DataType<DTypes>,
-    //           DTypes::Storage: MaxLen<DTypes> + FramedTMap<DTypes, T, F>,
-    // {
-    //     self.store.tmap(ident, FramedFunc::new(self, f))
-    // }
+// /// Applies the provided `FuncExt` to the data in the specified field. This `FuncExt` must be
+// /// implemented for all types in `DTypes`.
+// ///
+// /// Fails if the specified identifier is not found in this `DataFrame`.
+// pub fn map_ext<F, FOut>(&self, ident: &FieldIdent, f: F)
+//     -> error::Result<FOut>
+//     where DTypes::Storage: FramedMapExt<DTypes, F, FOut>,
+// {
+//     self.store.map_ext(ident, FramedFunc::new(self, f))
+// }
 
-    // /// Applies the provided `FuncExt` to the data in the specified field. This `FuncExt` must be
-    // /// implemented for all types in `DTypes`.
-    // ///
-    // /// Fails if the specified identifier is not found in this `DataFrame`.
-    // pub fn map_ext<F, FOut>(&self, ident: &FieldIdent, f: F)
-    //     -> error::Result<FOut>
-    //     where DTypes::Storage: FramedMapExt<DTypes, F, FOut>,
-    // {
-    //     self.store.map_ext(ident, FramedFunc::new(self, f))
-    // }
+// /// Applies the provided `FuncPartial` to the data in the specified field.
+// ///
+// /// Fails if the specified identifier is not found in this `DataFrame`.
+// pub fn map_partial<F>(&self, ident: &FieldIdent, f: F)
+//     -> error::Result<Option<F::Output>>
+//     where DTypes::Storage: MapPartial<DTypes, F> + MaxLen<DTypes>,
+//           F: FuncPartial<DTypes>
+// {
+//     self.store.map_partial(ident, self, f)
+// }
 
-    // /// Applies the provided `FuncPartial` to the data in the specified field.
-    // ///
-    // /// Fails if the specified identifier is not found in this `DataFrame`.
-    // pub fn map_partial<F>(&self, ident: &FieldIdent, f: F)
-    //     -> error::Result<Option<F::Output>>
-    //     where DTypes::Storage: MapPartial<DTypes, F> + MaxLen<DTypes>,
-    //           F: FuncPartial<DTypes>
-    // {
-    //     self.store.map_partial(ident, self, f)
-    // }
+// /// Returns the permutation (list of indices in sorted order) of values in field identified
+// /// by `ident`.
+// ///
+// /// Fails if the field is not found in this `DataFrame`.
+// pub fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
+//     where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>
+// {
+//     let sort_order = self.sort_order_by(ident)?;
+//     self.update_permutation(&sort_order);
+//     Ok(sort_order)
+// }
 
-    // /// Returns the permutation (list of indices in sorted order) of values in field identified
-    // /// by `ident`.
-    // ///
-    // /// Fails if the field is not found in this `DataFrame`.
-    // pub fn sort_by(&mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
-    //     where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>
-    // {
-    //     let sort_order = self.sort_order_by(ident)?;
-    //     self.update_permutation(&sort_order);
-    //     Ok(sort_order)
-    // }
-
-    // fn sort_order_by(&self, ident: &FieldIdent) -> error::Result<Vec<usize>>
-    //     where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>,
-    // {
-    //     self.map(ident, SortOrderFn)
-    // }
+// fn sort_order_by(&self, ident: &FieldIdent) -> error::Result<Vec<usize>>
+//     where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>,
+// {
+//     self.map(ident, SortOrderFn)
+// }
 
 // /// Marker trait for a storage structure that implements [Map](../data_types/trait.Map.html), as
 // /// accessed through a [DataFrame](struct.DataFrame.html).
@@ -221,13 +222,13 @@ pub type FrameFieldsOf<T> = <T as FrameFields>::FrameFields;
 //     // where DTypes: DTypeList,
 //     //       DTypes::Storage: MaxLen<DTypes>
 // {
-    // fn len(&self) -> usize
-    // {
-    //     match self.permutation {
-    //         Some(ref perm) => perm.len(),
-    //         None => self.store.nrows()
-    //     }
-    // }
+// fn len(&self) -> usize
+// {
+//     match self.permutation {
+//         Some(ref perm) => perm.len(),
+//         None => self.store.nrows()
+//     }
+// }
 
 //     fn map_index(&self, requested: usize) -> usize {
 //         match self.permutation {
@@ -257,7 +258,6 @@ pub type FrameFieldsOf<T> = <T as FrameFields>::FrameFields;
 //         self.reindexer.len()
 //     }
 // }
-
 
 // impl<'a, Fields, Ident, FIdx> SelectField<'a, Ident>
 //     for DataFrame<Fields>
@@ -353,7 +353,8 @@ pub type FrameFieldsOf<T> = <T as FrameFields>::FrameFields;
 // }
 
 impl<Fields> From<DataStore<Fields>> for DataFrame<Fields>
-    where Fields: AssocStorage
+where
+    Fields: AssocStorage,
 {
     fn from(store: DataStore<Fields>) -> DataFrame<Fields> {
         DataFrame {
@@ -367,29 +368,20 @@ impl<Fields> From<DataStore<Fields>> for DataFrame<Fields>
 /// that structure. Provides DataIndex for the underlying data structure, as viewed through the
 /// frame.
 #[derive(Debug)]
-pub struct Framed<T>
-    // where T: 'a + DataType<DTypes>,
-    //       DTypes: 'a + DTypeList
-{
+pub struct Framed<T> {
     permutation: Rc<Permutation>,
     data: Rc<FieldData<T>>,
     // dtype: PhantomData<T>,
 }
-impl<T> Framed<T>
-{
+impl<T> Framed<T> {
     /// Create a new framed view of some data, as view through a particular `DataFrame`.
-    pub fn new(permutation: Rc<Permutation>, data: Rc<FieldData<T>>)
-        -> Framed<T>
-    {
+    pub fn new(permutation: Rc<Permutation>, data: Rc<FieldData<T>>) -> Framed<T> {
         Framed { permutation, data }
     }
 }
-impl<T> Clone for Framed<T>
-{
-    fn clone(&self) -> Framed<T>
-    {
-        Framed
-        {
+impl<T> Clone for Framed<T> {
+    fn clone(&self) -> Framed<T> {
+        Framed {
             permutation: Rc::clone(&self.permutation),
             data: Rc::clone(&self.data),
         }
@@ -397,7 +389,8 @@ impl<T> Clone for Framed<T>
 }
 
 impl<'a, T> DataIndex for Framed<T>
-    where T: Debug,
+where
+    T: Debug,
     // where T: DataType<DTypes>,
     //       DTypes: DTypeList,
     //       DTypes::Storage: MaxLen<DTypes>
@@ -407,22 +400,19 @@ impl<'a, T> DataIndex for Framed<T>
     fn get_datum(&self, idx: usize) -> error::Result<Value<&T>> {
         self.data.get_datum(self.permutation.map_index(idx))
     }
-    fn len(&self) -> usize
-    {
-        match self.permutation.len()
-        {
+    fn len(&self) -> usize {
+        match self.permutation.len() {
             Some(len) => len,
-            None => self.data.len()
+            None => self.data.len(),
         }
         // self.frame.nrows()
     }
 }
 
-
 #[cfg(serialize)]
 pub(crate) struct SerializedField<'a, Ident, FIdx, Fields>
-    where Fields: 'a + AssocStorage
-    // where DTypes: 'a + DTypeList
+where
+    Fields: 'a + AssocStorage, // where DTypes: 'a + DTypeList
 {
     _ident: PhantomData<Ident>,
     _fidx: PhantomData<FIdx>,
@@ -430,12 +420,11 @@ pub(crate) struct SerializedField<'a, Ident, FIdx, Fields>
 }
 #[cfg(serialize)]
 impl<'a, Ident, FIdx, Fields> SerializedField<'a, Ident, FIdx, Fields>
-    // where DTypes: DTypeList
-    where Fields: 'a + AssocStorage
+// where DTypes: DTypeList
+where
+    Fields: 'a + AssocStorage,
 {
-    pub fn new(frame: &'a DataFrame<Fields>)
-        -> SerializedField<'a, Ident, FIdx, Fields>
-    {
+    pub fn new(frame: &'a DataFrame<Fields>) -> SerializedField<'a, Ident, FIdx, Fields> {
         SerializedField {
             _ident: PhantomData,
             _fidx: PhantomData,
@@ -446,36 +435,39 @@ impl<'a, Ident, FIdx, Fields> SerializedField<'a, Ident, FIdx, Fields>
 
 #[cfg(serialize)]
 impl<'a, Ident, FIdx, Fields> Serialize for SerializedField<'a, Ident, FIdx, Fields>
-    // where DTypes: DTypeList,
-    //       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>,
-    where Fields: 'a + AssocStorage
+// where DTypes: DTypeList,
+//       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>,
+where
+    Fields: 'a + AssocStorage,
 {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer,
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
     {
-        self.frame.store.serialize_field(&self.ident, self.frame, serializer)
+        self.frame
+            .store
+            .serialize_field(&self.ident, self.frame, serializer)
     }
 }
 
-impl<Fields, Label> SelectFieldByLabel<Label>
-    for DataFrame<Fields>
-    where
-          //Label: 'a,
-          Fields: AssocStorage + Debug,
-          Fields::Storage: LookupElemByLabel<Label> + NRows,
-          ElemOf<Fields::Storage, Label>: Typed,
-          ElemOf<Fields::Storage, Label>:
-            Valued<Value=Rc<FieldData<TypeOfElemOf<Fields::Storage, Label>>>>,
-          // ValueOfElemOf<Fields::Storage, Label>:
-          //   DataIndex<DType=TypeOfElemOf<Fields::Storage, Label>>,
-          TypeOf<ElemOf<Fields::Storage, Label>>: Debug,
+impl<Fields, Label> SelectFieldByLabel<Label> for DataFrame<Fields>
+where
+    //Label: 'a,
+    Fields: AssocStorage + Debug,
+    Fields::Storage: LookupElemByLabel<Label> + NRows,
+    ElemOf<Fields::Storage, Label>: Typed,
+    ElemOf<Fields::Storage, Label>:
+        Valued<Value = Rc<FieldData<TypeOfElemOf<Fields::Storage, Label>>>>,
+    // ValueOfElemOf<Fields::Storage, Label>:
+    //   DataIndex<DType=TypeOfElemOf<Fields::Storage, Label>>,
+    TypeOf<ElemOf<Fields::Storage, Label>>: Debug,
 {
     type Output = Framed<TypeOf<ElemOf<Fields::Storage, Label>>>;
 
-    fn select_field(&self) -> Self::Output
-    {
+    fn select_field(&self) -> Self::Output {
         Framed::new(
             Rc::clone(&self.permutation),
-            Rc::clone(&self.store.field::<Label>())
+            Rc::clone(&self.store.field::<Label>()),
         )
     }
 }
@@ -502,7 +494,6 @@ impl<Fields> FieldSelect for DataFrame<Fields> where Fields: AssocStorage {}
 //     }
 // }
 
-
 #[cfg(test)]
 mod tests {
 
@@ -512,22 +503,27 @@ mod tests {
 
     use super::*;
 
-    use source::csv::{CsvSource, CsvReader, IntoCsvSrcSpec};
     use select::FieldSelect;
+    use source::csv::{CsvReader, CsvSource, IntoCsvSrcSpec};
 
-    fn load_csv_file<Spec>(filename: &str, spec: Spec)
-        -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
-        where Spec: IntoCsvSrcSpec
+    fn load_csv_file<Spec>(filename: &str, spec: Spec) -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
+    where
+        Spec: IntoCsvSrcSpec,
     {
         let data_filepath = Path::new(file!()) // start as this file
-            .parent().unwrap()                 // navigate up to src directory
-            .parent().unwrap()                 // navigate up to root directory
-            .join("tests")                     // navigate into integration tests directory            .join("data")                      // navigate into data directory
-            .join("data")                      // navigate into data directory
-            .join(filename);                   // navigate to target file
+            .parent()
+            .unwrap() // navigate up to src directory
+            .parent()
+            .unwrap() // navigate up to root directory
+            .join("tests") // navigate into integration tests directory            .join("data")                      // navigate into data directory
+            .join("data") // navigate into data directory
+            .join(filename); // navigate to target file
 
         let source = CsvSource::new(data_filepath.into()).unwrap();
-        (CsvReader::new(&source, spec).unwrap(), source.metadata().clone())
+        (
+            CsvReader::new(&source, spec).unwrap(),
+            source.metadata().clone(),
+        )
     }
 
     namespace![
@@ -539,8 +535,7 @@ mod tests {
     ];
 
     #[test]
-    fn frame_select()
-    {
+    fn frame_select() {
         let gdp_spec = spec![
             fieldname gdp::CountryName = "Country Name";
             fieldname gdp::CountryCode = "Country Code";
@@ -561,6 +556,5 @@ mod tests {
         // let view = ds.into_view();
         // println!("{:?}", view.field::<CountryName>());
         // println!("{}", view);
-
     }
 }

@@ -1,14 +1,14 @@
 //! General error struct for entire package, as well as helpful conversions.
 
+use std;
 use std::error::Error;
 use std::fmt;
 use std::io;
-use std;
 
 use csv;
-use native_tls;
-use hyper;
 use csv_sniffer;
+use hyper;
+use native_tls;
 
 use field::FieldIdent;
 
@@ -42,18 +42,18 @@ pub enum AgnesError {
         /// out-of-bounds index
         index: usize,
         /// length of underlying data structure
-        len: usize
+        len: usize,
     },
     LengthMismatch {
         expected: usize,
-        actual: usize
+        actual: usize,
     },
     /// Incompatible types error
     IncompatibleTypes {
         /// Expected / supported type
         expected: String,
         /// Type specified by caller
-        actual: String
+        actual: String,
     },
     /// Invalid operation
     InvalidOp(String),
@@ -62,8 +62,8 @@ pub enum AgnesError {
         /// Type specified
         ty: String,
         /// Operation attempted
-        operation: String
-    }
+        operation: String,
+    },
 }
 
 /// Wrapper for DataFrame-based results.
@@ -79,23 +79,38 @@ impl fmt::Display for AgnesError {
             AgnesError::CsvDialect(ref s) => write!(f, "CSV structure error: {}", s),
             AgnesError::Parse(ref err) => write!(f, "Parse error: {}", err),
             AgnesError::Decode(ref s) => write!(f, "Decode error: {}", s),
-            AgnesError::FieldNotFound(ref ident) =>
-                write!(f, "Missing source field: {}", ident.to_string()),
+            AgnesError::FieldNotFound(ref ident) => {
+                write!(f, "Missing source field: {}", ident.to_string())
+            }
             AgnesError::DimensionMismatch(ref s) => write!(f, "Dimension mismatch: {}", s),
             AgnesError::FieldCollision(ref s) => {
                 let fields = s.iter().map(|fi| fi.to_string()).collect::<Vec<_>>();
                 write!(f, "Field collision: {}", &fields[..].join(", "))
-            },
+            }
             AgnesError::TypeMismatch(ref s) => write!(f, "Type collision: {}", s),
-            AgnesError::IndexError { index, len } => write!(f,
-                "Index error: index {} exceeds data length {}", index, len),
-            AgnesError::LengthMismatch { expected, actual } => write!(f,
-                "Length mismatch: expected {} does not match actual {}", expected, actual),
-            AgnesError::IncompatibleTypes { ref expected, ref actual  } =>
-                write!(f, "Incompatible types: expected {}, found {}", expected, actual),
+            AgnesError::IndexError { index, len } => write!(
+                f,
+                "Index error: index {} exceeds data length {}",
+                index, len
+            ),
+            AgnesError::LengthMismatch { expected, actual } => write!(
+                f,
+                "Length mismatch: expected {} does not match actual {}",
+                expected, actual
+            ),
+            AgnesError::IncompatibleTypes {
+                ref expected,
+                ref actual,
+            } => write!(
+                f,
+                "Incompatible types: expected {}, found {}",
+                expected, actual
+            ),
             AgnesError::InvalidOp(ref s) => write!(f, "Invalid operation: {}", s),
-            AgnesError::InvalidType { ref ty, ref operation } =>
-                write!(f, "Invalid type {} for operation: {}", ty, operation),
+            AgnesError::InvalidType {
+                ref ty,
+                ref operation,
+            } => write!(f, "Invalid type {} for operation: {}", ty, operation),
         }
     }
 }
@@ -118,7 +133,7 @@ impl Error for AgnesError {
             AgnesError::LengthMismatch { .. } => "length mismatch",
             AgnesError::IncompatibleTypes { .. } => "incompatible types",
             AgnesError::InvalidOp(ref s) => s,
-            AgnesError::InvalidType { .. } => "invalid type for operation"
+            AgnesError::InvalidType { .. } => "invalid type for operation",
         }
     }
 
@@ -135,7 +150,7 @@ impl Error for AgnesError {
             AgnesError::DimensionMismatch(_) => None,
             AgnesError::FieldCollision(_) => None,
             AgnesError::TypeMismatch(_) => None,
-            AgnesError::IndexError { .. }  => None,
+            AgnesError::IndexError { .. } => None,
             AgnesError::LengthMismatch { .. } => None,
             AgnesError::IncompatibleTypes { .. } => None,
             AgnesError::InvalidOp(_) => None,
@@ -154,30 +169,28 @@ pub enum NetError {
     /// HTTP error.
     Http(hyper::Error),
     /// Local file error
-    LocalFile
+    LocalFile,
 }
 impl fmt::Display for NetError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             NetError::UnsupportedUriScheme(ref t) => write!(
-                    f,
-                    "Unsupported scheme: {}",
-                    t.clone().unwrap_or_else(|| "none".to_string())
+                f,
+                "Unsupported scheme: {}",
+                t.clone().unwrap_or_else(|| "none".to_string())
             ),
             NetError::Tls(ref err) => write!(f, "TLS error: {}", err),
             NetError::Http(ref err) => write!(f, "HTTP error: {}", err),
-            NetError::LocalFile => write!(f, "unable to access local file over HTTP")
+            NetError::LocalFile => write!(f, "unable to access local file over HTTP"),
         }
     }
 }
 impl Error for NetError {
     fn description(&self) -> &str {
         match *self {
-            NetError::UnsupportedUriScheme(ref scheme) => {
-                match *scheme {
-                    Some(ref s) => &s[..],
-                    None => "none",
-                }
+            NetError::UnsupportedUriScheme(ref scheme) => match *scheme {
+                Some(ref s) => &s[..],
+                None => "none",
             },
             NetError::Tls(ref err) => err.description(),
             NetError::Http(ref err) => err.description(),
@@ -282,7 +295,6 @@ impl From<ParseError> for AgnesError {
         AgnesError::Parse(err)
     }
 }
-
 
 impl From<io::Error> for AgnesError {
     fn from(err: io::Error) -> AgnesError {

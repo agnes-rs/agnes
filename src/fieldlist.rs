@@ -6,7 +6,6 @@ use cons::*;
 use label::*;
 // use data_types::{DTypeList, GetDType};
 
-
 // #[derive(Debug, Clone)]
 // pub struct Field<Ident, DType> {
 //     _ident: PhantomData<Ident>,
@@ -25,14 +24,13 @@ use label::*;
 #[derive(Debug, Clone)]
 pub struct TypedPayload<DType, Payload> {
     _dtype: PhantomData<DType>,
-    payload: Payload
+    payload: Payload,
 }
-impl<DType, Payload> From<Payload> for TypedPayload<DType, Payload>
-{
+impl<DType, Payload> From<Payload> for TypedPayload<DType, Payload> {
     fn from(payload: Payload) -> TypedPayload<DType, Payload> {
         TypedPayload {
             _dtype: PhantomData,
-            payload
+            payload,
         }
     }
 }
@@ -93,7 +91,6 @@ pub type FieldPayloadCons<Label, DType, Payload, Tail> = LDVCons<Label, DType, P
 //     type Fields = FieldCons<Label, DType, Tail::Fields>;
 // }
 
-
 #[derive(Debug, Clone)]
 pub enum FieldDesignator {
     Expr(String),
@@ -103,18 +100,14 @@ impl SelfValued for FieldDesignator {}
 
 pub type SpecCons<Label, DType, Tail> = FieldPayloadCons<Label, DType, FieldDesignator, Tail>;
 
-impl<Label, DType, Tail> SpecCons<Label, DType, Tail>
-{
-    pub fn new(src_designator: FieldDesignator, tail: Tail) -> SpecCons<Label, DType, Tail>
-    {
-        SpecCons
-        {
+impl<Label, DType, Tail> SpecCons<Label, DType, Tail> {
+    pub fn new(src_designator: FieldDesignator, tail: Tail) -> SpecCons<Label, DType, Tail> {
+        SpecCons {
             head: TypedValue::from(src_designator).into(),
-            tail
+            tail,
         }
     }
 }
-
 
 #[macro_export]
 macro_rules! spec {
@@ -268,30 +261,29 @@ macro_rules! spec_old {
 //     type DType = DType;
 // }
 
-pub trait AttachPayload<Gen, DType>
-{
+pub trait AttachPayload<Gen, DType> {
     type Output;
 
     fn attach_payload() -> Self::Output;
 }
-impl<Gen, DType> AttachPayload<Gen, DType> for Nil
-{
+impl<Gen, DType> AttachPayload<Gen, DType> for Nil {
     type Output = Nil;
 
-    fn attach_payload() -> Nil { Nil }
+    fn attach_payload() -> Nil {
+        Nil
+    }
 }
-impl<Label, DType, Tail, Gen> AttachPayload<Gen, DType>
-    for FieldCons<Label, DType, Tail>
-    where Tail: AttachPayload<Gen, DType>,
-          Gen: PayloadGenerator<DType>
+impl<Label, DType, Tail, Gen> AttachPayload<Gen, DType> for FieldCons<Label, DType, Tail>
+where
+    Tail: AttachPayload<Gen, DType>,
+    Gen: PayloadGenerator<DType>,
 {
     type Output = FieldPayloadCons<Label, DType, Gen::Payload, Tail::Output>;
 
-    fn attach_payload() -> Self::Output
-    {
+    fn attach_payload() -> Self::Output {
         FieldPayloadCons {
             head: TypedValue::from(Gen::generate()).into(),
-            tail: Tail::attach_payload()
+            tail: Tail::attach_payload(),
         }
     }
 }

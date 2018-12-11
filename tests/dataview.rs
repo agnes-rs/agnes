@@ -82,7 +82,6 @@
 //     // only take extra '1983' column
 //     let mut dv_life: DataView = DataView::from(csv_rdr.read().unwrap()).v("1983");
 
-
 //     dv_gdp.rename("1983", "1983 GDP").unwrap();
 //     dv_life.rename("1983", "1983 Life Expectancy").unwrap();
 

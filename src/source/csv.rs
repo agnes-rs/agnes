@@ -1,23 +1,23 @@
 //! CSV-based source and reader objects and implentation.
 
-use std::str::FromStr;
+use std::collections::HashMap;
 use std::fmt::Debug;
-use std::collections::{HashMap};
+use std::str::FromStr;
 
 // use typenum::{Unsigned, Add1, B1};
 
-use csv_sniffer::Sniffer;
 use csv_sniffer::metadata::Metadata;
+use csv_sniffer::Sniffer;
 
-use source::file::{LocalFileReader, FileLocator};
-use source::decode::decode;
-use error::*;
-use store::{AssocStorage, DataStore, AddFieldFromValueIter};
 use cons::*;
+use error::*;
 use field::FieldIdent;
-use field::{Value};
-use fieldlist::{FieldPayloadCons, FieldSpec, FieldDesignator, SpecCons};
+use field::Value;
+use fieldlist::{FieldDesignator, FieldPayloadCons, FieldSpec, SpecCons};
 use label::{TypedValue, Valued};
+use source::decode::decode;
+use source::file::{FileLocator, LocalFileReader};
+use store::{AddFieldFromValueIter, AssocStorage, DataStore};
 
 /// CSV Data source. Contains location of data file, and computes CSV metadata. Can be turned into
 /// `CsvReader` object.
@@ -26,7 +26,7 @@ pub struct CsvSource {
     // File source object for the CSV file
     src: FileLocator,
     // CSV file metadata (from `csv-sniffer` crate)
-    metadata: Metadata
+    metadata: Metadata,
 }
 
 impl CsvSource {
@@ -40,10 +40,7 @@ impl CsvSource {
         let mut file_reader = LocalFileReader::new(&loc)?;
         let metadata = Sniffer::new().sniff_reader(&mut file_reader)?;
 
-        Ok(CsvSource {
-            src: loc,
-            metadata
-        })
+        Ok(CsvSource { src: loc, metadata })
     }
     /// Return the compute `Metadata` for this CSV source.
     pub fn metadata(&self) -> &Metadata {
@@ -76,50 +73,55 @@ pub type CsvSrcSpecCons<Label, DType, Tail> = FieldPayloadCons<Label, DType, usi
 pub trait IntoCsvSrcSpec {
     type CsvSrcSpec;
 
-    fn into_csv_src_spec(self, headers: &HashMap<String, usize>, num_fields: usize)
-        -> Result<Self::CsvSrcSpec>;
+    fn into_csv_src_spec(
+        self,
+        headers: &HashMap<String, usize>,
+        num_fields: usize,
+    ) -> Result<Self::CsvSrcSpec>;
 }
 impl IntoCsvSrcSpec for Nil {
     type CsvSrcSpec = Nil;
 
-    fn into_csv_src_spec(self, _headers: &HashMap<String, usize>, _num_fields: usize)
-        -> Result<Nil>
-    {
+    fn into_csv_src_spec(
+        self,
+        _headers: &HashMap<String, usize>,
+        _num_fields: usize,
+    ) -> Result<Nil> {
         Ok(Nil)
     }
 }
 
-impl<Label, DType, Tail> IntoCsvSrcSpec
-    for SpecCons<Label, DType, Tail>
-    where Tail: IntoCsvSrcSpec,
+impl<Label, DType, Tail> IntoCsvSrcSpec for SpecCons<Label, DType, Tail>
+where
+    Tail: IntoCsvSrcSpec,
 {
     type CsvSrcSpec = CsvSrcSpecCons<Label, DType, Tail::CsvSrcSpec>;
 
     fn into_csv_src_spec(
         self,
         headers: &HashMap<String, usize>,
-        num_fields: usize
-    )
-        -> Result<CsvSrcSpecCons<Label, DType, Tail::CsvSrcSpec>>
-    {
+        num_fields: usize,
+    ) -> Result<CsvSrcSpecCons<Label, DType, Tail::CsvSrcSpec>> {
         let idx = match *self.head.value_ref() {
-            FieldDesignator::Expr(ref s) => *headers.get(s)
+            FieldDesignator::Expr(ref s) => *headers
+                .get(s)
                 .ok_or(AgnesError::FieldNotFound(FieldIdent::Name(s.to_string())))?,
             FieldDesignator::Idx(idx) => {
                 if idx >= num_fields {
-                    return Err(AgnesError::IndexError { index: idx, len: num_fields });
+                    return Err(AgnesError::IndexError {
+                        index: idx,
+                        len: num_fields,
+                    });
                 };
                 idx
             }
         };
         Ok(Cons {
             head: TypedValue::from(idx).into(),
-            tail: self.tail.into_csv_src_spec(headers, num_fields)?
+            tail: self.tail.into_csv_src_spec(headers, num_fields)?,
         })
     }
 }
-
-
 
 // pub trait FromSpec<Spec> {
 //     fn from_spec(spec: Spec, headers: &HashMap<String, usize>, num_fields: usize)
@@ -214,8 +216,7 @@ impl<Label, DType, Tail> IntoCsvSrcSpec
 //     type Fields = FieldCons<Field, FIdx, DType, Payload, Tail::Fields>;
 // }
 
-pub trait BuildDStore
-{
+pub trait BuildDStore {
     type OutputFields: AssocStorage;
     fn build(&mut self, src: &CsvSource) -> Result<DataStore<Self::OutputFields>>;
 }
@@ -225,60 +226,56 @@ impl BuildDStore for Nil {
         Ok(DataStore::<Nil>::empty())
     }
 }
-impl<Label, DType, Tail> BuildDStore
-    for FieldPayloadCons<
-        Label,
-        DType,
-        usize,
-        Tail
-    >
-    // for Cons<
-    //     CsvSrcSpec<Field, Add1<<Tail::OutputFields as FieldIndex>::FIdx>, DType>,
-    //     Tail
-    // >
-    where
-          Tail: BuildDStore,
-          DataStore<<Tail as BuildDStore>::OutputFields>: AddFieldFromValueIter<Label, DType>,
-          Tail::OutputFields: PushBack<FieldSpec<Label, DType>>,
-          <Tail::OutputFields as PushBack<FieldSpec<Label, DType>>>::Output: AssocStorage,
-          Label: Debug,
+impl<Label, DType, Tail> BuildDStore for FieldPayloadCons<Label, DType, usize, Tail>
+// for Cons<
+//     CsvSrcSpec<Field, Add1<<Tail::OutputFields as FieldIndex>::FIdx>, DType>,
+//     Tail
+// >
+where
+    Tail: BuildDStore,
+    DataStore<<Tail as BuildDStore>::OutputFields>: AddFieldFromValueIter<Label, DType>,
+    Tail::OutputFields: PushBack<FieldSpec<Label, DType>>,
+    <Tail::OutputFields as PushBack<FieldSpec<Label, DType>>>::Output: AssocStorage,
+    Label: Debug,
     //       Tail::OutputFields: FieldIndex,
     //       <Tail::OutputFields as FieldIndex>::FIdx: Add<B1>,
-          DType: FromStr + Debug + Default + Clone,
-          ParseError: From<<DType as FromStr>::Err>,
+    DType: FromStr + Debug + Default + Clone,
+    ParseError: From<<DType as FromStr>::Err>,
 {
-    type OutputFields =
-        <DataStore<<Tail as BuildDStore>::OutputFields> as AddFieldFromValueIter<Label, DType>>
-            ::OutputFields;
+    type OutputFields = <DataStore<<Tail as BuildDStore>::OutputFields> as AddFieldFromValueIter<
+        Label,
+        DType,
+    >>::OutputFields;
 
     fn build(&mut self, src: &CsvSource) -> Result<DataStore<Self::OutputFields>> {
         let file_reader = LocalFileReader::new(&src.src)?;
         let mut csv_reader = src.metadata.dialect.open_reader(file_reader)?;
         let ds = self.tail.build(src)?;
 
-        let values: Vec<Value<DType>> = csv_reader.byte_records()
+        let values: Vec<Value<DType>> = csv_reader
+            .byte_records()
             .map(|row| {
                 let record = row?;
-                let value = decode(
-                    record.get(*self.head.value_ref().value_ref()).ok_or_else(||
-                        AgnesError::FieldNotFound(FieldIdent::Name(stringify![Field].to_string()))
-                    )?
-                )?;
+                let value = decode(record.get(*self.head.value_ref().value_ref()).ok_or_else(
+                    || AgnesError::FieldNotFound(FieldIdent::Name(stringify![Field].to_string())),
+                )?)?;
                 Ok(value)
             })
-            .map(|sresult| sresult.and_then(|s| {
-                let trimmed = s.trim();
-                if trimmed.is_empty() {
-                    Ok(Value::Na)
-                } else {
-                    trimmed.parse::<DType>()
-                        .map(|value| Value::Exists(value))
-                        .map_err(|e| AgnesError::Parse(e.into()))
-                }
-            }))
+            .map(|sresult| {
+                sresult.and_then(|s| {
+                    let trimmed = s.trim();
+                    if trimmed.is_empty() {
+                        Ok(Value::Na)
+                    } else {
+                        trimmed
+                            .parse::<DType>()
+                            .map(|value| Value::Exists(value))
+                            .map_err(|e| AgnesError::Parse(e.into()))
+                    }
+                })
+            })
             .collect::<Result<_>>()?;
         let ds = ds.add_field_from_value_iter::<Label, DType, _, _>(values);
-
 
         Ok(ds)
     }
@@ -298,23 +295,21 @@ pub struct CsvReader<CsvSpec> {
 }
 
 impl<CsvSrcSpec> CsvReader<CsvSrcSpec>
-    // where Spec: AttachSrcPos + AssocFields
+// where Spec: AttachSrcPos + AssocFields
 {
     /// Create a new CSV reader from a CSV source specification. This will process header row (if
     /// exists), and verify the fields specified in the `CsvSource` object exist in this CSV file.
     // pub fn new<SrcFIdx, SpecTail>(src: &CsvSource, spec: SpecCons<Field, SrcFIdx, SpecTail>)
-    pub fn new<Spec>(src: &CsvSource, spec: Spec)
-        -> Result<CsvReader<Spec::CsvSrcSpec>>
-        where
-              Spec: IntoCsvSrcSpec<CsvSrcSpec=CsvSrcSpec>
-              // SrcFIdx: Position,
-              // Spec: AssocField<Field=Field>,
-              // SpecCons<Field, SrcFIdx, SpecTail>:
-              //   IntoCsvSrcSpec<CsvSrcSpec=CsvSrcSpecCons<Field, Tail>>,
-              // CsvSrcSpecCons<Field, Tail>: FromSpec<SpecCons<Field, SrcFIdx, SpecTail>>
-              // CsvSrcSpecCons<Field, Tail>: FromSpec<SpecCons<Field, SrcFIdx, SpecTail>>
-              // Tail: FromSpec<SpecTail>
-        // where Spec: Debug,
+    pub fn new<Spec>(src: &CsvSource, spec: Spec) -> Result<CsvReader<Spec::CsvSrcSpec>>
+    where
+        Spec: IntoCsvSrcSpec<CsvSrcSpec = CsvSrcSpec>, // SrcFIdx: Position,
+                                                       // Spec: AssocField<Field=Field>,
+                                                       // SpecCons<Field, SrcFIdx, SpecTail>:
+                                                       //   IntoCsvSrcSpec<CsvSrcSpec=CsvSrcSpecCons<Field, Tail>>,
+                                                       // CsvSrcSpecCons<Field, Tail>: FromSpec<SpecCons<Field, SrcFIdx, SpecTail>>
+                                                       // CsvSrcSpecCons<Field, Tail>: FromSpec<SpecCons<Field, SrcFIdx, SpecTail>>
+                                                       // Tail: FromSpec<SpecTail>
+                                                       // where Spec: Debug
     {
         // println!("spec: {:?}", spec);
         let file_reader = LocalFileReader::new(&src.src)?;
@@ -326,9 +321,14 @@ impl<CsvSrcSpec> CsvReader<CsvSrcSpec>
             let headers = csv_reader.headers()?;
             if headers.len() != src.metadata.num_fields {
                 return Err(AgnesError::CsvDialect(
-                    "header row does not match sniffed number of fields in CSV file".into()));
+                    "header row does not match sniffed number of fields in CSV file".into(),
+                ));
             }
-            headers.iter().enumerate().map(|(i, s)| (s.to_string(), i)).collect::<HashMap<_, _>>()
+            headers
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (s.to_string(), i))
+                .collect::<HashMap<_, _>>()
         } else {
             HashMap::new()
         };
@@ -337,20 +337,19 @@ impl<CsvSrcSpec> CsvReader<CsvSrcSpec>
         Ok(CsvReader {
             //TODO: remove source from here
             src: src.clone(),
-            csv_src_spec
+            csv_src_spec,
         })
     }
 
     /// Read a `CsvSource` into a `DataStore` object.
-    pub fn read(&mut self)
-        -> Result<DataStore<CsvSrcSpec::OutputFields>>
-        where
-              // Cons<Field, Tail>: DataStorage,
-              CsvSrcSpec: BuildDStore,
-              // FieldPayloadCons<Field, usize, Tail>: BuildDStore<OutputFields=Cons<Field, Tail>>
+    pub fn read(&mut self) -> Result<DataStore<CsvSrcSpec::OutputFields>>
+    where
+        // Cons<Field, Tail>: DataStorage,
+        CsvSrcSpec: BuildDStore,
+        // FieldPayloadCons<Field, usize, Tail>: BuildDStore<OutputFields=Cons<Field, Tail>>
         // -> Result<DataStore<StorageCons<Field, Tail>>>
         // where Field: FieldTypes
-    // pub fn read(&mut self) -> Result<DataStore<<Spec::WithSrcPos as AssocFields>::Fields>>
+        // pub fn read(&mut self) -> Result<DataStore<<Spec::WithSrcPos as AssocFields>::Fields>>
         // where Spec::Fields: DataStorage,
         //       Spec::WithSrcPos: AssocFields
         //         + BuildDStore<OutputFields=<Spec::WithSrcPos as AssocFields>::Fields>,

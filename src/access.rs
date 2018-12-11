@@ -1,4 +1,3 @@
-
 /*!
 Traits for accessing data within agnes data structures. Includes `DataIndex` for index-based access
 and `DataIterator` for iterator access.
@@ -8,11 +7,10 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use error::*;
-use field::{Value};
+use field::Value;
 
 /// Trait that provides access to values in a data field.
-pub trait DataIndex: Debug
-{
+pub trait DataIndex: Debug {
     /// The data type contained within this field.
     type DType;
 
@@ -23,17 +21,24 @@ pub trait DataIndex: Debug
     fn len(&self) -> usize;
 
     /// Returns whether or not this field is empty.
-    fn is_empty(&self) -> bool { self.len() == 0 }
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 
     /// Returns an iterator over the values in this field.
-    fn iter(&self) -> DataIterator<Self::DType> where Self: Sized {
+    fn iter(&self) -> DataIterator<Self::DType>
+    where
+        Self: Sized,
+    {
         DataIterator::new(self)
     }
 
-    fn permute<'a, 'b>(&'a self, permutation: &'b [usize])
-        -> Result<DataIterator<'a, 'b, Self::DType>>
-        where
-            Self: Sized,
+    fn permute<'a, 'b>(
+        &'a self,
+        permutation: &'b [usize],
+    ) -> Result<DataIterator<'a, 'b, Self::DType>>
+    where
+        Self: Sized,
     {
         DataIterator::with_permutation(self, permutation)
     }
@@ -43,78 +48,80 @@ pub trait DataIndex: Debug
     /// If this field has missing values, this method will return a vector of length less than that
     /// returned by the `len` method.
     fn to_vec(&self) -> Vec<Self::DType>
-        where
-            Self: Sized,
-            Self::DType: Clone
+    where
+        Self: Sized,
+        Self::DType: Clone,
     {
-        self.iter().filter_map(|value| {
-            match value {
+        self.iter()
+            .filter_map(|value| match value {
                 Value::Exists(value) => Some(value.clone()),
-                Value::Na => None
-            }
-        }).collect()
+                Value::Na => None,
+            })
+            .collect()
     }
 
     /// Copies values (missing or existing) in this field into a new `Vec`.
     fn to_value_vec(&self) -> Vec<Value<Self::DType>>
-        where
-            Self: Sized,
-            Self::DType: Clone
+    where
+        Self: Sized,
+        Self::DType: Clone,
     {
         self.iter().map(|value| value.cloned()).collect()
     }
-
-
 }
 /// Trait that provides mutable access to values in a data field.
-pub trait DataIndexMut: DataIndex
-{
+pub trait DataIndexMut: DataIndex {
     /// Add a value to this field.
     fn push(&mut self, value: Value<Self::DType>);
 }
 
 /// Iterator over the data in a data structure that implement DataIndex.
 pub struct DataIterator<'a, 'b, T>
-    where T: 'a
+where
+    T: 'a,
 {
-    data: &'a dyn DataIndex<DType=T>,
+    data: &'a dyn DataIndex<DType = T>,
     permutation: Permutation<&'b [usize]>,
     cur_idx: usize,
-    phantom: PhantomData<T>
+    phantom: PhantomData<T>,
 }
 impl<'a, 'b, T> DataIterator<'a, 'b, T>
-    where T: 'a
+where
+    T: 'a,
 {
     /// Create a new `DataIterator` from a type that implements `DataIndex`.
-    pub fn new(data: &'a dyn DataIndex<DType=T>) -> DataIterator<'a, 'b, T> {
+    pub fn new(data: &'a dyn DataIndex<DType = T>) -> DataIterator<'a, 'b, T> {
         DataIterator {
             data,
             permutation: Permutation::default(),
             cur_idx: 0,
-            phantom: PhantomData
+            phantom: PhantomData,
         }
     }
-    pub fn with_permutation(data: &'a dyn DataIndex<DType=T>, permutation: &'b [usize])
-        -> Result<DataIterator<'a, 'b, T>>
-    {
-        if permutation.len() > 0 && permutation.iter().max().unwrap() >= &data.len()
-        {
+    pub fn with_permutation(
+        data: &'a dyn DataIndex<DType = T>,
+        permutation: &'b [usize],
+    ) -> Result<DataIterator<'a, 'b, T>> {
+        if permutation.len() > 0 && permutation.iter().max().unwrap() >= &data.len() {
             return Err(AgnesError::LengthMismatch {
                 expected: data.len(),
-                actual: permutation.len()
+                actual: permutation.len(),
             });
         }
         Ok(DataIterator {
             data,
-            permutation: Permutation { perm: Some(permutation) },
+            permutation: Permutation {
+                perm: Some(permutation),
+            },
             cur_idx: 0,
-            phantom: PhantomData
+            phantom: PhantomData,
         })
     }
 }
 
 impl<'a, 'b, T> Iterator for DataIterator<'a, 'b, T>
-    where T: 'a,
+where
+    T: 'a,
 {
     type Item = Value<&'a T>;
 
@@ -124,7 +131,11 @@ impl<'a, 'b, T> Iterator for DataIterator<'a, 'b, T>
         if self.permutation.is_permuted() && self.cur_idx < self.permutation.len().unwrap()
             || !self.permutation.is_permuted() && self.cur_idx < self.data.len()
         {
-            let out = Some(self.data.get_datum(self.permutation.map_index(self.cur_idx)).unwrap());
+            let out = Some(
+                self.data
+                    .get_datum(self.permutation.map_index(self.cur_idx))
+                    .unwrap(),
+            );
             self.cur_idx += 1;
             out
         } else {
@@ -134,32 +145,29 @@ impl<'a, 'b, T> Iterator for DataIterator<'a, 'b, T>
 }
 
 #[derive(Debug, Clone)]
-pub struct Permutation<I>
-{
+pub struct Permutation<I> {
     perm: Option<I>,
 }
-impl<I> Default for Permutation<I>
-{
-    fn default() -> Permutation<I>
-    {
-        Permutation
-        {
-            perm: None,
-        }
+impl<I> Default for Permutation<I> {
+    fn default() -> Permutation<I> {
+        Permutation { perm: None }
     }
 }
 
-impl Permutation<Vec<usize>>
-{
-    pub(crate) fn update(&mut self, new_permutation: &[usize])
-    {
+impl Permutation<Vec<usize>> {
+    pub(crate) fn update(&mut self, new_permutation: &[usize]) {
         // check if we already have a permutation
         self.perm = match self.perm {
             Some(ref prev_perm) => {
                 // we already have a permutation, map the filter indices through it
-                Some(new_permutation.iter().map(|&new_idx| prev_perm[new_idx]).collect())
-            },
-            None => Some(new_permutation.iter().map(|&idx| idx).collect())
+                Some(
+                    new_permutation
+                        .iter()
+                        .map(|&new_idx| prev_perm[new_idx])
+                        .collect(),
+                )
+            }
+            None => Some(new_permutation.iter().map(|&idx| idx).collect()),
         };
     }
 }
@@ -187,86 +195,85 @@ macro_rules! impl_permutation_len {
 }
 impl_permutation_len![&[usize] Vec<usize>];
 
-pub trait SortOrder
-{
+pub trait SortOrder {
     fn sort_order(&self) -> Vec<usize>;
 }
 
-impl<DI> SortOrder
-    for DI
-    where
-        DI: DataIndex,
-        <DI as DataIndex>::DType: Ord
+impl<DI> SortOrder for DI
+where
+    DI: DataIndex,
+    <DI as DataIndex>::DType: Ord,
 {
-    fn sort_order(&self) -> Vec<usize>
-    {
+    fn sort_order(&self) -> Vec<usize> {
         let mut order = (0..self.len()).collect::<Vec<_>>();
         order.sort_by(|&left, &right| {
             // a, b are always in range, so unwraps are safe
-            self.get_datum(left).unwrap().cmp(&self.get_datum(right).unwrap())
+            self.get_datum(left)
+                .unwrap()
+                .cmp(&self.get_datum(right).unwrap())
         });
         order
     }
 }
 
-pub trait SortOrderUnstable
-{
+pub trait SortOrderUnstable {
     fn sort_order_unstable(&self) -> Vec<usize>;
 }
 
-impl<DI> SortOrderUnstable
-    for DI
-    where
-        DI: DataIndex,
-        <DI as DataIndex>::DType: Ord
+impl<DI> SortOrderUnstable for DI
+where
+    DI: DataIndex,
+    <DI as DataIndex>::DType: Ord,
 {
-    fn sort_order_unstable(&self) -> Vec<usize>
-    {
+    fn sort_order_unstable(&self) -> Vec<usize> {
         let mut order = (0..self.len()).collect::<Vec<_>>();
         order.sort_unstable_by(|&left, &right| {
             // a, b are always in range, so unwraps are safe
-            self.get_datum(left).unwrap().cmp(&self.get_datum(right).unwrap())
+            self.get_datum(left)
+                .unwrap()
+                .cmp(&self.get_datum(right).unwrap())
         });
         order
     }
 }
 
-pub trait SortOrderComparator<F>
-{
+pub trait SortOrderComparator<F> {
     fn sort_order_by(&self, compare: F) -> Vec<usize>;
 }
 
-impl<DI, F> SortOrderComparator<F>
-    for DI
-    where
-        DI: DataIndex,
-        F: FnMut(Value<&DI::DType>, Value<&DI::DType>) -> Ordering
+impl<DI, F> SortOrderComparator<F> for DI
+where
+    DI: DataIndex,
+    F: FnMut(Value<&DI::DType>, Value<&DI::DType>) -> Ordering,
 {
     fn sort_order_by(&self, mut compare: F) -> Vec<usize> {
         let mut order = (0..self.len()).collect::<Vec<_>>();
         order.sort_by(|&left, &right| {
-            compare(self.get_datum(left).unwrap(), self.get_datum(right).unwrap())
+            compare(
+                self.get_datum(left).unwrap(),
+                self.get_datum(right).unwrap(),
+            )
         });
         order
     }
 }
 
-pub trait SortOrderUnstableComparator<F>
-{
+pub trait SortOrderUnstableComparator<F> {
     fn sort_order_unstable_by(&self, compare: F) -> Vec<usize>;
 }
 
-
-impl<DI, F> SortOrderUnstableComparator<F>
-    for DI
-    where
-        DI: DataIndex,
-        F: FnMut(Value<&DI::DType>, Value<&DI::DType>) -> Ordering
+impl<DI, F> SortOrderUnstableComparator<F> for DI
+where
+    DI: DataIndex,
+    F: FnMut(Value<&DI::DType>, Value<&DI::DType>) -> Ordering,
 {
     fn sort_order_unstable_by(&self, mut compare: F) -> Vec<usize> {
         let mut order = (0..self.len()).collect::<Vec<_>>();
         order.sort_unstable_by(|&left, &right| {
-            compare(self.get_datum(left).unwrap(), self.get_datum(right).unwrap())
+            compare(
+                self.get_datum(left).unwrap(),
+                self.get_datum(right).unwrap(),
+            )
         });
         order
     }
@@ -283,31 +290,30 @@ pub fn sort_float(left: &f64, right: &f64) -> Ordering {
     })
 }
 pub fn sort_float_values(left: Value<&f64>, right: Value<&f64>) -> Ordering {
-    match (left, right){
+    match (left, right) {
         (Value::Na, Value::Na) => Ordering::Equal,
         (Value::Na, Value::Exists(_)) => Ordering::Less,
         (Value::Exists(_), Value::Na) => Ordering::Greater,
-        (Value::Exists(ref left), Value::Exists(ref right)) => sort_float(left, right)
+        (Value::Exists(ref left), Value::Exists(ref right)) => sort_float(left, right),
     }
 }
 
-pub trait FilterPerm<P>
-{
+pub trait FilterPerm<P> {
     fn filter_perm(&self, predicate: P) -> Vec<usize>;
 }
 
-impl<DI, P> FilterPerm<P>
-    for DI
-    where
-        DI: DataIndex,
-        P: FnMut(Value<&DI::DType>) -> bool
+impl<DI, P> FilterPerm<P> for DI
+where
+    DI: DataIndex,
+    P: FnMut(Value<&DI::DType>) -> bool,
 {
-    fn filter_perm(&self, mut predicate: P) -> Vec<usize>
-    {
+    fn filter_perm(&self, mut predicate: P) -> Vec<usize> {
         let order = (0..self.len()).collect::<Vec<_>>();
-        order.iter().filter(|&&idx| {
-            predicate(self.get_datum(idx).unwrap())
-        }).map(|&idx| idx).collect()
+        order
+            .iter()
+            .filter(|&&idx| predicate(self.get_datum(idx).unwrap()))
+            .map(|&idx| idx)
+            .collect()
     }
 }
 
@@ -322,8 +328,7 @@ mod tests {
         let sorted_order = field_data.sort_order();
         assert_eq!(sorted_order, vec![3, 0, 2, 1, 4]);
 
-        let field_data: FieldData<f64> =
-            FieldData::from_vec(vec![2.0, 5.4, 3.1, 1.1, 8.2]);
+        let field_data: FieldData<f64> = FieldData::from_vec(vec![2.0, 5.4, 3.1, 1.1, 8.2]);
         let sorted_order = field_data.sort_order_by(sort_float_values);
         assert_eq!(sorted_order, vec![3, 0, 2, 1, 4]);
 
@@ -345,7 +350,7 @@ mod tests {
             Value::Exists(5),
             Value::Na,
             Value::Exists(1),
-            Value::Exists(8)
+            Value::Exists(8),
         ]);
         let sorted_order = field_data.sort_order();
         assert_eq!(sorted_order, vec![2, 3, 0, 1, 4]);
@@ -355,7 +360,7 @@ mod tests {
             Value::Exists(5.5),
             Value::Na,
             Value::Exists(1.1),
-            Value::Exists(8.2930)
+            Value::Exists(8.2930),
         ]);
         let sorted_order = field_data.sort_order_by(sort_float_values);
         assert_eq!(sorted_order, vec![2, 3, 0, 1, 4]);
@@ -365,7 +370,7 @@ mod tests {
             Value::Exists(::std::f64::NAN),
             Value::Na,
             Value::Exists(1.1),
-            Value::Exists(8.2930)
+            Value::Exists(8.2930),
         ]);
         let sorted_order = field_data.sort_order_by(sort_float_values);
         assert_eq!(sorted_order, vec![2, 1, 3, 0, 4]);
@@ -375,7 +380,7 @@ mod tests {
             Value::Exists(::std::f64::NAN),
             Value::Na,
             Value::Exists(::std::f64::INFINITY),
-            Value::Exists(8.2930)
+            Value::Exists(8.2930),
         ]);
         let sorted_order = field_data.sort_order_by(sort_float_values);
         assert_eq!(sorted_order, vec![2, 1, 0, 4, 3]);

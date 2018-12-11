@@ -1,6 +1,6 @@
 use std::ops::Add;
 
-use typenum::{Unsigned, UTerm, Add1, B1};
+use typenum::{Add1, UTerm, Unsigned, B1};
 
 /// The end of a heterogeneous type list.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -16,17 +16,15 @@ pub struct Cons<H, T> {
 
 /// Helper function to construct a [Cons](struct.Cons.html) list.
 pub fn cons<H, T>(head: H, tail: T) -> Cons<H, T> {
-    Cons {
-        head,
-        tail
-    }
+    Cons { head, tail }
 }
 
 /// Trait for adding a new element to the front of a [heterogeneous list](struct.Cons.html).
-pub trait PushFront
-{
+pub trait PushFront {
     /// Add an element to the front of this heterogeneous list.
-    fn push_front<H>(self, head: H) -> Cons<H, Self> where Self: Sized
+    fn push_front<H>(self, head: H) -> Cons<H, Self>
+    where
+        Self: Sized,
     {
         cons(head, self)
     }
@@ -48,7 +46,10 @@ impl<U> PushBack<U> for Nil {
         cons(elem, Nil)
     }
 }
-impl<U, H, T> PushBack<U> for Cons<H, T> where T: PushBack<U> {
+impl<U, H, T> PushBack<U> for Cons<H, T>
+where
+    T: PushBack<U>,
+{
     type Output = Cons<H, T::Output>;
     fn push_back(self, elem: U) -> Cons<H, T::Output> {
         cons(self.head, self.tail.push_back(elem))
@@ -68,7 +69,10 @@ impl<List> Append<List> for Nil {
         list
     }
 }
-impl<List, H, T> Append<List> for Cons<H, T> where T: Append<List> {
+impl<List, H, T> Append<List> for Cons<H, T>
+where
+    T: Append<List>,
+{
     type Appended = Cons<H, T::Appended>;
     fn append(self, list: List) -> Cons<H, T::Appended> {
         cons(self.head, self.tail.append(list))
@@ -90,7 +94,6 @@ impl<List, H, T> Append<List> for Cons<H, T> where T: Append<List> {
 //     }}
 // }
 
-
 // doesn't work
 // #[macro_export]
 // macro_rules! apply_to {
@@ -107,23 +110,29 @@ impl<List, H, T> Append<List> for Cons<H, T> where T: Append<List> {
 pub trait Len {
     type Len: Unsigned;
 
-    fn is_empty(&self) -> bool { self.len() == 0 }
-    fn len(&self) -> usize { Self::Len::to_usize() }
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    fn len(&self) -> usize {
+        Self::Len::to_usize()
+    }
 }
 
 impl Len for Nil {
     type Len = UTerm;
 }
-impl<Head, Tail> Len
-    for Cons<Head, Tail>
-    where Tail: Len,
-          <Tail as Len>::Len: Add<B1>,
-          <<Tail as Len>::Len as Add<B1>>::Output: Unsigned,
+impl<Head, Tail> Len for Cons<Head, Tail>
+where
+    Tail: Len,
+    <Tail as Len>::Len: Add<B1>,
+    <<Tail as Len>::Len as Add<B1>>::Output: Unsigned,
 {
     type Len = Add1<<Tail as Len>::Len>;
 }
 
 #[macro_export]
 macro_rules! length {
-    ($list:ty) => (<<$list as $crate::cons::Len>::Len as typenum::Unsigned>::USIZE)
+    ($list:ty) => {
+        <<$list as $crate::cons::Len>::Len as typenum::Unsigned>::USIZE
+    };
 }

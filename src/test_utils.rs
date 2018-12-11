@@ -2,11 +2,11 @@
 // use store::{WithClonedDataFromIter};
 use typenum::Add1;
 
-use field::FieldData;
 use access::DataIndex;
-use fieldlist::FieldCons;
 use cons::Nil;
+use field::FieldData;
 use field::Value;
+use fieldlist::FieldCons;
 use store::DataStore;
 use view::ViewMerge;
 
@@ -24,12 +24,12 @@ macro_rules! emp_table_from_field {
             .add_field($empids)
             .add_field($deptids)
             .add_field($names)
-    }}
+    }};
 }
 macro_rules! emp_table {
     ($empids:expr, $deptids:expr, $names:expr) => {{
         emp_table_from_field![$empids.into(), $deptids.into(), $names.into()]
-    }}
+    }};
 }
 macro_rules! sample_emp_table {
     () => {{
@@ -38,10 +38,9 @@ macro_rules! sample_emp_table {
             vec![1u64, 2, 1, 1, 3, 4, 4],
             vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"]
         ]
-    }}
+    }};
 }
-pub fn sample_emp_table() -> emp_table::Store
-{
+pub fn sample_emp_table() -> emp_table::Store {
     sample_emp_table![]
 }
 
@@ -53,16 +52,12 @@ namespace![
     }
 ];
 
-pub fn sample_emp_table_extra()
-    -> extra_emp::Store
-{
+pub fn sample_emp_table_extra() -> extra_emp::Store {
     DataStore::<Nil>::empty()
         .add_cloned_field_from_iter(&[-5i64, 4, 12, -33, 10, 0, -1])
         .add_cloned_field_from_iter(&[false, false, true, true, true, false, true])
         .add_cloned_field_from_iter(&[47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5])
 }
-
-
 
 namespace![
     pub namespace full_emp_table: extra_emp {
@@ -75,15 +70,14 @@ namespace![
     }
 ];
 
-pub fn sample_emp_table_full()
-    -> full_emp_table::Store
-{
+pub fn sample_emp_table_full() -> full_emp_table::Store {
     DataStore::<Nil>::empty()
         .add_cloned_field_from_iter(&[0u64, 2, 5, 6, 8, 9, 10])
         .add_cloned_field_from_iter(&[1u64, 2, 1, 1, 3, 4, 4])
         .add_field_from_iter(
-            ["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"].iter()
-            .map(|&s| s.to_string())
+            ["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"]
+                .iter()
+                .map(|&s| s.to_string()),
         )
         .add_cloned_field_from_iter(&[-5i64, 4, 12, -33, 10, 0, -1])
         .add_cloned_field_from_iter(&[false, false, true, true, true, false, true])
@@ -97,36 +91,34 @@ namespace![
     }
 ];
 
-pub fn sample_dept_table()
-    -> dept_table::Store
-{
-    dept_table(vec![1u64, 2, 3, 4], vec!["Marketing", "Sales", "Manufacturing", "R&D"])
+pub fn sample_dept_table() -> dept_table::Store {
+    dept_table(
+        vec![1u64, 2, 3, 4],
+        vec!["Marketing", "Sales", "Manufacturing", "R&D"],
+    )
 }
-pub fn dept_table(
-    deptids: Vec<u64>, names: Vec<&str>
-)
-    -> dept_table::Store
-{
+pub fn dept_table(deptids: Vec<u64>, names: Vec<&str>) -> dept_table::Store {
     dept_table_from_field(deptids.into(), names.into())
 }
 pub fn dept_table_from_field(
-    deptids: FieldData<u64>, names: FieldData<String>
-)
-    -> dept_table::Store
-{
+    deptids: FieldData<u64>,
+    names: FieldData<String>,
+) -> dept_table::Store {
     dept_table::Store::empty()
         .add_field(deptids)
         .add_field(names)
 }
 
-pub fn sample_merged_emp_table() -> <emp_table::View as ViewMerge<extra_emp::View>>::Output
-{
-    sample_emp_table().into_view().merge(&sample_emp_table_extra().into_view()).unwrap()
+pub fn sample_merged_emp_table() -> <emp_table::View as ViewMerge<extra_emp::View>>::Output {
+    sample_emp_table()
+        .into_view()
+        .merge(&sample_emp_table_extra().into_view())
+        .unwrap()
 }
 // pub fn sample_merged_emp_table() -> dt_std::DataView {
-    // let ds = sample_emp_table();
-    // let orig_dv: dt_std::DataView = ds.into();
-    // orig_dv.merge(&sample_emp_table_extra().into()).unwrap()
+// let ds = sample_emp_table();
+// let orig_dv: dt_std::DataView = ds.into();
+// orig_dv.merge(&sample_emp_table_extra().into()).unwrap()
 // }
 // pub trait MergedWithSample {
 //     fn merged_with_sample_emp_table(self, name: &str) -> dt_std::DataView;

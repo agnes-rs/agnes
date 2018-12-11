@@ -1,6 +1,8 @@
-#[macro_use] extern crate agnes;
+#[macro_use]
+extern crate agnes;
 extern crate serde;
-#[macro_use] extern crate serde_json;
+#[macro_use]
+extern crate serde_json;
 extern crate csv_sniffer;
 extern crate typenum;
 

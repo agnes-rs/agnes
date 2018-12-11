@@ -14,89 +14,82 @@ parameters.
 
 */
 use std::collections::VecDeque;
-use std::rc::Rc;
-use std::marker::PhantomData;
 use std::fmt::{self, Display, Formatter};
+use std::marker::PhantomData;
+use std::rc::Rc;
 
-#[cfg(serialize)]
-use serde::ser::{self, Serialize, Serializer, SerializeMap};
 use prettytable as pt;
+#[cfg(serialize)]
+use serde::ser::{self, Serialize, SerializeMap, Serializer};
 
 use access::*;
 use error;
-use frame::{DataFrame, Framed, FrameFields, FrameFieldsOf};
+use frame::{DataFrame, FrameFields, FrameFieldsOf, Framed};
 
 #[cfg(serialize)]
-use frame::{SerializedField};
+use frame::SerializedField;
 // use frame::{DataFrame, FramedMap, FramedTMap, FramedMapExt, Framed, FramedFunc, SerializedField};
 // use filter::Filter;
-use field::{Value};
+use field::Value;
 use join::*;
 // use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list, MergedFields,
 //     MergeFields};
-use fieldlist::{FieldCons, FieldPayloadCons};
-use features::{Func, FuncDefault, Implemented, Unimplemented, IsImplemented,
-    DeriveCapabilities, PartialMap};
 use cons::*;
+use features::{
+    DeriveCapabilities, Func, FuncDefault, Implemented, IsImplemented, PartialMap, Unimplemented,
+};
+use fieldlist::{FieldCons, FieldPayloadCons};
 // use store::{DataStore, CopyIntoFn};
-use store::{NRows, AssocStorage};
+use store::{AssocStorage, NRows};
 // use data_types::*;
 // use apply::sort::{DtOrd, SortOrderFn};
-use select::{SelectFieldByLabel, FieldSelect};
 use label::*;
+use select::{FieldSelect, SelectFieldByLabel};
 
 // `Labels` is `FrameLookupCons` cons-list. `Frames` is `ViewFrameCons` cons-list.
 #[derive(Debug, Clone, Default)]
-pub struct DataView<Labels, Frames>
-{
+pub struct DataView<Labels, Frames> {
     pub(crate) _labels: PhantomData<Labels>,
     pub(crate) frames: Frames,
 }
 
-pub type FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
-    = LMCons<Label, FrameDetailMarkers<FrameIndex, FrameLabel>, Tail>;
-pub type ViewFrameCons<FrameIndex, FrameFields, Tail>
-    = LVCons<FrameIndex, DataFrame<FrameFields>, Tail>;
-
+pub type FrameLookupCons<Label, FrameIndex, FrameLabel, Tail> =
+    LMCons<Label, FrameDetailMarkers<FrameIndex, FrameLabel>, Tail>;
+pub type ViewFrameCons<FrameIndex, FrameFields, Tail> =
+    LVCons<FrameIndex, DataFrame<FrameFields>, Tail>;
 
 // pub type FrameLookupCons<Label, FrameLabel, Tail> = LMCons<Label, FrameLabel, Tail>;
-pub struct FrameDetailMarkers<FrameIndex, FrameLabel>
-{
-    _marker: PhantomData<(FrameIndex, FrameLabel)>
+pub struct FrameDetailMarkers<FrameIndex, FrameLabel> {
+    _marker: PhantomData<(FrameIndex, FrameLabel)>,
 }
-pub trait FrameDetails
-{
+pub trait FrameDetails {
     type FrameIndex: Identifier;
     type FrameLabel: Label;
 }
-impl<FrameIndex, FrameLabel> FrameDetails
-    for FrameDetailMarkers<FrameIndex, FrameLabel>
-    where
-        FrameIndex: Identifier,
-        FrameLabel: Label
+impl<FrameIndex, FrameLabel> FrameDetails for FrameDetailMarkers<FrameIndex, FrameLabel>
+where
+    FrameIndex: Identifier,
+    FrameLabel: Label,
 {
     type FrameIndex = FrameIndex;
     type FrameLabel = FrameLabel;
 }
 
 /// Allow `DataFrame`s to be pulled from `LVCons` as `Value`s
-impl<FrameFields> SelfValued for DataFrame<FrameFields>
-    where FrameFields: AssocStorage {}
+impl<FrameFields> SelfValued for DataFrame<FrameFields> where FrameFields: AssocStorage {}
 
-impl<FrameIndex, FrameFields, Tail> NRows
-    for ViewFrameCons<FrameIndex, FrameFields, Tail>
-    where FrameFields: AssocStorage,
-          DataFrame<FrameFields>: NRows,
+impl<FrameIndex, FrameFields, Tail> NRows for ViewFrameCons<FrameIndex, FrameFields, Tail>
+where
+    FrameFields: AssocStorage,
+    DataFrame<FrameFields>: NRows,
 {
     fn nrows(&self) -> usize {
         self.head.value_ref().nrows()
     }
 }
 
-impl<Labels, Frames> DataView<Labels, Frames>
-{
-    pub fn new(frames: Frames) -> DataView<Labels, Frames>
-    {
+impl<Labels, Frames> DataView<Labels, Frames> {
+    pub fn new(frames: Frames) -> DataView<Labels, Frames> {
         DataView {
             _labels: PhantomData,
             frames,
@@ -104,115 +97,113 @@ impl<Labels, Frames> DataView<Labels, Frames>
     }
 }
 
-impl<Labels, Frames> DataView<Labels, Frames>
-{
+impl<Labels, Frames> DataView<Labels, Frames> {
     /// Field names in this data view
     pub fn fieldnames<'a>(&'a self) -> Vec<&'a str>
-        where Labels: StrLabels
+    where
+        Labels: StrLabels,
     {
         <Labels as StrLabels>::labels().into()
     }
 }
 
-pub trait FrameIndexList
-{
+pub trait FrameIndexList {
     type LabelList;
 }
 
-impl FrameIndexList for Nil
-{
+impl FrameIndexList for Nil {
     type LabelList = Nil;
 }
 
-impl<Label, FrameIndex, FrameLabel, Tail>
-    FrameIndexList
+impl<Label, FrameIndex, FrameLabel, Tail> FrameIndexList
     for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
-    where
-        Tail: FrameIndexList
+where
+    Tail: FrameIndexList,
 {
     type LabelList = LCons<FrameIndex, <Tail as FrameIndexList>::LabelList>;
 }
 
-
 impl<Labels, Frames> DataView<Labels, Frames>
-    where Frames: Clone
+where
+    Frames: Clone,
 {
     /// Generate a new subview of this DataView. LabelList is an LabelCons.
-    pub fn v<LabelList>(&self)
-        -> DataView<
-            <Labels as Filter<LabelList>>::Filtered,
-            <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Filtered
-        >
-        where Labels: HasLabels<LabelList> + Filter<LabelList> + FrameIndexList,
-              Frames: FilterClone<<Labels as FrameIndexList>::LabelList>
+    pub fn v<LabelList>(
+        &self,
+    ) -> DataView<
+        <Labels as Filter<LabelList>>::Filtered,
+        <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Filtered,
+    >
+    where
+        Labels: HasLabels<LabelList> + Filter<LabelList> + FrameIndexList,
+        Frames: FilterClone<<Labels as FrameIndexList>::LabelList>,
     {
         DataView {
             _labels: PhantomData,
             frames: self.frames.filter_clone(),
         }
     }
-    pub fn subview<LabelList>(&self)
-        -> DataView<
-            <Labels as Filter<LabelList>>::Filtered,
-            <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Filtered
-        >
-        where Labels: HasLabels<LabelList> + Filter<LabelList> + FrameIndexList,
-              Frames: FilterClone<<Labels as FrameIndexList>::LabelList>
+    pub fn subview<LabelList>(
+        &self,
+    ) -> DataView<
+        <Labels as Filter<LabelList>>::Filtered,
+        <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Filtered,
+    >
+    where
+        Labels: HasLabels<LabelList> + Filter<LabelList> + FrameIndexList,
+        Frames: FilterClone<<Labels as FrameIndexList>::LabelList>,
     {
         self.v::<LabelList>()
     }
 }
 
 impl<Labels, Frames> DataView<Labels, Frames>
-    where Frames: NRows
+where
+    Frames: NRows,
 {
     /// Number of rows in this data view
-    pub fn nrows(&self) -> usize
-    {
+    pub fn nrows(&self) -> usize {
         self.frames.nrows()
     }
 }
 
 impl<Labels, Frames> DataView<Labels, Frames>
-    where Labels: Len, Frames: Len
+where
+    Labels: Len,
+    Frames: Len,
 {
     /// Returns `true` if the DataView is empty (has no rows or has no fields)
-    pub fn is_empty(&self) -> bool
-    {
+    pub fn is_empty(&self) -> bool {
         length![Labels] == 0 || self.frames.is_empty()
     }
     /// Number of fields in this data view
-    pub fn nfields(&self) -> usize
-    {
+    pub fn nfields(&self) -> usize {
         length![Labels]
     }
     /// Number of frames this data view covers
-    pub fn nframes(&self) -> usize
-    {
+    pub fn nframes(&self) -> usize {
         length![Frames]
     }
 }
 
 #[cfg(test)]
-pub trait StoreRefCounts
-{
+pub trait StoreRefCounts {
     fn store_ref_counts(&self) -> VecDeque<usize>;
 }
 
 #[cfg(test)]
-impl StoreRefCounts for Nil
-{
-    fn store_ref_counts(&self) -> VecDeque<usize> { VecDeque::new() }
+impl StoreRefCounts for Nil {
+    fn store_ref_counts(&self) -> VecDeque<usize> {
+        VecDeque::new()
+    }
 }
 #[cfg(test)]
-impl<FrameIndex, FrameFields, Tail> StoreRefCounts
-    for ViewFrameCons<FrameIndex, FrameFields, Tail>
-    where
-        FrameFields: AssocStorage,
-        Tail: StoreRefCounts
+impl<FrameIndex, FrameFields, Tail> StoreRefCounts for ViewFrameCons<FrameIndex, FrameFields, Tail>
+where
+    FrameFields: AssocStorage,
+    Tail: StoreRefCounts,
 {
-    fn store_ref_counts(&self) -> VecDeque<usize>
-    {
+    fn store_ref_counts(&self) -> VecDeque<usize> {
         let mut previous = self.tail.store_ref_counts();
         previous.push_front(self.head.value_ref().store_ref_count());
         previous
@@ -221,52 +212,48 @@ impl<FrameIndex, FrameFields, Tail> StoreRefCounts
 
 #[cfg(test)]
 impl<Labels, Frames> DataView<Labels, Frames>
-    where Frames: StoreRefCounts
+where
+    Frames: StoreRefCounts,
 {
-    pub fn store_ref_counts(&self) -> VecDeque<usize>
-    {
+    pub fn store_ref_counts(&self) -> VecDeque<usize> {
         Frames::store_ref_counts(&self.frames)
     }
 }
 
-
-pub trait FindFrameDetails<Label>: LookupMarkedElemByLabel<Label>
-{
+pub trait FindFrameDetails<Label>: LookupMarkedElemByLabel<Label> {
     type FrameDetails: FrameDetails;
 }
-impl<Labels, Label> FindFrameDetails<Label>
-    for Labels
-    where
-        Labels: LookupMarkedElemByLabel<Label>,
-        MarkerOfElemOf<Labels, Label>: FrameDetails
+impl<Labels, Label> FindFrameDetails<Label> for Labels
+where
+    Labels: LookupMarkedElemByLabel<Label>,
+    MarkerOfElemOf<Labels, Label>: FrameDetails,
 {
     type FrameDetails = MarkerOfElemOf<Labels, Label>;
 }
 pub type FrameDetailsOf<Labels, Label> = <Labels as FindFrameDetails<Label>>::FrameDetails;
-pub type FrameIndexOf<Labels, Label>
-    = <<Labels as FindFrameDetails<Label>>::FrameDetails as FrameDetails>::FrameIndex;
-pub type FrameLabelOf<Labels, Label>
-    = <<Labels as FindFrameDetails<Label>>::FrameDetails as FrameDetails>::FrameLabel;
+pub type FrameIndexOf<Labels, Label> =
+    <<Labels as FindFrameDetails<Label>>::FrameDetails as FrameDetails>::FrameIndex;
+pub type FrameLabelOf<Labels, Label> =
+    <<Labels as FindFrameDetails<Label>>::FrameDetails as FrameDetails>::FrameLabel;
 
-pub trait FindFrame<Labels, Label>:
-    LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>
-    where
-        Labels: FindFrameDetails<Label>
-{}
-impl<Frames, Labels, Label> FindFrame<Labels, Label>
-    for Frames
-    where
-        Labels: FindFrameDetails<Label>,
-        Frames: LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>,
-{}
+pub trait FindFrame<Labels, Label>: LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>
+where
+    Labels: FindFrameDetails<Label>,
+{
+}
+impl<Frames, Labels, Label> FindFrame<Labels, Label> for Frames
+where
+    Labels: FindFrameDetails<Label>,
+    Frames: LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>,
+{
+}
 pub type FrameElemByFrameIndexOf<Frames, FrameIndex> =
     <Frames as LookupValuedElemByLabel<FrameIndex>>::Elem;
 pub type FrameByFrameIndexOf<Frames, FrameIndex> =
     <FrameElemByFrameIndexOf<Frames, FrameIndex> as Valued>::Value;
 pub type FrameElemOf<Frames, Labels, Label> =
     FrameElemByFrameIndexOf<Frames, FrameIndexOf<Labels, Label>>;
-pub type FrameOf<Frames, Labels, Label> =
-    <FrameElemOf<Frames, Labels, Label> as Valued>::Value;
+pub type FrameOf<Frames, Labels, Label> = <FrameElemOf<Frames, Labels, Label> as Valued>::Value;
 
 pub type FieldFromFrameDetailsOf<Frames, FrameIndex, FrameLabel> =
     <FrameByFrameIndexOf<Frames, FrameIndex> as SelectFieldByLabel<FrameLabel>>::Output;
@@ -275,80 +262,68 @@ pub type FieldTypeFromFrameDetailsOf<Frames, FrameIndex, FrameLabel> =
 
 pub type FieldOf<Frames, Labels, Label> =
     <FrameOf<Frames, Labels, Label> as SelectFieldByLabel<FrameLabelOf<Labels, Label>>>::Output;
-pub type FieldTypeOf<Frames, Labels, Label> =
-    <FieldOf<Frames, Labels, Label> as DataIndex>::DType;
+pub type FieldTypeOf<Frames, Labels, Label> = <FieldOf<Frames, Labels, Label> as DataIndex>::DType;
 
 pub type VFieldOf<View, Label> = <View as SelectFieldByLabel<Label>>::Output;
 pub type VFieldTypeOf<View, Label> = <VFieldOf<View, Label> as DataIndex>::DType;
 
-pub trait FrameRef<'a, Labels, Frames, Label>
-{
+pub trait FrameRef<'a, Labels, Frames, Label> {
     type Output: 'a;
     fn frame_ref(&'a self) -> &'a Self::Output;
 }
-impl<Labels, Frames>
-    DataView<Labels, Frames>
-{
+impl<Labels, Frames> DataView<Labels, Frames> {
     fn frame_ref<'a, Label>(&'a self) -> &'a <Self as FrameRef<'a, Labels, Frames, Label>>::Output
-        where
-            Self: FrameRef<'a, Labels, Frames, Label>,
-            Labels: FindFrameDetails<Label>,
-            Frames: FindFrame<Labels, Label>,
-            FrameOf<Frames, Labels, Label>: 'a
+    where
+        Self: FrameRef<'a, Labels, Frames, Label>,
+        Labels: FindFrameDetails<Label>,
+        Frames: FindFrame<Labels, Label>,
+        FrameOf<Frames, Labels, Label>: 'a,
     {
         FrameRef::<_, _, Label>::frame_ref(self)
     }
 }
-impl<'a, Labels, Frames, Label>
-    FrameRef<'a, Labels, Frames, Label>
-    for DataView<Labels, Frames>
-    where
-        Labels: FindFrameDetails<Label>,
-        Frames: FindFrame<Labels, Label>,
-        FrameElemOf<Frames, Labels, Label>: 'a,
-        FrameOf<Frames, Labels, Label>: 'a
+impl<'a, Labels, Frames, Label> FrameRef<'a, Labels, Frames, Label> for DataView<Labels, Frames>
+where
+    Labels: FindFrameDetails<Label>,
+    Frames: FindFrame<Labels, Label>,
+    FrameElemOf<Frames, Labels, Label>: 'a,
+    FrameOf<Frames, Labels, Label>: 'a,
 {
     type Output = FrameOf<Frames, Labels, Label>;
-    fn frame_ref(&'a self) -> &'a Self::Output
-    {
+    fn frame_ref(&'a self) -> &'a Self::Output {
         LookupValuedElemByLabel::<FrameIndexOf<Labels, Label>>::elem(&self.frames).value_ref()
     }
 }
 
-
-pub trait SelectFieldFromLabels<Labels, Label>
-{
+pub trait SelectFieldFromLabels<Labels, Label> {
     type Output: DataIndex;
     fn select_field(&self) -> Self::Output;
 }
-impl<Labels, Frames, Label> SelectFieldFromLabels<Labels, Label>
-    for Frames
-    where
-        Labels: FindFrameDetails<Label>,
-        Frames: FindFrame<Labels, Label>,
-        FrameOf<Frames, Labels, Label>: SelectFieldByLabel<FrameLabelOf<Labels, Label>>,
-        FieldOf<Frames, Labels, Label>: Typed + SelfValued + Clone,
-        TypeOf<FieldOf<Frames, Labels, Label>>: fmt::Debug,
+impl<Labels, Frames, Label> SelectFieldFromLabels<Labels, Label> for Frames
+where
+    Labels: FindFrameDetails<Label>,
+    Frames: FindFrame<Labels, Label>,
+    FrameOf<Frames, Labels, Label>: SelectFieldByLabel<FrameLabelOf<Labels, Label>>,
+    FieldOf<Frames, Labels, Label>: Typed + SelfValued + Clone,
+    TypeOf<FieldOf<Frames, Labels, Label>>: fmt::Debug,
 {
     type Output = FieldOf<Frames, Labels, Label>;
 
-    fn select_field(&self) -> Self::Output
-    {
+    fn select_field(&self) -> Self::Output {
         SelectFieldByLabel::<FrameLabelOf<Labels, Label>>::select_field(
-            LookupValuedElemByLabel::<FrameIndexOf<Labels, Label>>::elem(self).value_ref()
-        ).clone()
+            LookupValuedElemByLabel::<FrameIndexOf<Labels, Label>>::elem(self).value_ref(),
+        )
+        .clone()
     }
 }
 
-impl<Labels, Frames, Label> SelectFieldByLabel<Label>
-    for DataView<Labels, Frames>
-    where
-          Frames: SelectFieldFromLabels<Labels, Label>,
+impl<Labels, Frames, Label> SelectFieldByLabel<Label> for DataView<Labels, Frames>
+where
+    Frames: SelectFieldFromLabels<Labels, Label>,
 {
     type Output = <Frames as SelectFieldFromLabels<Labels, Label>>::Output;
 
-    fn select_field(&self) -> Self::Output
-    {
+    fn select_field(&self) -> Self::Output {
         SelectFieldFromLabels::<Labels, Label>::select_field(&self.frames)
     }
 }
@@ -393,52 +368,48 @@ impl<Labels, Frames> FieldSelect for DataView<Labels, Frames> {}
 
 pub type DataIndexCons<Label, DType, DI, Tail> = FieldPayloadCons<Label, DType, DI, Tail>;
 
-pub trait AssocDataIndexCons<Labels>
-{
+pub trait AssocDataIndexCons<Labels> {
     type Output;
     fn assoc_data(&self) -> Self::Output;
 }
-impl<Frames> AssocDataIndexCons<Nil> for Frames
-{
+impl<Frames> AssocDataIndexCons<Nil> for Frames {
     type Output = Nil;
-    fn assoc_data(&self) -> Nil { Nil }
+    fn assoc_data(&self) -> Nil {
+        Nil
+    }
 }
 impl<Label, FrameIndex, FrameLabel, LookupTail, Frames>
-    AssocDataIndexCons<FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>>
-    for Frames
-    where
-        Self: SelectFieldFromLabels<
-            FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>,
-            Label
-        >,
-        Self: AssocDataIndexCons<LookupTail>,
-        <Self as SelectFieldFromLabels<
-            FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>,
-            Label
-        >>::Output: Typed
+    AssocDataIndexCons<FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>> for Frames
+where
+    Self: SelectFieldFromLabels<FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>, Label>,
+    Self: AssocDataIndexCons<LookupTail>,
+    <Self as SelectFieldFromLabels<
+        FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>,
+        Label,
+    >>::Output: Typed,
 {
     type Output = DataIndexCons<
         Label,
         TypeOf<
             <Frames as SelectFieldFromLabels<
-                FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>, Label>
-            >::Output
+                FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>,
+                Label,
+            >>::Output,
         >,
         <Frames as SelectFieldFromLabels<
-            FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>, Label>
-        >::Output,
-        <Frames as AssocDataIndexCons<LookupTail>>::Output
+            FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>,
+            Label,
+        >>::Output,
+        <Frames as AssocDataIndexCons<LookupTail>>::Output,
     >;
-    fn assoc_data(&self) -> Self::Output
-    {
-        DataIndexCons
-        {
-            head: TypedValue::from(
-                SelectFieldFromLabels::<
-                    FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>, Label
-                >::select_field(self)
-            ).into(),
-            tail: AssocDataIndexCons::<LookupTail>::assoc_data(self)
+    fn assoc_data(&self) -> Self::Output {
+        DataIndexCons {
+            head: TypedValue::from(SelectFieldFromLabels::<
+                FrameLookupCons<Label, FrameIndex, FrameLabel, LookupTail>,
+                Label,
+            >::select_field(self))
+            .into(),
+            tail: AssocDataIndexCons::<LookupTail>::assoc_data(self),
         }
     }
 }
@@ -447,12 +418,11 @@ pub type AssocDataIndexConsOf<Frames, Labels> = <Frames as AssocDataIndexCons<La
 
 const MAX_DISP_ROWS: usize = 1000;
 
-impl<Labels, Frames>
-    Display
-    for DataView<Labels, Frames>
-    where Frames: Len + NRows + AssocDataIndexCons<Labels>,
-          AssocDataIndexConsOf<Frames, Labels>: DeriveCapabilities<AddCellToRowFn>,
-          Labels: StrLabels,
+impl<Labels, Frames> Display for DataView<Labels, Frames>
+where
+    Frames: Len + NRows + AssocDataIndexCons<Labels>,
+    AssocDataIndexConsOf<Frames, Labels>: DeriveCapabilities<AddCellToRowFn>,
+    Labels: StrLabels,
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         if self.frames.is_empty() {
@@ -462,7 +432,7 @@ impl<Labels, Frames>
 
         let nrows = self.nrows();
         let mut func = AddCellToRowFn {
-            rows: vec![pt::row::Row::empty(); nrows.min(MAX_DISP_ROWS)]
+            rows: vec![pt::row::Row::empty(); nrows.min(MAX_DISP_ROWS)],
         };
         self.frames.assoc_data().derive().map(&mut func);
         for row in func.rows.drain(..) {
@@ -478,16 +448,17 @@ impl<Labels, Frames>
 
 /// Function (implementing [Func](../features/trait.Func.html)) that adds cells to
 /// `prettytable::row::Row`.
-pub struct AddCellToRowFn
-{
+pub struct AddCellToRowFn {
     rows: Vec<pt::row::Row>,
 }
 impl<DType> Func<DType> for AddCellToRowFn
-    where for<'a> Value<&'a DType>: ToString,
+where
+    for<'a> Value<&'a DType>: ToString,
 {
     type Output = ();
     fn call<DI>(&mut self, data: &DI) -> Self::Output
-        where DI: DataIndex<DType=DType>
+    where
+        DI: DataIndex<DType = DType>,
     {
         debug_assert!(data.len() >= self.rows.len());
         for i in 0..self.rows.len() {
@@ -495,11 +466,9 @@ impl<DType> Func<DType> for AddCellToRowFn
         }
     }
 }
-impl FuncDefault for AddCellToRowFn
-{
+impl FuncDefault for AddCellToRowFn {
     type Output = ();
-    fn call(&mut self) -> Self::Output
-    {
+    fn call(&mut self) -> Self::Output {
         for i in 0..self.rows.len() {
             self.rows[i].add_cell(cell!());
         }
@@ -524,39 +493,39 @@ impl IsImplemented<AddCellToRowFn> for bool {
     type IsImpl = Implemented;
 }
 
-impl<Labels, Frames> DataView<Labels, Frames>
-{
-    pub fn relabel<CurrLabel, NewLabel>(self)
-        -> DataView<<Labels as Relabel<CurrLabel, NewLabel>>::Output, Frames>
-        where Labels: Relabel<CurrLabel, NewLabel>
+impl<Labels, Frames> DataView<Labels, Frames> {
+    pub fn relabel<CurrLabel, NewLabel>(
+        self,
+    ) -> DataView<<Labels as Relabel<CurrLabel, NewLabel>>::Output, Frames>
+    where
+        Labels: Relabel<CurrLabel, NewLabel>,
     {
-        DataView
-        {
+        DataView {
             _labels: PhantomData,
-            frames: self.frames
+            frames: self.frames,
         }
     }
 }
 
-pub trait Relabel<TargetLabel, NewLabel>
-{
+pub trait Relabel<TargetLabel, NewLabel> {
     type Output;
 }
 
-impl<TargetLabel, NewLabel, Label, FrameIndex, FrameLabel, Tail>
-    Relabel<TargetLabel, NewLabel>
+impl<TargetLabel, NewLabel, Label, FrameIndex, FrameLabel, Tail> Relabel<TargetLabel, NewLabel>
     for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
-    where
-        TargetLabel: LabelEq<Label>,
-        FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>:
-            RelabelMatch<TargetLabel, NewLabel, <TargetLabel as LabelEq<Label>>::Eq>
+where
+    TargetLabel: LabelEq<Label>,
+    FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>:
+        RelabelMatch<TargetLabel, NewLabel, <TargetLabel as LabelEq<Label>>::Eq>,
 {
-    type Output = <FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
-        as RelabelMatch<TargetLabel, NewLabel, <TargetLabel as LabelEq<Label>>::Eq>>::Output;
+    type Output = <FrameLookupCons<Label, FrameIndex, FrameLabel, Tail> as RelabelMatch<
+        TargetLabel,
+        NewLabel,
+        <TargetLabel as LabelEq<Label>>::Eq,
+    >>::Output;
 }
 
-pub trait RelabelMatch<TargetLabel, NewLabel, Match>
-{
+pub trait RelabelMatch<TargetLabel, NewLabel, Match> {
     type Output;
 }
 // TargetLabel == Label, replace with NewLabel
@@ -570,75 +539,74 @@ impl<TargetLabel, NewLabel, Label, FrameIndex, FrameLabel, Tail>
 impl<TargetLabel, NewLabel, Label, FrameIndex, FrameLabel, Tail>
     RelabelMatch<TargetLabel, NewLabel, False>
     for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
-    where
-        Tail: Relabel<TargetLabel, NewLabel>
+where
+    Tail: Relabel<TargetLabel, NewLabel>,
 {
     type Output = FrameLookupCons<
         Label,
         FrameIndex,
         FrameLabel,
-        <Tail as Relabel<TargetLabel, NewLabel>>::Output
+        <Tail as Relabel<TargetLabel, NewLabel>>::Output,
     >;
 }
 
-pub trait ViewMerge<Other>
-{
+pub trait ViewMerge<Other> {
     type Output;
     fn merge(&self, right: &Other) -> error::Result<Self::Output>;
 }
-impl<Labels, Frames, RLabels, RFrames>
-    ViewMerge<DataView<RLabels, RFrames>>
+impl<Labels, Frames, RLabels, RFrames> ViewMerge<DataView<RLabels, RFrames>>
     for DataView<Labels, Frames>
-    where
-        Self: Merge<RLabels, RFrames>,
-        RFrames: NRows,
-        Frames: NRows,
-        <Self as Merge<RLabels, RFrames>>::OutLabels: IsLabelSet<IsSet=True>,
+where
+    Self: Merge<RLabels, RFrames>,
+    RFrames: NRows,
+    Frames: NRows,
+    <Self as Merge<RLabels, RFrames>>::OutLabels: IsLabelSet<IsSet = True>,
 {
     type Output = DataView<
         <Self as Merge<RLabels, RFrames>>::OutLabels,
         <Self as Merge<RLabels, RFrames>>::OutFrames,
     >;
 
-    fn merge(&self, right: &DataView<RLabels, RFrames>) -> error::Result<Self::Output>
-    {
+    fn merge(&self, right: &DataView<RLabels, RFrames>) -> error::Result<Self::Output> {
         if self.nrows() != right.nrows() {
             return Err(error::AgnesError::DimensionMismatch(
-                "number of rows mismatch in merge".into()));
+                "number of rows mismatch in merge".into(),
+            ));
         }
         Ok(Merge::merge(self, right))
     }
 }
 
-impl<Labels, Frames> DataView<Labels, Frames>
-{
+impl<Labels, Frames> DataView<Labels, Frames> {
     /// merge this `DataView` with another `DataView` object, creating a new `DataView` with the
     /// same number of rows and all the fields from both source `DataView` objects.
-    pub fn merge<RLabels, RFrames>(&self, right: &DataView<RLabels, RFrames>)
-        -> error::Result<<Self as ViewMerge<DataView<RLabels, RFrames>>>::Output>
-        where
-            Self: ViewMerge<DataView<RLabels, RFrames>>,
-            // Self: Merge<RLabels, RFrames>,
-            // RFrames: NRows,
-            // Frames: NRows,
-            // <Self as Merge<RLabels, RFrames>>::OutLabels: IsLabelSet<IsSet=True>,
+    pub fn merge<RLabels, RFrames>(
+        &self,
+        right: &DataView<RLabels, RFrames>,
+    ) -> error::Result<<Self as ViewMerge<DataView<RLabels, RFrames>>>::Output>
+    where
+        Self: ViewMerge<DataView<RLabels, RFrames>>,
+        // Self: Merge<RLabels, RFrames>,
+        // RFrames: NRows,
+        // Frames: NRows,
+        // <Self as Merge<RLabels, RFrames>>::OutLabels: IsLabelSet<IsSet=True>,
     {
         ViewMerge::merge(self, right)
     }
 }
 
-impl<Labels, Frames> DataView<Labels, Frames>
-{
+impl<Labels, Frames> DataView<Labels, Frames> {
     /// Combine two `DataView` objects using specified join, creating a new `DataStore` object with
     /// a subset of records from the two source `DataView`s according to the join parameters.
     ///
     /// Note that since this is creating a new `DataStore` object, it will be allocated new data to
     /// store the contents of the joined `DataView`s.
     pub fn join<Join, RLabels, RFrames>(
-        &self, right: &DataView<RLabels, RFrames>
-    )
-        -> <Self as SortMergeJoin<RLabels, RFrames, Join>>::Output
-        where Self: SortMergeJoin<RLabels, RFrames, Join>
+        &self,
+        right: &DataView<RLabels, RFrames>,
+    ) -> <Self as SortMergeJoin<RLabels, RFrames, Join>>::Output
+    where
+        Self: SortMergeJoin<RLabels, RFrames, Join>,
     {
         SortMergeJoin::join(self, right)
         // match join.predicate {
@@ -653,22 +621,17 @@ impl<Labels, Frames> DataView<Labels, Frames>
     }
 }
 
-pub trait UpdatePermutation
-{
+pub trait UpdatePermutation {
     fn update_permutation(&mut self, _order: &[usize]) {}
 }
-impl UpdatePermutation
-    for Nil
-{}
-impl<FrameIndex, FrameFields, Tail>
-    UpdatePermutation
+impl UpdatePermutation for Nil {}
+impl<FrameIndex, FrameFields, Tail> UpdatePermutation
     for ViewFrameCons<FrameIndex, FrameFields, Tail>
-    where
-        FrameFields: AssocStorage,
-        Tail: UpdatePermutation
+where
+    FrameFields: AssocStorage,
+    Tail: UpdatePermutation,
 {
-    fn update_permutation(&mut self, order: &[usize])
-    {
+    fn update_permutation(&mut self, order: &[usize]) {
         self.head.value_mut().update_permutation(order);
         self.tail.update_permutation(order);
     }
@@ -686,7 +649,8 @@ impl<FrameIndex, FrameFields, Tail>
 // ]
 
 impl<Labels, Frames> DataView<Labels, Frames>
-    where Frames: UpdatePermutation
+where
+    Frames: UpdatePermutation,
 {
     /// Sorts this `DataView` by the provided label. Returns the permutation (list of indices in
     /// sorted order) of values in field identified by `ident`.
@@ -697,9 +661,9 @@ impl<Labels, Frames> DataView<Labels, Frames>
     ///
     /// Fails if the field is not found in this `DataView`.
     pub fn sort_by_label<Label>(&mut self) -> Vec<usize>
-        where
-            Self: SelectFieldByLabel<Label>,
-            <Self as SelectFieldByLabel<Label>>::Output: SortOrder
+    where
+        Self: SelectFieldByLabel<Label>,
+        <Self as SelectFieldByLabel<Label>>::Output: SortOrder,
     {
         // find sort order for this field
         let sorted = self.field::<Label>().sort_order();
@@ -709,9 +673,9 @@ impl<Labels, Frames> DataView<Labels, Frames>
     }
 
     pub fn sort_unstable_by_label<Label>(&mut self) -> Vec<usize>
-        where
-            Self: SelectFieldByLabel<Label>,
-            <Self as SelectFieldByLabel<Label>>::Output: SortOrderUnstable
+    where
+        Self: SelectFieldByLabel<Label>,
+        <Self as SelectFieldByLabel<Label>>::Output: SortOrderUnstable,
     {
         // find sort order for this field
         let sorted = self.field::<Label>().sort_order_unstable();
@@ -721,9 +685,9 @@ impl<Labels, Frames> DataView<Labels, Frames>
     }
 
     pub fn sort_by_label_comparator<Label, F>(&mut self, compare: F) -> Vec<usize>
-        where
-            Self: SelectFieldByLabel<Label>,
-            <Self as SelectFieldByLabel<Label>>::Output: SortOrderComparator<F>
+    where
+        Self: SelectFieldByLabel<Label>,
+        <Self as SelectFieldByLabel<Label>>::Output: SortOrderComparator<F>,
     {
         // find sort order for this field
         let sorted = self.field::<Label>().sort_order_by(compare);
@@ -733,9 +697,9 @@ impl<Labels, Frames> DataView<Labels, Frames>
     }
 
     pub fn sort_unstable_by_label_comparator<Label, F>(&mut self, compare: F) -> Vec<usize>
-        where
-            Self: SelectFieldByLabel<Label>,
-            <Self as SelectFieldByLabel<Label>>::Output: SortOrderUnstableComparator<F>
+    where
+        Self: SelectFieldByLabel<Label>,
+        <Self as SelectFieldByLabel<Label>>::Output: SortOrderUnstableComparator<F>,
     {
         // find sort order for this field
         let sorted = self.field::<Label>().sort_order_unstable_by(compare);
@@ -744,32 +708,16 @@ impl<Labels, Frames> DataView<Labels, Frames>
         sorted
     }
 
-    pub fn filter<Label, P>(&mut self, predicate: P)
-        -> Vec<usize>
-        where
-            Self: SelectFieldByLabel<Label>,
-            <Self as SelectFieldByLabel<Label>>::Output: FilterPerm<P>
+    pub fn filter<Label, P>(&mut self, predicate: P) -> Vec<usize>
+    where
+        Self: SelectFieldByLabel<Label>,
+        <Self as SelectFieldByLabel<Label>>::Output: FilterPerm<P>,
     {
         let perm = self.field::<Label>().filter_perm(predicate);
         self.frames.update_permutation(&perm);
         perm
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // #[derive(Debug, Clone)]
 
@@ -880,7 +828,6 @@ impl<Labels, Frames> DataView<Labels, Frames>
 //     frames: Frames,
 // }
 
-
 // impl<Idents, Frames> DataView<Idents, Frames>
 //     // where DTypes: DTypeList
 // {
@@ -955,200 +902,199 @@ impl<Labels, Frames> DataView<Labels, Frames>
 //     }
 // }
 
-    // /// Field names in this data view
-    // pub fn fieldnames(&self) -> Vec<&FieldIdent> {
-    //     self.fields.keys().collect()
-    // }
-    // /// Return the field type for specified field
-    // pub(crate) fn get_field_type(&self, ident: &FieldIdent) -> Option<DTypes::DType> {
-    //     self.fields.get(ident).and_then(|view_field: &ViewField| {
-    //         self.frames[view_field.frame_idx].get_field_type(&view_field.rident.ident)
-    //     })
-    // }
+// /// Field names in this data view
+// pub fn fieldnames(&self) -> Vec<&FieldIdent> {
+//     self.fields.keys().collect()
+// }
+// /// Return the field type for specified field
+// pub(crate) fn get_field_type(&self, ident: &FieldIdent) -> Option<DTypes::DType> {
+//     self.fields.get(ident).and_then(|view_field: &ViewField| {
+//         self.frames[view_field.frame_idx].get_field_type(&view_field.rident.ident)
+//     })
+// }
 
-    // /// Returns `true` if this `DataView` contains this field.
-    // pub fn has_field(&self, s: &FieldIdent) -> bool {
-    //     self.fields.contains_key(s)
-    // }
+// /// Returns `true` if this `DataView` contains this field.
+// pub fn has_field(&self, s: &FieldIdent) -> bool {
+//     self.fields.contains_key(s)
+// }
 
-    // /// Rename a field of this DataView.
-    // pub fn rename<T, U>(&mut self, orig: T, new: U) -> error::Result<()> where
-    //     T: Into<FieldIdent>,
-    //     U: Into<FieldIdent>
-    // {
-    //     let (orig, new) = (orig.into(), new.into());
-    //     if self.fields.contains_key(&new) {
-    //         return Err(error::AgnesError::FieldCollision(vec![new]));
-    //     }
-    //     let new_vf = if let Some(ref orig_vf) = self.fields.get(&orig) {
-    //         ViewField {
-    //             rident: RFieldIdent {
-    //                 ident: orig_vf.rident.ident.clone(),
-    //                 rename: Some(new.to_string())
-    //             },
-    //             frame_idx: orig_vf.frame_idx,
-    //         }
-    //     } else {
-    //         return Err(error::AgnesError::FieldNotFound(orig));
-    //     };
-    //     self.fields.insert(new_vf.rident.to_renamed_field_ident(), new_vf);
-    //     self.fields.swap_remove(&orig);
-    //     Ok(())
-    // }
+// /// Rename a field of this DataView.
+// pub fn rename<T, U>(&mut self, orig: T, new: U) -> error::Result<()> where
+//     T: Into<FieldIdent>,
+//     U: Into<FieldIdent>
+// {
+//     let (orig, new) = (orig.into(), new.into());
+//     if self.fields.contains_key(&new) {
+//         return Err(error::AgnesError::FieldCollision(vec![new]));
+//     }
+//     let new_vf = if let Some(ref orig_vf) = self.fields.get(&orig) {
+//         ViewField {
+//             rident: RFieldIdent {
+//                 ident: orig_vf.rident.ident.clone(),
+//                 rename: Some(new.to_string())
+//             },
+//             frame_idx: orig_vf.frame_idx,
+//         }
+//     } else {
+//         return Err(error::AgnesError::FieldNotFound(orig));
+//     };
+//     self.fields.insert(new_vf.rident.to_renamed_field_ident(), new_vf);
+//     self.fields.swap_remove(&orig);
+//     Ok(())
+// }
 
-    // /// Merge this `DataView` with another `DataView` object, creating a new `DataView` with the
-    // /// same number of rows and all the fields from both source `DataView` objects.
-    // pub fn merge<OtherFields>(&self, other: &DataView<OtherFields>)
-    //     -> error::Result<DataView<OtherFields>>
-    //     // where DTypes::Storage: MaxLen<DTypes>
-    // {
-    //     if self.nrows() != other.nrows() {
-    //         return Err(error::AgnesError::DimensionMismatch(
-    //             "number of rows mismatch in merge".into()));
-    //     }
+// /// Merge this `DataView` with another `DataView` object, creating a new `DataView` with the
+// /// same number of rows and all the fields from both source `DataView` objects.
+// pub fn merge<OtherFields>(&self, other: &DataView<OtherFields>)
+//     -> error::Result<DataView<OtherFields>>
+//     // where DTypes::Storage: MaxLen<DTypes>
+// {
+//     if self.nrows() != other.nrows() {
+//         return Err(error::AgnesError::DimensionMismatch(
+//             "number of rows mismatch in merge".into()));
+//     }
 
-    //     // compute merged stores (and mapping from 'other' store index references to combined
-    //     // store vector)
-    //     let (new_frames, other_store_indices) = compute_merged_frames(self, other);
+//     // compute merged stores (and mapping from 'other' store index references to combined
+//     // store vector)
+//     let (new_frames, other_store_indices) = compute_merged_frames(self, other);
 
-    //     // compute merged field list
-    //     let MergedFields { mut new_fields, .. } =
-    //         compute_merged_field_list(self, other, &other_store_indices, None)?;
-    //     let new_fields = IndexMap::from_iter(new_fields.drain(..));
-    //     Ok(DataView {
-    //         frames: new_frames,
-    //         fields: new_fields
-    //     })
-    // }
+//     // compute merged field list
+//     let MergedFields { mut new_fields, .. } =
+//         compute_merged_field_list(self, other, &other_store_indices, None)?;
+//     let new_fields = IndexMap::from_iter(new_fields.drain(..));
+//     Ok(DataView {
+//         frames: new_frames,
+//         fields: new_fields
+//     })
+// }
 
-    // /// Combine two `DataView` objects using specified join, creating a new `DataStore` object with
-    // /// a subset of records from the two source `DataView`s according to the join parameters.
-    // ///
-    // /// Note that since this is creating a new `DataStore` object, it will be allocated new data to
-    // /// store the contents of the joined `DataView`s.
-    // pub fn join<'b, RIdents, RFrames>(
-    //     &'b self, other: &'b DataView<RIdents, RFrames>, join: &Join
-    // )
-    //     -> error::Result<DataStore<<(Frames, RFrames) as MergeFields>::OutFields>>
-    //     // where T: 'static + DataType<DTypes> + DtOrd + PartialEq + Default,
-    //     //       DTypes: 'b,
-    //     //       DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T> + CreateStorage
-    //     //               + for<'c> FramedMapExt<DTypes, CopyIntoFn<'c, DTypes>, ()>
-    // {
-    //     match join.predicate {
-    //         // TODO: implement hash join
-    //         // Predicate::Equal => {
-    //         //     hash_join(self, other, join)
-    //         // },
-    //         _ => {
-    //             sort_merge_join(self, other, join)
-    //         }
-    //     }
-    // }
+// /// Combine two `DataView` objects using specified join, creating a new `DataStore` object with
+// /// a subset of records from the two source `DataView`s according to the join parameters.
+// ///
+// /// Note that since this is creating a new `DataStore` object, it will be allocated new data to
+// /// store the contents of the joined `DataView`s.
+// pub fn join<'b, RIdents, RFrames>(
+//     &'b self, other: &'b DataView<RIdents, RFrames>, join: &Join
+// )
+//     -> error::Result<DataStore<<(Frames, RFrames) as MergeFields>::OutFields>>
+//     // where T: 'static + DataType<DTypes> + DtOrd + PartialEq + Default,
+//     //       DTypes: 'b,
+//     //       DTypes::Storage: MaxLen<DTypes> + TypeSelector<DTypes, T> + CreateStorage
+//     //               + for<'c> FramedMapExt<DTypes, CopyIntoFn<'c, DTypes>, ()>
+// {
+//     match join.predicate {
+//         // TODO: implement hash join
+//         // Predicate::Equal => {
+//         //     hash_join(self, other, join)
+//         // },
+//         _ => {
+//             sort_merge_join(self, other, join)
+//         }
+//     }
+// }
 
-    // /// Returns an iterator over the fields (as `FieldIdent`s of this DataView.
-    // pub fn idents(&self) -> Keys<FieldIdent, ViewField> {
-    //     self.fields.keys()
-    // }
+// /// Returns an iterator over the fields (as `FieldIdent`s of this DataView.
+// pub fn idents(&self) -> Keys<FieldIdent, ViewField> {
+//     self.fields.keys()
+// }
 
-    // /// Applies the provided `Func` to the data in the specified field. This `Func` must be
-    // /// implemented for all types in `DTypes`.
-    // ///
-    // /// Fails if the specified identifier is not found in this `DataView`.
-    // pub fn map<F, FOut, I>(&self, ident: I, f: F)
-    //     -> error::Result<FOut>
-    //     where DTypes::Storage: FramedMap<DTypes, F, FOut>,
-    //           I: Into<FieldIdent>
-    // {
-    //     let ident = ident.into();
-    //     self.fields.get(&ident)
-    //         .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
-    //         .and_then(|view_field: &ViewField| {
-    //             self.frames[view_field.frame_idx].map(&view_field.rident.ident, f)
-    //         })
-    // }
+// /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+// /// implemented for all types in `DTypes`.
+// ///
+// /// Fails if the specified identifier is not found in this `DataView`.
+// pub fn map<F, FOut, I>(&self, ident: I, f: F)
+//     -> error::Result<FOut>
+//     where DTypes::Storage: FramedMap<DTypes, F, FOut>,
+//           I: Into<FieldIdent>
+// {
+//     let ident = ident.into();
+//     self.fields.get(&ident)
+//         .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
+//         .and_then(|view_field: &ViewField| {
+//             self.frames[view_field.frame_idx].map(&view_field.rident.ident, f)
+//         })
+// }
 
-    // /// Applies the provided `Func` to the data in the specified field. This `Func` must be
-    // /// implemented for type `T`.
-    // ///
-    // /// Fails if the specified identifier is not found in this `DataView` or the incorrect type `T`
-    // /// is used.
-    // pub fn tmap<T, F, I>(&self, ident: I, f: F)
-    //     -> error::Result<F::Output>
-    //     where F: Func<DTypes, T>,
-    //           T: DataType<DTypes>,
-    //           DTypes::Storage: MaxLen<DTypes> + FramedTMap<DTypes, T, F>,
-    //           I: Into<FieldIdent>,
-    // {
-    //     let ident = ident.into();
-    //     self.fields.get(&ident)
-    //         .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
-    //         .and_then(|view_field: &ViewField| {
-    //             self.frames[view_field.frame_idx].tmap(&view_field.rident.ident, f)
-    //         })
-    // }
+// /// Applies the provided `Func` to the data in the specified field. This `Func` must be
+// /// implemented for type `T`.
+// ///
+// /// Fails if the specified identifier is not found in this `DataView` or the incorrect type `T`
+// /// is used.
+// pub fn tmap<T, F, I>(&self, ident: I, f: F)
+//     -> error::Result<F::Output>
+//     where F: Func<DTypes, T>,
+//           T: DataType<DTypes>,
+//           DTypes::Storage: MaxLen<DTypes> + FramedTMap<DTypes, T, F>,
+//           I: Into<FieldIdent>,
+// {
+//     let ident = ident.into();
+//     self.fields.get(&ident)
+//         .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
+//         .and_then(|view_field: &ViewField| {
+//             self.frames[view_field.frame_idx].tmap(&view_field.rident.ident, f)
+//         })
+// }
 
-    // /// Applies the provided `FuncExt` to the data in the specified field. This `FuncExt` must be
-    // /// implemented for all types in `DTypes`.
-    // ///
-    // /// Fails if the specified identifier is not found in this `DataView`.
-    // pub fn map_ext<F, FOut, I>(&self, ident: I, f: F)
-    //     -> error::Result<FOut>
-    //     where DTypes::Storage: FramedMapExt<DTypes, F, FOut>,
-    //           I: Into<FieldIdent>
-    // {
-    //     let ident = ident.into();
-    //     self.fields.get(&ident)
-    //         .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
-    //         .and_then(|view_field: &ViewField| {
-    //             self.frames[view_field.frame_idx].map_ext(&view_field.rident.ident, f)
-    //         })
-    // }
+// /// Applies the provided `FuncExt` to the data in the specified field. This `FuncExt` must be
+// /// implemented for all types in `DTypes`.
+// ///
+// /// Fails if the specified identifier is not found in this `DataView`.
+// pub fn map_ext<F, FOut, I>(&self, ident: I, f: F)
+//     -> error::Result<FOut>
+//     where DTypes::Storage: FramedMapExt<DTypes, F, FOut>,
+//           I: Into<FieldIdent>
+// {
+//     let ident = ident.into();
+//     self.fields.get(&ident)
+//         .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
+//         .and_then(|view_field: &ViewField| {
+//             self.frames[view_field.frame_idx].map_ext(&view_field.rident.ident, f)
+//         })
+// }
 
-    // /// Applies the provided `FuncPartial` to the data in the specified field.
-    // ///
-    // /// Fails if the specified identifier is not found in this `DataView`.
-    // pub fn map_partial<F, I>(&self, ident: I, f: F)
-    //     -> error::Result<Option<F::Output>>
-    //     where DTypes::Storage: MapPartial<DTypes, F> + MaxLen<DTypes>,
-    //           F: FuncPartial<DTypes>,
-    //           I: Into<FieldIdent>
-    // {
-    //     let ident = ident.into();
-    //     self.fields.get(&ident)
-    //         .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
-    //         .and_then(|view_field: &ViewField| {
-    //             self.frames[view_field.frame_idx].map_partial(&view_field.rident.ident, f)
-    //         })
-    // }
+// /// Applies the provided `FuncPartial` to the data in the specified field.
+// ///
+// /// Fails if the specified identifier is not found in this `DataView`.
+// pub fn map_partial<F, I>(&self, ident: I, f: F)
+//     -> error::Result<Option<F::Output>>
+//     where DTypes::Storage: MapPartial<DTypes, F> + MaxLen<DTypes>,
+//           F: FuncPartial<DTypes>,
+//           I: Into<FieldIdent>
+// {
+//     let ident = ident.into();
+//     self.fields.get(&ident)
+//         .ok_or_else(|| error::AgnesError::FieldNotFound(ident))
+//         .and_then(|view_field: &ViewField| {
+//             self.frames[view_field.frame_idx].map_partial(&view_field.rident.ident, f)
+//         })
+// }
 
-    // /// Returns the permutation (list of indices in sorted order) of values in field identified
-    // /// by `ident`.
-    // ///
-    // /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
-    // /// values at the beginning of the order (considered to be of 'lesser' value than existing
-    // /// values).
-    // ///
-    // /// Fails if the field is not found in this `DataView`.
-    // pub fn sort_by<'a>(&'a mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
-    //     where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>,
-    // {
-    //     match self.fields.get(ident) {
-    //         Some(view_field) => {
-    //             // filter on frame index this field belongs to
-    //             let sorted = self.frames[view_field.frame_idx].sort_by(&view_field.rident.ident)?;
-    //             // apply same filter to rest of frames
-    //             for frame_idx in 0..self.frames.len() {
-    //                 if frame_idx != view_field.frame_idx {
-    //                     self.frames[frame_idx].update_permutation(&sorted);
-    //                 }
-    //             }
-    //             Ok(sorted)
-    //         },
-    //         None => Err(error::AgnesError::FieldNotFound(ident.clone()))
-    //     }
-    // }
-
+// /// Returns the permutation (list of indices in sorted order) of values in field identified
+// /// by `ident`.
+// ///
+// /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
+// /// values at the beginning of the order (considered to be of 'lesser' value than existing
+// /// values).
+// ///
+// /// Fails if the field is not found in this `DataView`.
+// pub fn sort_by<'a>(&'a mut self, ident: &FieldIdent) -> error::Result<Vec<usize>>
+//     where DTypes::Storage: FramedMap<DTypes, SortOrderFn, Vec<usize>>,
+// {
+//     match self.fields.get(ident) {
+//         Some(view_field) => {
+//             // filter on frame index this field belongs to
+//             let sorted = self.frames[view_field.frame_idx].sort_by(&view_field.rident.ident)?;
+//             // apply same filter to rest of frames
+//             for frame_idx in 0..self.frames.len() {
+//                 if frame_idx != view_field.frame_idx {
+//                     self.frames[frame_idx].update_permutation(&sorted);
+//                 }
+//             }
+//             Ok(sorted)
+//         },
+//         None => Err(error::AgnesError::FieldNotFound(ident.clone()))
+//     }
+// }
 
 // impl<Idents, Frames> DataView<Idents, Frames>
 // {
@@ -1341,7 +1287,6 @@ impl<Labels, Frames> DataView<Labels, Frames>
 //     }
 // }
 
-
 // /// Function (implementing [Func](../data_types/trait.Func.html)) that adds cells to
 // /// `prettytable::row::Row`.
 // pub struct AddCellToRowFn<'a, 'b, Idents, Frames>
@@ -1381,16 +1326,19 @@ impl<Labels, Frames> DataView<Labels, Frames>
 
 #[cfg(serialize)]
 impl<Idents, Frames> Serialize for DataView<Idents, Frames>
-    // where DTypes: DTypeList,
-    //       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>
+// where DTypes: DTypeList,
+//       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>
 {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
         let mut map = serializer.serialize_map(Some(self.fields.len()))?;
         for field in self.fields.values() {
-            map.serialize_entry(&field.rident.to_string(), &SerializedField::new(
-                field.rident.ident.clone(),
-                &self.frames[field.frame_idx]
-            ))?;
+            map.serialize_entry(
+                &field.rident.to_string(),
+                &SerializedField::new(field.rident.ident.clone(), &self.frames[field.frame_idx]),
+            )?;
         }
         map.end()
     }
@@ -1406,39 +1354,41 @@ impl<T> SerializeAsVec for Vec<T> where T: Serialize {}
 /// a `DataView` as a single sequence instead of as a map.
 #[cfg(serialize)]
 #[derive(Debug, Clone)]
-pub struct FieldView<Fields>
-    // where DTypes: DTypeList
-{
+pub struct FieldView<Fields> {
     frame: DataFrame<Fields>,
     field: RFieldIdent,
 }
 
 #[cfg(serialize)]
 impl<Fields> Serialize for FieldView<Fields>
-    // where DTypes: DTypeList,
-    //       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>,
+// where DTypes: DTypeList,
+//       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-            where S: Serializer {
+    where
+        S: Serializer,
+    {
         if self.frame.has_field(&self.field.ident) {
-            SerializedField::new(
-                self.field.to_renamed_field_ident(),
-                &self.frame
-            ).serialize(serializer)
+            SerializedField::new(self.field.to_renamed_field_ident(), &self.frame)
+                .serialize(serializer)
         } else {
-            Err(ser::Error::custom(format!("missing field: {}", self.field.to_string())))
+            Err(ser::Error::custom(format!(
+                "missing field: {}",
+                self.field.to_string()
+            )))
         }
     }
 }
 #[cfg(serialize)]
 impl<Fields> SerializeAsVec for FieldView<Fields>
-    // where DTypes: DTypeList,
-    //       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>
-{}
+// where DTypes: DTypeList,
+//       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>
+{
+}
 
 #[cfg(serialize)]
 impl<Idents, Frames> DataView<Idents, Frames>
-    // where DTypes: DTypeList
+// where DTypes: DTypeList
 {
     /// Create a `FieldView` object from a `DataView` object, if possible. Typically, use this on
     /// `DataView` objects with only a single field; however, if the `DataView` object has multiple
@@ -1539,11 +1489,11 @@ mod tests {
 
     use std::path::Path;
 
-    use typenum::uint::UTerm;
     use csv_sniffer::metadata::Metadata;
+    use typenum::uint::UTerm;
 
-    use source::csv::{CsvSource, CsvReader, IntoCsvSrcSpec};
     use super::*;
+    use source::csv::{CsvReader, CsvSource, IntoCsvSrcSpec};
 
     #[cfg(feature = "test-utils")]
     use test_utils::*;
@@ -1553,19 +1503,24 @@ mod tests {
     // use data_types::standard::*;
     use access::{DataIndex, DataIterator};
 
-    fn load_csv_file<Spec>(filename: &str, spec: Spec)
-        -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
-        where Spec: IntoCsvSrcSpec
+    fn load_csv_file<Spec>(filename: &str, spec: Spec) -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
+    where
+        Spec: IntoCsvSrcSpec,
     {
         let data_filepath = Path::new(file!()) // start as this file
-            .parent().unwrap()                 // navigate up to src directory
-            .parent().unwrap()                 // navigate up to root directory
-            .join("tests")                     // navigate into integration tests directory
-            .join("data")                      // navigate into data directory
-            .join(filename);                   // navigate to target file
+            .parent()
+            .unwrap() // navigate up to src directory
+            .parent()
+            .unwrap() // navigate up to root directory
+            .join("tests") // navigate into integration tests directory
+            .join("data") // navigate into data directory
+            .join(filename); // navigate to target file
 
         let source = CsvSource::new(data_filepath.into()).unwrap();
-        (CsvReader::new(&source, spec).unwrap(), source.metadata().clone())
+        (
+            CsvReader::new(&source, spec).unwrap(),
+            source.metadata().clone(),
+        )
     }
 
     namespace![
@@ -1577,8 +1532,7 @@ mod tests {
     ];
 
     #[test]
-    fn lookup_field()
-    {
+    fn lookup_field() {
         let gdp_spec = spec![
             fieldname gdp::CountryName = "Country Name";
             fieldname gdp::CountryCode = "Country Code";
@@ -1602,8 +1556,7 @@ mod tests {
     }
 
     #[test]
-    fn generate_dataindex_cons()
-    {
+    fn generate_dataindex_cons() {
         let gdp_spec = spec![
             fieldname gdp::CountryName = "Country Name";
             fieldname gdp::CountryCode = "Country Code";
@@ -1630,8 +1583,17 @@ mod tests {
         println!("{}", merged_dv);
         assert_eq!(merged_dv.nrows(), 7);
         assert_eq!(merged_dv.nfields(), 6);
-        assert_eq!(merged_dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName", "SalaryOffset",
-            "DidTraining", "VacationHrs"]);
+        assert_eq!(
+            merged_dv.fieldnames(),
+            vec![
+                "EmpId",
+                "DeptId",
+                "EmpName",
+                "SalaryOffset",
+                "DidTraining",
+                "VacationHrs"
+            ]
+        );
     }
 
     #[cfg(feature = "test-utils")]
@@ -1645,9 +1607,13 @@ mod tests {
 
         let merge_result = dv1.merge(&dv2);
         match merge_result {
-            Ok(_) => { panic!("Merge was expected to fail (dimension mismatch), but succeeded"); },
-            Err(AgnesError::DimensionMismatch(_)) => { /* expected */ },
-            Err(e) => { panic!("Incorrect error: {:?}", e); },
+            Ok(_) => {
+                panic!("Merge was expected to fail (dimension mismatch), but succeeded");
+            }
+            Err(AgnesError::DimensionMismatch(_)) => { /* expected */ }
+            Err(e) => {
+                panic!("Incorrect error: {:?}", e);
+            }
         };
     }
 
@@ -1661,8 +1627,7 @@ mod tests {
 
     #[cfg(feature = "test-utils")]
     #[test]
-    fn merge_different_stores()
-    {
+    fn merge_different_stores() {
         let dv1 = sample_emp_table().into_view();
 
         // would NOT COMPILE due to field name collision (see compile-fail/merge_errors test)
@@ -1680,8 +1645,10 @@ mod tests {
         println!("{}", merged_dv);
         assert_eq!(merged_dv.nrows(), 7);
         assert_eq!(merged_dv.nfields(), 6);
-        assert_eq!(merged_dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName", "EmpId", "DeptId",
-            "EmpName"]);
+        assert_eq!(
+            merged_dv.fieldnames(),
+            vec!["EmpId", "DeptId", "EmpName", "EmpId", "DeptId", "EmpName"]
+        );
     }
 
     namespace![
@@ -1695,8 +1662,7 @@ mod tests {
 
     #[cfg(feature = "test-utils")]
     #[test]
-    fn relabel()
-    {
+    fn relabel() {
         let dv1 = sample_emp_table().into_view();
         let dv2 = sample_emp_table().into_view();
 
@@ -1711,8 +1677,17 @@ mod tests {
         println!("{}", merged_dv);
         assert_eq!(merged_dv.nrows(), 7);
         assert_eq!(merged_dv.nfields(), 6);
-        assert_eq!(merged_dv.fieldnames(), vec!["EmployeeId", "DepartmentId", "EmployeeName",
-            "EmpId", "DeptId", "EmpName"]);
+        assert_eq!(
+            merged_dv.fieldnames(),
+            vec![
+                "EmployeeId",
+                "DepartmentId",
+                "EmployeeName",
+                "EmpId",
+                "DeptId",
+                "EmpName"
+            ]
+        );
     }
 
     namespace![
@@ -1726,21 +1701,22 @@ mod tests {
 
     #[cfg(feature = "test-utils")]
     #[test]
-    fn name_change()
-    {
+    fn name_change() {
         let ds: emp_table4::Store = sample_emp_table![];
         let dv = ds.into_view();
 
         println!("{}", dv);
         assert_eq!(dv.nrows(), 7);
         assert_eq!(dv.nfields(), 3);
-        assert_eq!(dv.fieldnames(), vec!["Employee Id", "Department Id", "Employee Name"]);
+        assert_eq!(
+            dv.fieldnames(),
+            vec!["Employee Id", "Department Id", "Employee Name"]
+        );
     }
 
     #[cfg(feature = "test-utils")]
     #[test]
-    fn fieldnames()
-    {
+    fn fieldnames() {
         let ds = sample_emp_table();
         let dv = ds.into_view();
         assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
@@ -1824,10 +1800,7 @@ mod tests {
             dv1.field::<EmpName>().to_vec(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
         );
-        assert_eq!(
-            dv1.field::<EmpId>().to_vec(),
-            vec![10u64, 5, 6, 2, 8, 9, 0]
-        );
+        assert_eq!(dv1.field::<EmpId>().to_vec(), vec![10u64, 5, 6, 2, 8, 9, 0]);
 
         // re-sort by empid
         let mut dv2 = dv1.clone();
@@ -1836,20 +1809,14 @@ mod tests {
             dv2.field::<EmpName>().to_vec(),
             vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"]
         );
-        assert_eq!(
-            dv2.field::<EmpId>().to_vec(),
-            vec![0u64, 2, 5, 6, 8, 9, 10]
-        );
+        assert_eq!(dv2.field::<EmpId>().to_vec(), vec![0u64, 2, 5, 6, 8, 9, 10]);
 
         // make sure dv1 is still sorted by EmpName
         assert_eq!(
             dv1.field::<EmpName>().to_vec(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
         );
-        assert_eq!(
-            dv1.field::<EmpId>().to_vec(),
-            vec![10u64, 5, 6, 2, 8, 9, 0]
-        );
+        assert_eq!(dv1.field::<EmpId>().to_vec(), vec![10u64, 5, 6, 2, 8, 9, 0]);
 
         // starting with sorted by name, sort by vacation hours
         let mut dv3 = dv1.clone();
@@ -1860,10 +1827,7 @@ mod tests {
             dv3.field::<EmpName>().to_vec(),
             vec!["Louis", "Louise", "Cara", "Ann", "Sally", "Jamie", "Bob"]
         );
-        assert_eq!(
-            dv3.field::<EmpId>().to_vec(),
-            vec![8u64, 9, 6, 10, 0, 2, 5]
-        );
+        assert_eq!(dv3.field::<EmpId>().to_vec(), vec![8u64, 9, 6, 10, 0, 2, 5]);
     }
 
     #[cfg(feature = "test-utils")]
@@ -1878,7 +1842,10 @@ mod tests {
         dv1.filter::<DeptId, _>(|val: Value<&u64>| val == valref![1]);
         println!("{}", dv1);
         assert_eq!(dv1.nrows(), 3);
-        assert_eq!(dv1.field::<EmpName>().to_vec(), vec!["Sally", "Bob", "Cara"]);
+        assert_eq!(
+            dv1.field::<EmpName>().to_vec(),
+            vec!["Sally", "Bob", "Cara"]
+        );
 
         // filter a second time
         dv1.filter::<EmpId, _>(|val: Value<&u64>| val >= valref![6]);
@@ -1889,7 +1856,10 @@ mod tests {
         let mut dv2 = orig_dv.clone();
         dv2.filter::<EmpId, _>(|val: Value<&u64>| val >= valref![6]);
         assert_eq!(dv2.nrows(), 4);
-        assert_eq!(dv2.field::<EmpName>().to_vec(), vec!["Cara", "Louis", "Louise", "Ann"]);
+        assert_eq!(
+            dv2.field::<EmpName>().to_vec(),
+            vec!["Cara", "Louis", "Louise", "Ann"]
+        );
 
         // let's try filtering by a different department on dv2
         dv2.filter::<DeptId, _>(|val: Value<&u64>| val == valref![4]);
@@ -1929,7 +1899,8 @@ mod tests {
         assert_eq!(dv3.nrows(), 3);
         // should just be the people in department 1, in employee name order
         assert_eq!(
-            dv3.field::<EmpName>().to_vec(), vec!["Bob", "Cara", "Sally"]
+            dv3.field::<EmpName>().to_vec(),
+            vec!["Bob", "Cara", "Sally"]
         );
 
         // check that dv1 still has the original ordering
@@ -1943,7 +1914,8 @@ mod tests {
         assert_eq!(dv1.nrows(), 3);
         // should be the people in department 1, but in original name order
         assert_eq!(
-            dv1.field::<EmpName>().to_vec(), vec!["Sally", "Bob", "Cara"]
+            dv1.field::<EmpName>().to_vec(),
+            vec!["Sally", "Bob", "Cara"]
         );
 
         // make sure dv2 hasn't been affected by any of the other changes

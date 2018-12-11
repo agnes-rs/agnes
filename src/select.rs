@@ -1,35 +1,34 @@
 /*!
 Traits and structures for selecting a field from a data structure.
 */
-use std::rc::Rc;
 use std::fmt::Debug;
+use std::rc::Rc;
 
-use field::Value;
-use access::{DataIndex};
+use access::DataIndex;
 use error::*;
+use field::Value;
 // use data_types::{AssocTypes, DataType, TypeSelector, DTypeList};
 
 /// Type for accessing a specified field (identified by a `FieldIdent`) for an underlying data
 /// structure.
 #[derive(Debug, Clone)]
-pub struct Selection<D: DataIndex>
-{
+pub struct Selection<D: DataIndex> {
     /// Underlying data structure for this selection. Contains the field identified by `ident`.
     data: D,
 }
 impl<D> Selection<D>
-    where D: DataIndex
+where
+    D: DataIndex,
 {
     /// Create a new `Selection` object from specified data and identifier.
     pub fn new(data: D) -> Selection<D> {
-        Selection {
-            data,
-        }
+        Selection { data }
     }
 }
 impl<U> DataIndex for Selection<U>
-    where U: DataIndex,
-          <U as DataIndex>::DType: Debug
+where
+    U: DataIndex,
+    <U as DataIndex>::DType: Debug,
 {
     type DType = U::DType;
 
@@ -43,23 +42,22 @@ impl<U> DataIndex for Selection<U>
 
 /// Trait for accessing the data of a single field as a [Selection](struct.Selection.html) struct
 /// which implements [DataIndex](../access/trait.DataIndex.html).
-pub trait FieldSelect
-{
+pub trait FieldSelect {
     /// Returns a [Selection](struct.Selection.html) struct containing the data for the field
     /// specified by `ident`.
     ///
     /// This method is a convenience method for calling the [select](trait.SelectField.html#select)
     /// method on the [SelectField](trait.SelectField.html) trait.
     fn field<Label>(&self) -> <Self as SelectFieldByLabel<Label>>::Output
-        where Self: SelectFieldByLabel<Label>,
+    where
+        Self: SelectFieldByLabel<Label>,
     {
         SelectFieldByLabel::select_field(self)
     }
 }
 
 /// Trait implemented by data structures to provide access to data for a single field.
-pub trait SelectFieldByLabel<Label>
-{
+pub trait SelectFieldByLabel<Label> {
     /// The return type for the `select` method.
     type Output: DataIndex;
 
@@ -69,10 +67,13 @@ pub trait SelectFieldByLabel<Label>
 }
 
 impl<T, Label> SelectFieldByLabel<Label> for Rc<T>
-    where T: SelectFieldByLabel<Label>
+where
+    T: SelectFieldByLabel<Label>,
 {
     type Output = T::Output;
-    fn select_field(&self) -> T::Output { <T as SelectFieldByLabel<Label>>::select_field(self) }
+    fn select_field(&self) -> T::Output {
+        <T as SelectFieldByLabel<Label>>::select_field(self)
+    }
 }
 
 #[cfg(test)]

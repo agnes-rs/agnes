@@ -4,16 +4,16 @@ field storage (`FieldData` and `Value`).
 */
 
 use std::cmp::Ordering;
-use std::rc::Rc;
-use std::fmt::{Debug};
-use std::marker::PhantomData;
 use std::fmt;
+use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
+use std::marker::PhantomData;
 use std::mem;
+use std::rc::Rc;
 
 #[cfg(serialize)]
-use serde::ser::{Serialize, Serializer, SerializeSeq};
+use serde::ser::{Serialize, SerializeSeq, Serializer};
 
 use bit_vec::BitVec;
 // use store::{IntoDataStore, DataStore, WithDataFromIter};
@@ -30,14 +30,16 @@ pub enum Value<T> {
     /// Indicates a missing (NA) value.
     Na,
     /// Indicates an existing value.
-    Exists(T)
+    Exists(T),
 }
 impl<T> Value<T> {
     /// Unwrap a `Value`, revealing the data contained within. Panics if called on an `Na` value.
     pub fn unwrap(self) -> T {
         match self {
-            Value::Na => { panic!("unwrap() called on NA value"); },
-            Value::Exists(t) => t
+            Value::Na => {
+                panic!("unwrap() called on NA value");
+            }
+            Value::Exists(t) => t,
         }
     }
     /// Test if a `Value` contains a value.
@@ -58,14 +60,14 @@ impl<T> Value<T> {
     pub fn as_ref(&self) -> Value<&T> {
         match *self {
             Value::Exists(ref val) => Value::Exists(&val),
-            Value::Na => Value::Na
+            Value::Na => Value::Na,
         }
     }
     /// Applies function `f` if this `Value` exists.
     pub fn map<U, F: FnMut(T) -> U>(self, mut f: F) -> Value<U> {
         match self {
             Value::Exists(val) => Value::Exists(f(val)),
-            Value::Na => Value::Na
+            Value::Na => Value::Na,
         }
     }
 }
@@ -74,17 +76,20 @@ impl<'a, T: Clone> Value<&'a T> {
     pub fn cloned(self) -> Value<T> {
         match self {
             Value::Exists(t) => Value::Exists(t.clone()),
-            Value::Na => Value::Na
+            Value::Na => Value::Na,
         }
     }
 }
 
 macro_rules! valref {
-    ($value:expr) => (Value::Exists(&$value))
+    ($value:expr) => {
+        Value::Exists(&$value)
+    };
 }
 
 impl<'a, T> PartialEq<T> for Value<&'a T>
-    where T: PartialEq<T>
+where
+    T: PartialEq<T>,
 {
     fn eq(&self, other: &T) -> bool {
         match *self {
@@ -94,24 +99,25 @@ impl<'a, T> PartialEq<T> for Value<&'a T>
     }
 }
 impl<'a, T> PartialOrd<T> for Value<&'a T>
-    where
-        T: PartialOrd<T>
+where
+    T: PartialOrd<T>,
 {
-    fn partial_cmp(&self, other: &T) -> Option<Ordering>
-    {
-        match *self
-        {
+    fn partial_cmp(&self, other: &T) -> Option<Ordering> {
+        match *self {
             Value::Exists(value) => value.partial_cmp(other),
-            Value::Na => None
+            Value::Na => None,
         }
     }
 }
 
-impl<T> fmt::Display for Value<T> where T: fmt::Display {
+impl<T> fmt::Display for Value<T>
+where
+    T: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Value::Exists(ref t) => write!(f, "{}", t),
-            Value::Na        => write!(f, "NA")
+            Value::Na => write!(f, "NA"),
         }
     }
 }
@@ -124,10 +130,13 @@ impl<'a, T: Hash> Hash for Value<T> {
     }
 }
 impl<T> From<T> for Value<T> {
-    fn from(orig: T) -> Value<T> { Value::Exists(orig) }
+    fn from(orig: T) -> Value<T> {
+        Value::Exists(orig)
+    }
 }
 impl<'a, T> From<Value<&'a T>> for Value<T>
-    where T: 'a + Clone
+where
+    T: 'a + Clone,
 {
     fn from(orig: Value<&'a T>) -> Value<T> {
         orig.cloned()
@@ -138,7 +147,7 @@ impl<T> Into<Option<T>> for Value<T> {
     fn into(self) -> Option<T> {
         match self {
             Value::Exists(value) => Some(value),
-            Value::Na => None
+            Value::Na => None,
         }
     }
 }
@@ -146,11 +155,10 @@ impl<T> From<Option<T>> for Value<T> {
     fn from(orig: Option<T>) -> Value<T> {
         match orig {
             Some(value) => Value::Exists(value),
-            None => Value::Na
+            None => Value::Na,
         }
     }
 }
-
 
 /// Data vector containing the data for a single field (column) of an agnes data store.
 ///
@@ -161,15 +169,16 @@ pub struct FieldData<T> {
     mask: BitVec,
     data: Vec<T>,
 }
-impl<T> FieldData<T>
-{
+impl<T> FieldData<T> {
     /// Returns the length of this data vector.
     pub fn len(&self) -> usize {
         assert_eq!(self.mask.len(), self.data.len());
         self.data.len()
     }
     /// Returns `true` if this field contains no values.
-    pub fn is_empty(&self) -> bool { self.len() == 0 }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     /// Get the value at the given index. Return `None` if `index` is out of bounds, or a `Value`
     /// Object with the value (or indicator that value is missing).
     pub fn get(&self, index: usize) -> Option<Value<&T>> {
@@ -182,19 +191,25 @@ impl<T> FieldData<T>
         }
     }
     /// Interpret `FieldData` as a `Vec` of `Value` objects.
-    pub fn as_vec(&self) -> Vec<Value<&T>> where FieldData<T>: DataIndex<DType=T>
+    pub fn as_vec(&self) -> Vec<Value<&T>>
+    where
+        FieldData<T>: DataIndex<DType = T>,
     {
-        self.data.iter().enumerate().map(|(idx, value)| {
-            if self.mask[idx] {
-                Value::Exists(value)
-            } else {
-                Value::Na
-            }
-        }).collect()
+        self.data
+            .iter()
+            .enumerate()
+            .map(|(idx, value)| {
+                if self.mask[idx] {
+                    Value::Exists(value)
+                } else {
+                    Value::Na
+                }
+            })
+            .collect()
     }
 }
 impl<T> Default for FieldData<T>
-    // where T: DataType,
+// where T: DataType,
 {
     fn default() -> FieldData<T> {
         FieldData {
@@ -204,7 +219,7 @@ impl<T> Default for FieldData<T>
     }
 }
 impl<T> FieldData<T>
-    // where T: DataType
+// where T: DataType
 {
     /// Create a `FieldData` struct from a vector of non-NA values. Resulting `FieldData` struct
     /// will have no `Value::Na` values.
@@ -216,7 +231,8 @@ impl<T> FieldData<T>
     }
 }
 impl<T> FieldData<T>
-    where T: Debug + Default
+where
+    T: Debug + Default,
 {
     /// Add a new value (or an indication of a missing one) to the data vector.
     pub fn push_val(&mut self, value: Value<T>) {
@@ -224,7 +240,7 @@ impl<T> FieldData<T>
             Value::Exists(v) => {
                 self.data.push(v);
                 self.mask.push(true);
-            },
+            }
             Value::Na => {
                 self.data.push(T::default());
                 self.mask.push(false);
@@ -233,7 +249,8 @@ impl<T> FieldData<T>
     }
 }
 impl<T> FieldData<T>
-    where T: Debug + Default + Clone
+where
+    T: Debug + Default + Clone,
 {
     /// Add a new value (passed by reference) to the data vector.
     pub fn push_ref(&mut self, value: Value<&T>) {
@@ -241,7 +258,7 @@ impl<T> FieldData<T>
             Value::Exists(v) => {
                 self.data.push(v.clone());
                 self.mask.push(true);
-            },
+            }
             Value::Na => {
                 self.data.push(T::default());
                 self.mask.push(false)
@@ -258,9 +275,10 @@ impl<T> FieldData<T>
     }
 }
 impl<T> FromIterator<Value<T>> for FieldData<T>
-    where T: Debug + Default,
+where
+    T: Debug + Default,
 {
-    fn from_iter<I: IntoIterator<Item=Value<T>>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = Value<T>>>(iter: I) -> Self {
         let mut data = FieldData::default();
         for value in iter {
             data.push(value);
@@ -269,9 +287,10 @@ impl<T> FromIterator<Value<T>> for FieldData<T>
     }
 }
 impl<'a, T> FromIterator<Value<&'a T>> for FieldData<T>
-    where T: 'a + Debug + Default + Clone,
+where
+    T: 'a + Debug + Default + Clone,
 {
-    fn from_iter<I: IntoIterator<Item=Value<&'a T>>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = Value<&'a T>>>(iter: I) -> Self {
         let mut data = FieldData::default();
         for value in iter {
             data.push(value.cloned());
@@ -279,23 +298,20 @@ impl<'a, T> FromIterator<Value<&'a T>> for FieldData<T>
         data
     }
 }
-impl<T> FromIterator<T> for FieldData<T>
-{
-    fn from_iter<I: IntoIterator<Item=T>>(iter: I) -> Self {
+impl<T> FromIterator<T> for FieldData<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut mask = BitVec::new();
         let mut data = vec![];
         for value in iter {
             mask.push(true);
             data.push(value);
         }
-        FieldData {
-            data,
-            mask,
-        }
+        FieldData { data, mask }
     }
 }
 impl<T, U> From<Vec<U>> for FieldData<T>
-    where U: Into<T>
+where
+    U: Into<T>,
 {
     fn from(other: Vec<U>) -> FieldData<T> {
         FieldData::from_vec(other)
@@ -303,20 +319,24 @@ impl<T, U> From<Vec<U>> for FieldData<T>
 }
 
 impl<T> DataIndex for FieldData<T>
-    where T: Debug
+where
+    T: Debug,
 {
     type DType = T;
 
-    fn get_datum(&self, idx: usize) -> error::Result<Value<&T>>
-    {
-        self.get(idx).ok_or(error::AgnesError::IndexError { index: idx, len: self.len() })
+    fn get_datum(&self, idx: usize) -> error::Result<Value<&T>> {
+        self.get(idx).ok_or(error::AgnesError::IndexError {
+            index: idx,
+            len: self.len(),
+        })
     }
     fn len(&self) -> usize {
         self.len()
     }
 }
 impl<T> DataIndexMut for FieldData<T>
-    where T: Debug + Default
+where
+    T: Debug + Default,
 {
     fn push(&mut self, value: Value<Self::DType>) {
         self.push_val(value)
@@ -324,23 +344,28 @@ impl<T> DataIndexMut for FieldData<T>
 }
 
 impl<T> DataIndex for Rc<T>
-    where T: DataIndex
-
+where
+    T: DataIndex,
 {
     type DType = <T as DataIndex>::DType;
 
-    fn get_datum(&self, idx: usize) -> error::Result<Value<&Self::DType>>
-    {
+    fn get_datum(&self, idx: usize) -> error::Result<Value<&Self::DType>> {
         <T as DataIndex>::get_datum(self, idx)
     }
-    fn len(&self) -> usize { <T as DataIndex>::len(self) }
+    fn len(&self) -> usize {
+        <T as DataIndex>::len(self)
+    }
 }
 
 #[cfg(serialize)]
 impl<T> Serialize for FieldData<T>
-    where T: Serialize
+where
+    T: Serialize,
 {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
         let mut seq = serializer.serialize_seq(Some(self.data.len()))?;
         for (mask, elem) in self.mask.iter().zip(self.data.iter()) {
             if mask {
@@ -367,7 +392,7 @@ pub enum FieldIdent {
     /// Unnamed field identifier, using the field index in the source file.
     Index(usize),
     /// Field name in the source file
-    Name(String)
+    Name(String),
 }
 impl FieldIdent {
     /// Produce a string representation of the field identifier. Either the name if
@@ -392,7 +417,10 @@ impl PartialEq for FieldIdent {
 }
 impl Eq for FieldIdent {}
 impl Hash for FieldIdent {
-    fn hash<H>(&self, state: &mut H) where H: Hasher {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
         self.to_string().hash(state)
     }
 }
@@ -412,7 +440,11 @@ impl From<String> for FieldIdent {
         FieldIdent::Name(src)
     }
 }
-impl<'a, T> From<&'a T> for FieldIdent where FieldIdent: From<T>, T: Clone {
+impl<'a, T> From<&'a T> for FieldIdent
+where
+    FieldIdent: From<T>,
+    T: Clone,
+{
     fn from(src: &'a T) -> FieldIdent {
         FieldIdent::from(src.clone())
     }
@@ -430,14 +462,16 @@ impl RFieldIdent {
     /// Produce a string representation of this `RFieldIdent`. Uses the renamed name (if exists),
     /// of the result of `to_string` on the underlying `FieldIdent`.
     pub fn to_string(&self) -> String {
-        self.rename.clone().unwrap_or_else(|| self.ident.to_string())
+        self.rename
+            .clone()
+            .unwrap_or_else(|| self.ident.to_string())
     }
     /// Produce a new `FieldIdent` using the `rename` value of this `RFieldIdent` (if exists), or
     /// simply a clone of the underlying `FieldIdent`.
     pub fn to_renamed_field_ident(&self) -> FieldIdent {
         match self.rename {
             Some(ref renamed) => FieldIdent::Name(renamed.clone()),
-            None              => self.ident.clone()
+            None => self.ident.clone(),
         }
     }
 }
@@ -448,14 +482,14 @@ pub struct TFieldIdent<T> {
     /// Field identifier (name or original column number)
     pub ident: FieldIdent,
     /// Field type
-    phantom: PhantomData<T>
+    phantom: PhantomData<T>,
 }
 impl<T> TFieldIdent<T> {
     /// Create a new typed field identifier
     pub fn new(ident: FieldIdent) -> TFieldIdent<T> {
         TFieldIdent {
             ident,
-            phantom: PhantomData
+            phantom: PhantomData,
         }
     }
 }

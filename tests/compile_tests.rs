@@ -16,7 +16,6 @@ fn run_mode(mode: &'static str) {
 
 #[cfg(all(feature = "test-utils", feature = "compiletests"))]
 #[test]
-fn compile_test()
-{
+fn compile_test() {
     run_mode("compile-fail");
 }
