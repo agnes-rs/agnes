@@ -476,7 +476,7 @@ impl<Labels, Frames>
     }
 }
 
-/// Function (implementing [Func](../data_types/trait.Func.html)) that adds cells to
+/// Function (implementing [Func](../features/trait.Func.html)) that adds cells to
 /// `prettytable::row::Row`.
 pub struct AddCellToRowFn
 {

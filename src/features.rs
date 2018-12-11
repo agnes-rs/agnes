@@ -116,9 +116,6 @@ pub trait FuncDefault {
 // }
 // pub type ReqFeatureOf<T> = <T as ReqFeature>::Feature;
 
-//TODONEXT: change to DeriveCapabilities<Func> instead of using the Feature stepping stone, and
-//add the PartialMap associated type constraint. Then we will know that the output must support
-//PartialMap<Func> and don't need to try to ensure it later
 pub trait DeriveCapabilities<F>
 {
     type Output: PartialMap<F>;
