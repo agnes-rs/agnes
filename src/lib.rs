@@ -59,7 +59,7 @@ pub mod view;
 // pub mod apply;
 pub mod select;
 pub mod stats;
-// pub mod view_stats;
+pub mod view_stats;
 // pub mod filter;
 // pub mod reshape;
 // #[macro_use] pub mod unique;

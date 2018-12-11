@@ -5,7 +5,7 @@ use cons::*;
 use fieldlist::*;
 use label::{LVCons, SelfValued, TypedValue, Valued};
 use select::FieldSelect;
-use view::DataIndexCons;
+use view::{AssocDataIndexConsOf, DataIndexCons};
 
 #[derive(Debug, Clone)]
 pub struct Implemented;
@@ -157,6 +157,9 @@ where
         }
     }
 }
+
+pub type DeriveCapabilitiesOf<Labels, Frames, F> =
+    <AssocDataIndexConsOf<Labels, Frames> as DeriveCapabilities<F>>::Output;
 
 // pub type DerivePartialMap<Fields, Func>
 //     = <Fields as DeriveCapabilities<'a, <Func as ReqFeature>::Feature>>::Output;

@@ -15,6 +15,7 @@ use cons::{Cons, Nil};
 
 pub trait Label: Identifier {
     const NAME: &'static str;
+    const TYPE: &'static str;
 }
 
 /// A label for a value in an `LVCons` within a specific namespace `NS`. Backed by a type-level
@@ -50,6 +51,7 @@ impl<U, B> Identifier for UInt<U, B> {
 
 pub trait LabelName {
     fn name() -> &'static str;
+    fn str_type() -> &'static str;
 }
 impl<T> LabelName for T
 where
@@ -57,6 +59,9 @@ where
 {
     fn name() -> &'static str {
         T::NAME
+    }
+    fn str_type() -> &'static str {
+        T::TYPE
     }
 }
 
@@ -633,6 +638,26 @@ where
     }
 }
 
+pub trait StrTypes {
+    fn str_types<'a>() -> VecDeque<&'a str>;
+}
+impl StrTypes for Nil {
+    fn str_types<'a>() -> VecDeque<&'a str> {
+        VecDeque::new()
+    }
+}
+impl<L, V, T> StrTypes for LVCons<L, V, T>
+where
+    L: LabelName,
+    T: StrTypes,
+{
+    fn str_types<'a>() -> VecDeque<&'a str> {
+        let mut previous = T::str_types();
+        previous.push_front(L::str_type());
+        previous
+    }
+}
+
 #[macro_export]
 macro_rules! namespace {
     (@fields() -> ($($out:tt)*)) => {
@@ -712,6 +737,7 @@ macro_rules! nat_label {
         }
         impl $crate::label::Label for $label {
             const NAME: &'static str = $name;
+            const TYPE: &'static str = stringify![$dtype];
         }
         impl $crate::label::Typed for $label {
             type DType = $dtype;

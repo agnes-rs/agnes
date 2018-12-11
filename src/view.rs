@@ -414,14 +414,14 @@ where
     }
 }
 
-pub type AssocDataIndexConsOf<Frames, Labels> = <Frames as AssocDataIndexCons<Labels>>::Output;
+pub type AssocDataIndexConsOf<Labels, Frames> = <Frames as AssocDataIndexCons<Labels>>::Output;
 
 const MAX_DISP_ROWS: usize = 1000;
 
 impl<Labels, Frames> Display for DataView<Labels, Frames>
 where
     Frames: Len + NRows + AssocDataIndexCons<Labels>,
-    AssocDataIndexConsOf<Frames, Labels>: DeriveCapabilities<AddCellToRowFn>,
+    AssocDataIndexConsOf<Labels, Frames>: DeriveCapabilities<AddCellToRowFn>,
     Labels: StrLabels,
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
@@ -474,24 +474,14 @@ impl FuncDefault for AddCellToRowFn {
         }
     }
 }
-impl IsImplemented<AddCellToRowFn> for String {
-    type IsImpl = Implemented;
+macro_rules! impl_addcell_is_impl {
+    ($($dtype:ty)*) => {$(
+        impl IsImplemented<AddCellToRowFn> for $dtype {
+            type IsImpl = Implemented;
+        }
+    )*}
 }
-impl IsImplemented<AddCellToRowFn> for f64 {
-    type IsImpl = Implemented;
-}
-impl IsImplemented<AddCellToRowFn> for f32 {
-    type IsImpl = Implemented;
-}
-impl IsImplemented<AddCellToRowFn> for u64 {
-    type IsImpl = Implemented;
-}
-impl IsImplemented<AddCellToRowFn> for i64 {
-    type IsImpl = Implemented;
-}
-impl IsImplemented<AddCellToRowFn> for bool {
-    type IsImpl = Implemented;
-}
+impl_addcell_is_impl![String f64 f32 u64 u32 i64 i32 bool];
 
 impl<Labels, Frames> DataView<Labels, Frames> {
     pub fn relabel<CurrLabel, NewLabel>(
