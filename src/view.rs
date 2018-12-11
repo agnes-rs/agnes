@@ -31,7 +31,7 @@ use frame::{SerializedField};
 // use frame::{DataFrame, FramedMap, FramedTMap, FramedMapExt, Framed, FramedFunc, SerializedField};
 // use filter::Filter;
 use field::{Value};
-use join::{Merge};
+use join::*;
 // use join::{Join, sort_merge_join, compute_merged_frames, compute_merged_field_list, MergedFields,
 //     MergeFields};
 use fieldlist::{FieldCons, FieldPayloadCons};
@@ -259,13 +259,27 @@ impl<Frames, Labels, Label> FindFrame<Labels, Label>
         Labels: FindFrameDetails<Label>,
         Frames: LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>,
 {}
+pub type FrameElemByFrameIndexOf<Frames, FrameIndex> =
+    <Frames as LookupValuedElemByLabel<FrameIndex>>::Elem;
+pub type FrameByFrameIndexOf<Frames, FrameIndex> =
+    <FrameElemByFrameIndexOf<Frames, FrameIndex> as Valued>::Value;
 pub type FrameElemOf<Frames, Labels, Label> =
-    <Frames as LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>>::Elem;
+    FrameElemByFrameIndexOf<Frames, FrameIndexOf<Labels, Label>>;
 pub type FrameOf<Frames, Labels, Label> =
     <FrameElemOf<Frames, Labels, Label> as Valued>::Value;
 
+pub type FieldFromFrameDetailsOf<Frames, FrameIndex, FrameLabel> =
+    <FrameByFrameIndexOf<Frames, FrameIndex> as SelectFieldByLabel<FrameLabel>>::Output;
+pub type FieldTypeFromFrameDetailsOf<Frames, FrameIndex, FrameLabel> =
+    <FieldFromFrameDetailsOf<Frames, FrameIndex, FrameLabel> as DataIndex>::DType;
+
 pub type FieldOf<Frames, Labels, Label> =
     <FrameOf<Frames, Labels, Label> as SelectFieldByLabel<FrameLabelOf<Labels, Label>>>::Output;
+pub type FieldTypeOf<Frames, Labels, Label> =
+    <FieldOf<Frames, Labels, Label> as DataIndex>::DType;
+
+pub type VFieldOf<View, Label> = <View as SelectFieldByLabel<Label>>::Output;
+pub type VFieldTypeOf<View, Label> = <VFieldOf<View, Label> as DataIndex>::DType;
 
 pub trait FrameRef<'a, Labels, Frames, Label>
 {
@@ -615,26 +629,28 @@ impl<Labels, Frames> DataView<Labels, Frames>
 
 impl<Labels, Frames> DataView<Labels, Frames>
 {
-    // /// Combine two `DataView` objects using specified join, creating a new `DataStore` object with
-    // /// a subset of records from the two source `DataView`s according to the join parameters.
-    // ///
-    // /// Note that since this is creating a new `DataStore` object, it will be allocated new data to
-    // /// store the contents of the joined `DataView`s.
-    // pub fn join<RLabels, RFrames>(
-    //     &self, right: &DataView<RIdents, RFrames>, join: &Join
-    // )
-    //     -> DataStore<<Self as ViewJoin<RLabels, RFrames>>::OutFields>
-    // {
-    //     match join.predicate {
-    //         // TODO: implement hash join
-    //         // Predicate::Equal => {
-    //         //     hash_join(self, other, join)
-    //         // },
-    //         _ => {
-    //             sort_merge_join(self, other, join)
-    //         }
-    //     }
-    // }
+    /// Combine two `DataView` objects using specified join, creating a new `DataStore` object with
+    /// a subset of records from the two source `DataView`s according to the join parameters.
+    ///
+    /// Note that since this is creating a new `DataStore` object, it will be allocated new data to
+    /// store the contents of the joined `DataView`s.
+    pub fn join<LLabel, RLabel, RLabels, RFrames>(
+        &self, right: &DataView<RLabels, RFrames>, join: &Join<LLabel, RLabel>
+    )
+        -> <Self as SortMergeJoin<RLabels, RFrames, Join<LLabel, RLabel>>>::Output
+        where Self: SortMergeJoin<RLabels, RFrames, Join<LLabel, RLabel>>
+    {
+        SortMergeJoin::join(self, right, join)
+        // match join.predicate {
+        //     // TODO: implement hash join
+        //     // Predicate::Equal => {
+        //     //     hash_join(self, other, join)
+        //     // },
+        //     _ => {
+        //         sort_merge_join(self, other, join)
+        //     }
+        // }
+    }
 }
 
 pub trait UpdatePermutation

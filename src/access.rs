@@ -18,14 +18,26 @@ pub trait DataIndex: Debug
 
     /// Returns the data (possibly NA) at the specified index, if it exists.
     fn get_datum(&self, idx: usize) -> Result<Value<&Self::DType>>;
+
     /// Returns the length of this data field.
     fn len(&self) -> usize;
+
     /// Returns whether or not this field is empty.
     fn is_empty(&self) -> bool { self.len() == 0 }
+
     /// Returns an iterator over the values in this field.
     fn iter(&self) -> DataIterator<Self::DType> where Self: Sized {
         DataIterator::new(self)
     }
+
+    fn permute<'a, 'b>(&'a self, permutation: &'b [usize])
+        -> Result<DataIterator<'a, 'b, Self::DType>>
+        where
+            Self: Sized,
+    {
+        DataIterator::with_permutation(self, permutation)
+    }
+
     /// Copies existing values in this field into a new `Vec`.
     ///
     /// If this field has missing values, this method will return a vector of length less than that
@@ -42,6 +54,7 @@ pub trait DataIndex: Debug
             }
         }).collect()
     }
+
     /// Copies values (missing or existing) in this field into a new `Vec`.
     fn to_value_vec(&self) -> Vec<Value<Self::DType>>
         where
@@ -50,6 +63,8 @@ pub trait DataIndex: Debug
     {
         self.iter().map(|value| value.cloned()).collect()
     }
+
+
 }
 /// Trait that provides mutable access to values in a data field.
 pub trait DataIndexMut: DataIndex
@@ -59,33 +74,57 @@ pub trait DataIndexMut: DataIndex
 }
 
 /// Iterator over the data in a data structure that implement DataIndex.
-pub struct DataIterator<'a, T>
+pub struct DataIterator<'a, 'b, T>
     where T: 'a
 {
     data: &'a dyn DataIndex<DType=T>,
+    permutation: Permutation<&'b [usize]>,
     cur_idx: usize,
     phantom: PhantomData<T>
 }
-impl<'a, T> DataIterator<'a, T>
+impl<'a, 'b, T> DataIterator<'a, 'b, T>
     where T: 'a
 {
     /// Create a new `DataIterator` from a type that implements `DataIndex`.
-    pub fn new(data: &'a dyn DataIndex<DType=T>) -> DataIterator<'a, T> {
+    pub fn new(data: &'a dyn DataIndex<DType=T>) -> DataIterator<'a, 'b, T> {
         DataIterator {
             data,
+            permutation: Permutation::default(),
             cur_idx: 0,
             phantom: PhantomData
         }
     }
+    pub fn with_permutation(data: &'a dyn DataIndex<DType=T>, permutation: &'b [usize])
+        -> Result<DataIterator<'a, 'b, T>>
+    {
+        if permutation.len() > 0 && permutation.iter().max().unwrap() >= &data.len()
+        {
+            return Err(AgnesError::LengthMismatch {
+                expected: data.len(),
+                actual: permutation.len()
+            });
+        }
+        Ok(DataIterator {
+            data,
+            permutation: Permutation { perm: Some(permutation) },
+            cur_idx: 0,
+            phantom: PhantomData
+        })
+    }
 }
-impl<'a, T> Iterator for DataIterator<'a, T>
-    where T: 'a
+
+impl<'a, 'b, T> Iterator for DataIterator<'a, 'b, T>
+    where T: 'a,
 {
     type Item = Value<&'a T>;
 
     fn next(&mut self) -> Option<Value<&'a T>> {
-        if self.cur_idx < self.data.len() {
-            let out = Some(self.data.get_datum(self.cur_idx).unwrap());
+        // use permutation length as length of iterator when permutation exists, otherwise use
+        // data length
+        if self.permutation.is_permuted() && self.cur_idx < self.permutation.len().unwrap()
+            || !self.permutation.is_permuted() && self.cur_idx < self.data.len()
+        {
+            let out = Some(self.data.get_datum(self.permutation.map_index(self.cur_idx)).unwrap());
             self.cur_idx += 1;
             out
         } else {
@@ -93,6 +132,60 @@ impl<'a, T> Iterator for DataIterator<'a, T>
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct Permutation<I>
+{
+    perm: Option<I>,
+}
+impl<I> Default for Permutation<I>
+{
+    fn default() -> Permutation<I>
+    {
+        Permutation
+        {
+            perm: None,
+        }
+    }
+}
+
+impl Permutation<Vec<usize>>
+{
+    pub(crate) fn update(&mut self, new_permutation: &[usize])
+    {
+        // check if we already have a permutation
+        self.perm = match self.perm {
+            Some(ref prev_perm) => {
+                // we already have a permutation, map the filter indices through it
+                Some(new_permutation.iter().map(|&new_idx| prev_perm[new_idx]).collect())
+            },
+            None => Some(new_permutation.iter().map(|&idx| idx).collect())
+        };
+    }
+}
+
+macro_rules! impl_permutation_len {
+    ($($t:ty)*) => {$(
+        impl Permutation<$t>
+        {
+            /// Returns the re-organized index of a requested index.
+            pub fn map_index(&self, requested: usize) -> usize
+            {
+                match self.perm
+                {
+                    Some(ref perm) => perm[requested],
+                    None => requested
+                }
+            }
+            pub fn len(&self) -> Option<usize>
+            {
+                self.perm.as_ref().map(|perm| perm.len())
+            }
+            pub fn is_permuted(&self) -> bool { self.perm.is_some() }
+        }
+    )*}
+}
+impl_permutation_len![&[usize] Vec<usize>];
 
 pub trait SortOrder
 {

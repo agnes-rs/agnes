@@ -12,12 +12,14 @@ use serde::{Serialize, Serializer};
 use store::{NRows, DataStore, AssocStorage};
 // use data_types::*;
 use field::{FieldData, Value};
-use access::{DataIndex};
+use access::{self, DataIndex};
 use select::{SelectFieldByLabel, FieldSelect};
 use label::{LookupElemByLabel, TypeOf, Typed, ElemOf, Valued, TypeOfElemOf};
 // use apply::sort::SortOrderFn;
 use error;
 // use field::{Value};
+
+type Permutation = access::Permutation<Vec<usize>>;
 
 /// A data frame. A `DataStore` reference along with record-based filtering and sorting details.
 #[derive(Debug, Clone)]
@@ -25,9 +27,8 @@ pub struct DataFrame<Fields>
     where Fields: AssocStorage,
           Fields::Storage: Debug
 {
-    pub(crate) permutation: Rc<Permutation>,
-    // pub(crate) permutation: Option<Vec<usize>>,
-    pub(crate) store: Arc<DataStore<Fields>>,
+    permutation: Rc<Permutation>,
+    store: Arc<DataStore<Fields>>,
 }
 impl<Fields> DataFrame<Fields>
     where Fields: AssocStorage,
@@ -193,51 +194,6 @@ pub type FrameFieldsOf<T> = <T as FrameFields>::FrameFields;
 //     where T: for<'a> MapExt<DTypes, FramedFunc<'a, DTypes, F>, FOut>,
 //           DTypes: AssocTypes
 // {}
-
-#[derive(Debug, Clone)]
-pub struct Permutation
-{
-    perm: Option<Vec<usize>>,
-}
-impl Default for Permutation
-{
-    fn default() -> Permutation
-    {
-        Permutation
-        {
-            perm: None,
-        }
-    }
-}
-
-impl Permutation
-{
-    /// Returns the re-organized index of a requested index.
-    pub fn map_index(&self, requested: usize) -> usize
-    {
-        match self.perm
-        {
-            Some(ref perm) => perm[requested],
-            None => requested
-        }
-    }
-    pub fn len(&self) -> Option<usize>
-    {
-        self.perm.as_ref().map(|perm| perm.len())
-    }
-    pub fn is_permuted(&self) -> bool { self.perm.is_some() }
-
-    pub(crate) fn update(&mut self, new_permutation: &[usize]) {
-        // check if we already have a permutation
-        self.perm = match self.perm {
-            Some(ref prev_perm) => {
-                // we already have a permutation, map the filter indices through it
-                Some(new_permutation.iter().map(|&new_idx| prev_perm[new_idx]).collect())
-            },
-            None => Some(new_permutation.to_vec())
-        };
-    }
-}
 
 // /// Trait for a data structure that re-indexes data and provides methods for accessing that
 // /// reorganized data.

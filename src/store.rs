@@ -211,36 +211,6 @@ impl<PrevFields, NewLabel, NewDType> AddFieldFromValueIter<NewLabel, NewDType>
     }
 }
 
-// pub trait PushFieldFromIter<NewLabel, NewDType> {
-//     type OutputFields: AssocStorage;
-
-//     fn push_field_from_iter<IntoIter, Iter>(self, iter: IntoIter)
-//         -> DataStore<Self::OutputFields>
-//         where Iter: Iterator<Item=NewDType>,
-//               IntoIter: IntoIterator<IntoIter=Iter, Item=NewDType>;
-// }
-// impl<PrevFields, NewLabel, NewDType> PushFieldFromIter<NewLabel, NewDType>
-//     for DataStore<PrevFields>
-//     where PrevFields: AssocStorage,
-//           NewLabel: Debug, NewDType: Debug,
-// {
-//     type OutputFields = FieldCons<NewLabel, NewDType, PrevFields>;
-
-//     fn push_field_from_iter<IntoIter, Iter>(self, iter: IntoIter)
-//         -> DataStore<Self::OutputFields>
-//         where Iter: Iterator<Item=NewDType>,
-//               IntoIter: IntoIterator<IntoIter=Iter, Item=NewDType>
-//     {
-//         DataStore {
-//             data: StorageCons {
-//                 head: TypedValue::from(Rc::new(iter.into_iter().collect::<FieldData<NewDType>>()))
-//                     .into(),
-//                 tail: self.data
-//             }
-//         }
-//     }
-// }
-
 pub trait AddFieldFromIter<NewLabel, NewDType>
 {
     type OutputFields: AssocStorage;
@@ -306,6 +276,46 @@ impl<PrevFields, NewLabel, NewDType> AddClonedFieldFromIter<NewLabel, NewDType>
         -> DataStore<Self::OutputFields>
         where Iter: Iterator<Item=&'a NewDType>,
               IntoIter: IntoIterator<IntoIter=Iter, Item=&'a NewDType>,
+              NewDType: 'a
+    {
+        DataStore {
+            data: self.data.push_back(
+                TypedValue::from(Rc::new(
+                    iter.into_iter().map(|x| x.clone()).collect::<FieldData<NewDType>>()
+                )).into()
+            )
+        }
+    }
+}
+
+pub trait AddClonedFieldFromValueIter<NewLabel, NewDType>
+{
+    type OutputFields: AssocStorage;
+
+    fn add_cloned_field_from_value_iter<'a, IntoIter, Iter>(self, iter: IntoIter)
+        -> DataStore<Self::OutputFields>
+        where Iter: Iterator<Item=Value<&'a NewDType>>,
+              IntoIter: IntoIterator<IntoIter=Iter, Item=Value<&'a NewDType>>,
+              NewDType: 'a;
+}
+impl<PrevFields, NewLabel, NewDType> AddClonedFieldFromValueIter<NewLabel, NewDType>
+    for DataStore<PrevFields>
+    where
+        PrevFields: AssocStorage + PushBack<FieldSpec<NewLabel, NewDType>>,
+        AddedField<PrevFields, NewLabel, NewDType>: AssocStorage,
+        PrevFields::Storage: PushBack<
+            NewFieldStorage<NewLabel, NewDType>,
+            Output=<AddedField<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage
+        >,
+        NewLabel: Debug,
+        NewDType: Default + Clone + Debug,
+{
+    type OutputFields = AddedField<PrevFields, NewLabel, NewDType>;
+
+    fn add_cloned_field_from_value_iter<'a, IntoIter, Iter>(self, iter: IntoIter)
+        -> DataStore<Self::OutputFields>
+        where Iter: Iterator<Item=Value<&'a NewDType>>,
+              IntoIter: IntoIterator<IntoIter=Iter, Item=Value<&'a NewDType>>,
               NewDType: 'a
     {
         DataStore {
@@ -454,12 +464,17 @@ impl<PrevFields> DataStore<PrevFields> where PrevFields: AssocStorage
         AddFieldFromValueIter::add_field_from_value_iter(self, iter)
     }
 
-    // pub fn push_empty_field<NewLabel, NewDType>(self)
-    //     -> DataStore<<Self as PushEmptyField<NewLabel, NewDType>>::OutputFields>
-    //     where Self: PushEmptyField<NewLabel, NewDType>
-    // {
-    //     PushEmptyField::push_empty_field(self)
-    // }
+    pub fn add_cloned_field_from_value_iter<'a, NewLabel, NewDType, IntoIter, Iter>(
+        self, iter: IntoIter
+    )
+        -> DataStore<<Self as AddClonedFieldFromValueIter<NewLabel, NewDType>>::OutputFields>
+        where Iter: Iterator<Item=Value<&'a NewDType>>,
+              IntoIter: IntoIterator<IntoIter=Iter, Item=Value<&'a NewDType>>,
+              Self: AddClonedFieldFromValueIter<NewLabel, NewDType>,
+              NewDType: 'a
+    {
+        AddClonedFieldFromValueIter::add_cloned_field_from_value_iter(self, iter)
+    }
 
     pub fn add_empty_field<NewLabel, NewDType>(self)
         -> DataStore<<Self as AddEmptyField<NewLabel, NewDType>>::OutputFields>

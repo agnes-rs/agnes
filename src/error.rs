@@ -44,6 +44,10 @@ pub enum AgnesError {
         /// length of underlying data structure
         len: usize
     },
+    LengthMismatch {
+        expected: usize,
+        actual: usize
+    },
     /// Incompatible types error
     IncompatibleTypes {
         /// Expected / supported type
@@ -85,6 +89,8 @@ impl fmt::Display for AgnesError {
             AgnesError::TypeMismatch(ref s) => write!(f, "Type collision: {}", s),
             AgnesError::IndexError { index, len } => write!(f,
                 "Index error: index {} exceeds data length {}", index, len),
+            AgnesError::LengthMismatch { expected, actual } => write!(f,
+                "Length mismatch: expected {} does not match actual {}", expected, actual),
             AgnesError::IncompatibleTypes { ref expected, ref actual  } =>
                 write!(f, "Incompatible types: expected {}, found {}", expected, actual),
             AgnesError::InvalidOp(ref s) => write!(f, "Invalid operation: {}", s),
@@ -109,6 +115,7 @@ impl Error for AgnesError {
             AgnesError::FieldCollision(_) => "field collision",
             AgnesError::TypeMismatch(ref s) => s,
             AgnesError::IndexError { .. } => "indexing error",
+            AgnesError::LengthMismatch { .. } => "length mismatch",
             AgnesError::IncompatibleTypes { .. } => "incompatible types",
             AgnesError::InvalidOp(ref s) => s,
             AgnesError::InvalidType { .. } => "invalid type for operation"
@@ -129,6 +136,7 @@ impl Error for AgnesError {
             AgnesError::FieldCollision(_) => None,
             AgnesError::TypeMismatch(_) => None,
             AgnesError::IndexError { .. }  => None,
+            AgnesError::LengthMismatch { .. } => None,
             AgnesError::IncompatibleTypes { .. } => None,
             AgnesError::InvalidOp(_) => None,
             AgnesError::InvalidType { .. } => None,
