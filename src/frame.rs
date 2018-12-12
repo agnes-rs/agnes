@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 // use filter::{Filter, DataFilter};
-use store::{AssocStorage, DataStore, NRows};
+use store::{AssocStorage, DataStore, DataRef, NRows};
 // use data_types::*;
 use access::{self, DataIndex};
 use field::{FieldData, Value};
@@ -370,12 +370,12 @@ where
 #[derive(Debug)]
 pub struct Framed<T> {
     permutation: Rc<Permutation>,
-    data: Rc<FieldData<T>>,
+    data: DataRef<T>,
     // dtype: PhantomData<T>,
 }
 impl<T> Framed<T> {
     /// Create a new framed view of some data, as view through a particular `DataFrame`.
-    pub fn new(permutation: Rc<Permutation>, data: Rc<FieldData<T>>) -> Framed<T> {
+    pub fn new(permutation: Rc<Permutation>, data: DataRef<T>) -> Framed<T> {
         Framed { permutation, data }
     }
 }
@@ -383,7 +383,7 @@ impl<T> Clone for Framed<T> {
     fn clone(&self) -> Framed<T> {
         Framed {
             permutation: Rc::clone(&self.permutation),
-            data: Rc::clone(&self.data),
+            data: DataRef::clone(&self.data),
         }
     }
 }
@@ -457,7 +457,7 @@ where
     Fields::Storage: LookupElemByLabel<Label> + NRows,
     ElemOf<Fields::Storage, Label>: Typed,
     ElemOf<Fields::Storage, Label>:
-        Valued<Value = Rc<FieldData<TypeOfElemOf<Fields::Storage, Label>>>>,
+        Valued<Value = DataRef<TypeOfElemOf<Fields::Storage, Label>>>,
     // ValueOfElemOf<Fields::Storage, Label>:
     //   DataIndex<DType=TypeOfElemOf<Fields::Storage, Label>>,
     TypeOf<ElemOf<Fields::Storage, Label>>: Debug,
@@ -467,7 +467,7 @@ where
     fn select_field(&self) -> Self::Output {
         Framed::new(
             Rc::clone(&self.permutation),
-            Rc::clone(&self.store.field::<Label>()),
+            DataRef::clone(&self.store.field::<Label>()),
         )
     }
 }

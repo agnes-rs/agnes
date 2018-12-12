@@ -9,36 +9,36 @@ use error::*;
 use field::Value;
 // use data_types::{AssocTypes, DataType, TypeSelector, DTypeList};
 
-/// Type for accessing a specified field (identified by a `FieldIdent`) for an underlying data
-/// structure.
-#[derive(Debug, Clone)]
-pub struct Selection<D: DataIndex> {
-    /// Underlying data structure for this selection. Contains the field identified by `ident`.
-    data: D,
-}
-impl<D> Selection<D>
-where
-    D: DataIndex,
-{
-    /// Create a new `Selection` object from specified data and identifier.
-    pub fn new(data: D) -> Selection<D> {
-        Selection { data }
-    }
-}
-impl<U> DataIndex for Selection<U>
-where
-    U: DataIndex,
-    <U as DataIndex>::DType: Debug,
-{
-    type DType = U::DType;
+// /// Type for accessing a specified field (identified by a `FieldIdent`) for an underlying data
+// /// structure.
+// #[derive(Debug, Clone)]
+// pub struct Selection<D: DataIndex> {
+//     /// Underlying data structure for this selection. Contains the field identified by `ident`.
+//     data: D,
+// }
+// impl<D> Selection<D>
+// where
+//     D: DataIndex,
+// {
+//     /// Create a new `Selection` object from specified data and identifier.
+//     pub fn new(data: D) -> Selection<D> {
+//         Selection { data }
+//     }
+// }
+// impl<U> DataIndex for Selection<U>
+// where
+//     U: DataIndex,
+//     <U as DataIndex>::DType: Debug,
+// {
+//     type DType = U::DType;
 
-    fn get_datum(&self, idx: usize) -> Result<Value<&Self::DType>> {
-        self.data.get_datum(idx)
-    }
-    fn len(&self) -> usize {
-        self.data.len()
-    }
-}
+//     fn get_datum(&self, idx: usize) -> Result<Value<&Self::DType>> {
+//         self.data.get_datum(idx)
+//     }
+//     fn len(&self) -> usize {
+//         self.data.len()
+//     }
+// }
 
 /// Trait for accessing the data of a single field as a [Selection](struct.Selection.html) struct
 /// which implements [DataIndex](../access/trait.DataIndex.html).
@@ -66,15 +66,25 @@ pub trait SelectFieldByLabel<Label> {
     fn select_field(&self) -> Self::Output;
 }
 
-impl<T, Label> SelectFieldByLabel<Label> for Rc<T>
-where
-    T: SelectFieldByLabel<Label>,
-{
-    type Output = T::Output;
-    fn select_field(&self) -> T::Output {
-        <T as SelectFieldByLabel<Label>>::select_field(self)
-    }
-}
+// impl<T, Label> SelectFieldByLabel<Label> for DataRef<T>
+// where
+//     T: SelectFieldByLabel<Label>,
+// {
+//     type Output = T::Output;
+//     fn select_field(&self) -> T::Output {
+//         <T as SelectFieldByLabel<Label>>::select_field(self.0)
+//     }
+// }
+
+// impl<T, Label> SelectFieldByLabel<Label> for Rc<T>
+// where
+//     T: SelectFieldByLabel<Label>,
+// {
+//     type Output = T::Output;
+//     fn select_field(&self) -> T::Output {
+//         <T as SelectFieldByLabel<Label>>::select_field(self)
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

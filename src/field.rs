@@ -16,6 +16,7 @@ use std::rc::Rc;
 use serde::ser::{Serialize, SerializeSeq, Serializer};
 
 use bit_vec::BitVec;
+use store::DataRef;
 // use store::{IntoDataStore, DataStore, WithDataFromIter};
 use access::{DataIndex, DataIndexMut};
 use error;
@@ -343,17 +344,18 @@ where
     }
 }
 
-impl<T> DataIndex for Rc<T>
+impl<T> DataIndex for DataRef<T>
 where
-    T: DataIndex,
+    FieldData<T>: DataIndex<DType=T>,
+    T: Debug
 {
-    type DType = <T as DataIndex>::DType;
+    type DType = T;
 
-    fn get_datum(&self, idx: usize) -> error::Result<Value<&Self::DType>> {
-        <T as DataIndex>::get_datum(self, idx)
+    fn get_datum(&self, idx: usize) -> error::Result<Value<&T>> {
+        <FieldData<T> as DataIndex>::get_datum(&self.0, idx)
     }
     fn len(&self) -> usize {
-        <T as DataIndex>::len(self)
+        <FieldData<T> as DataIndex>::len(&self.0)
     }
 }
 

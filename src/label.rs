@@ -11,6 +11,7 @@ use typenum::{
     uint::{UInt, UTerm, Unsigned},
 };
 
+use store::DataRef;
 use cons::{Cons, Nil};
 
 pub trait Label: Identifier {
@@ -163,7 +164,7 @@ impl<T> Typed for ::field::FieldData<T> {
 impl<T> Typed for ::frame::Framed<T> {
     type DType = T;
 }
-impl<T> Typed for ::std::rc::Rc<T>
+impl<T> Typed for ::store::DataRef<T>
 where
     T: Typed,
 {
@@ -186,7 +187,7 @@ impl_selfvalued![
 ];
 impl<T> SelfValued for ::field::FieldData<T> {}
 impl<T> SelfValued for ::frame::Framed<T> {}
-impl<T> SelfValued for Rc<T> {}
+impl<T> SelfValued for DataRef<T> {}
 
 pub trait Valued {
     type Value;

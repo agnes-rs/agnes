@@ -1,10 +1,7 @@
-use std::fmt;
+use std::ops::Deref;
 use std::fmt::Debug;
-use std::marker::PhantomData;
-use std::ops::Add;
-use std::rc::Rc;
 
-use typenum::{bit::B1, uint::UTerm};
+use typenum::uint::UTerm;
 
 use access::DataIndex;
 use cons::*;
@@ -15,8 +12,31 @@ use label::*;
 use select::{FieldSelect, SelectFieldByLabel};
 use view::{DataView, FrameLookupCons, ViewFrameCons};
 
+#[derive(Debug)]
+pub struct DataRef<DType>(pub std::rc::Rc<FieldData<DType>>);
+
+impl<DType> DataRef<DType> {
+    fn new(field: FieldData<DType>) -> DataRef<DType> {
+        DataRef(std::rc::Rc::new(field))
+    }
+}
+
+impl<DType> Clone for DataRef<DType> {
+    fn clone(&self) -> DataRef<DType> {
+        DataRef(std::rc::Rc::clone(&self.0))
+    }
+}
+
+impl<T> Deref for DataRef<T> {
+    type Target = FieldData<T>;
+
+    fn deref(&self) -> &FieldData<T> {
+        &self.0.deref()
+    }
+}
+
 pub type StorageCons<Label, DType, Tail> =
-    FieldPayloadCons<Label, DType, Rc<FieldData<DType>>, Tail>;
+    FieldPayloadCons<Label, DType, DataRef<DType>, Tail>;
 
 #[derive(Debug)]
 pub struct DataStore<Fields: AssocStorage> {
@@ -78,7 +98,7 @@ where
 // - new_field::<Field>() -> DataStore<...>
 // - field_mut::<Field>() -> DataIndexMut<Item=T>
 pub type NewFieldStorage<NewLabel, NewDType> =
-    Labeled<NewLabel, TypedValue<NewDType, Rc<FieldData<NewDType>>>>;
+    Labeled<NewLabel, TypedValue<NewDType, DataRef<NewDType>>>;
 
 pub type AddedField<PrevFields, NewLabel, NewDType> =
     <PrevFields as PushBack<FieldSpec<NewLabel, NewDType>>>::Output;
@@ -130,7 +150,7 @@ where
 
     fn add_field(self, data: FieldData<NewDType>) -> DataStore<Self::OutputFields> {
         DataStore {
-            data: self.data.push_back(TypedValue::from(Rc::new(data)).into()),
+            data: self.data.push_back(TypedValue::from(DataRef::new(data)).into()),
         }
     }
 }
@@ -201,7 +221,9 @@ where
     {
         DataStore {
             data: self.data.push_back(
-                TypedValue::from(Rc::new(iter.into_iter().collect::<FieldData<NewDType>>())).into(),
+                TypedValue::from(
+                    DataRef::new(iter.into_iter().collect::<FieldData<NewDType>>())
+                ).into(),
             ),
         }
     }
@@ -235,7 +257,9 @@ where
     {
         DataStore {
             data: self.data.push_back(
-                TypedValue::from(Rc::new(iter.into_iter().collect::<FieldData<NewDType>>())).into(),
+                TypedValue::from(
+                    DataRef::new(iter.into_iter().collect::<FieldData<NewDType>>())
+                ).into(),
             ),
         }
     }
@@ -278,7 +302,7 @@ where
     {
         DataStore {
             data: self.data.push_back(
-                TypedValue::from(Rc::new(
+                TypedValue::from(DataRef::new(
                     iter.into_iter()
                         .map(|x| x.clone())
                         .collect::<FieldData<NewDType>>(),
@@ -326,7 +350,7 @@ where
     {
         DataStore {
             data: self.data.push_back(
-                TypedValue::from(Rc::new(
+                TypedValue::from(DataRef::new(
                     iter.into_iter()
                         .map(|x| x.clone())
                         .collect::<FieldData<NewDType>>(),
@@ -384,7 +408,7 @@ where
         DataStore {
             data: self
                 .data
-                .push_back(TypedValue::from(Rc::new(FieldData::default())).into()),
+                .push_back(TypedValue::from(DataRef::new(FieldData::default())).into()),
         }
     }
 }
@@ -548,14 +572,15 @@ where
     Fields::Storage: LookupElemByLabel<Label>,
     ElemOf<Fields::Storage, Label>: Typed,
     ElemOf<Fields::Storage, Label>:
-        Valued<Value = Rc<FieldData<TypeOfElemOf<Fields::Storage, Label>>>>,
+        Valued<Value = DataRef<TypeOfElemOf<Fields::Storage, Label>>>,
+    DataRef<TypeOfElemOf<Fields::Storage, Label>>: DataIndex,
     TypeOfElemOf<Fields::Storage, Label>: Debug,
 {
     type Output =
-        Rc<FieldData<<<Fields::Storage as LookupElemByLabel<Label>>::Elem as Typed>::DType>>;
+        DataRef<<<Fields::Storage as LookupElemByLabel<Label>>::Elem as Typed>::DType>;
 
     fn select_field(&self) -> Self::Output {
-        Rc::clone(LookupElemByLabel::<Label>::elem(&self.data).value_ref())
+        DataRef::clone(LookupElemByLabel::<Label>::elem(&self.data).value_ref())
     }
 }
 impl<Fields> FieldSelect for DataStore<Fields> where Fields: AssocStorage {}
@@ -681,7 +706,7 @@ mod tests {
             Value::Exists(8),
             Value::Na,
         ]);
-        // println!("{:?}", ds);
+        println!("{:?}", ds);
 
         let gdp_spec = spec![
             fieldname gdp::CountryName = "Country Name";
