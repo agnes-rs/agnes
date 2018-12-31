@@ -388,7 +388,7 @@ impl<T> Clone for Framed<T> {
     }
 }
 
-impl<'a, T> DataIndex for Framed<T>
+impl<T> DataIndex for Framed<T>
 where
     T: Debug,
     // where T: DataType<DTypes>,

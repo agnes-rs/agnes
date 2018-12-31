@@ -73,6 +73,17 @@ pub trait DataIndex: Debug {
 pub trait DataIndexMut: DataIndex {
     /// Add a value to this field.
     fn push(&mut self, value: Value<Self::DType>);
+
+    /// Take the value at the specified index from this field, replacing it with an NA.
+    fn take_datum(&mut self, idx: usize) -> Result<Value<Self::DType>>
+    where Self::DType: Default;
+
+    fn drain(&mut self) -> DrainIterator<Self::DType>
+    where
+        Self: Sized
+    {
+        DrainIterator::new(self)
+    }
 }
 
 /// Iterator over the data in a data structure that implement DataIndex.
@@ -134,6 +145,52 @@ where
             let out = Some(
                 self.data
                     .get_datum(self.permutation.map_index(self.cur_idx))
+                    .unwrap(),
+            );
+            self.cur_idx += 1;
+            out
+        } else {
+            None
+        }
+    }
+}
+
+/// Draining iterator over the data in a data structure that implements DataIndex.
+pub struct DrainIterator<'a, T>
+where
+    T: 'a,
+{
+    data: &'a mut dyn DataIndexMut<DType = T>,
+    cur_idx: usize,
+    phantom: PhantomData<T>,
+}
+
+impl<'a, T> DrainIterator<'a, T>
+where
+    T: 'a,
+{
+    /// Create a new `DrainIterator` from a type that implements `DataIndex`.
+    pub fn new(data: &'a mut dyn DataIndexMut<DType = T>) -> DrainIterator<'a, T> {
+        DrainIterator {
+            data,
+            cur_idx: 0,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a, T> Iterator for DrainIterator<'a, T>
+where
+    T: 'a + Default,
+{
+    type Item = Value<T>;
+
+    fn next(&mut self) -> Option<Value<T>> {
+        if self.cur_idx < self.data.len()
+        {
+            let out = Some(
+                self.data
+                    .take_datum(self.cur_idx)
                     .unwrap(),
             );
             self.cur_idx += 1;

@@ -10,7 +10,6 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::mem;
-use std::rc::Rc;
 
 #[cfg(serialize)]
 use serde::ser::{Serialize, SerializeSeq, Serializer};
@@ -165,7 +164,7 @@ impl<T> From<Option<T>> for Value<T> {
 ///
 /// To support NA types, a `FieldData` object is internally represented as a `Vec` of the
 /// appropriate type, along with a bit mask to denote valid / missing values.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldData<T> {
     mask: BitVec,
     data: Vec<T>,
@@ -187,6 +186,20 @@ impl<T> FieldData<T> {
             None
         } else if self.mask[index] {
             Some(Value::Exists(&self.data[index]))
+        } else {
+            Some(Value::Na)
+        }
+    }
+    pub fn take(&mut self, index: usize) -> Option<Value<T>>
+    where T: Default
+    {
+        if index >= self.data.len() {
+            None
+        } else if self.mask[index] {
+            self.data.push(T::default());
+            let value = self.data.swap_remove(index);
+            self.mask.set(index, false);
+            Some(Value::Exists(value))
         } else {
             Some(Value::Na)
         }
@@ -341,6 +354,13 @@ where
 {
     fn push(&mut self, value: Value<Self::DType>) {
         self.push_val(value)
+    }
+    fn take_datum(&mut self, idx: usize) -> error::Result<Value<T>>
+    where T: Default {
+        self.take(idx).ok_or(error::AgnesError::IndexError {
+            index: idx,
+            len: self.len(),
+        })
     }
 }
 
