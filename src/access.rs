@@ -76,11 +76,12 @@ pub trait DataIndexMut: DataIndex {
 
     /// Take the value at the specified index from this field, replacing it with an NA.
     fn take_datum(&mut self, idx: usize) -> Result<Value<Self::DType>>
-    where Self::DType: Default;
+    where
+        Self::DType: Default;
 
     fn drain(&mut self) -> DrainIterator<Self::DType>
     where
-        Self: Sized
+        Self: Sized,
     {
         DrainIterator::new(self)
     }
@@ -186,13 +187,8 @@ where
     type Item = Value<T>;
 
     fn next(&mut self) -> Option<Value<T>> {
-        if self.cur_idx < self.data.len()
-        {
-            let out = Some(
-                self.data
-                    .take_datum(self.cur_idx)
-                    .unwrap(),
-            );
+        if self.cur_idx < self.data.len() {
+            let out = Some(self.data.take_datum(self.cur_idx).unwrap());
             self.cur_idx += 1;
             out
         } else {

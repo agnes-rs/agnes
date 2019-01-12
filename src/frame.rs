@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 // use filter::{Filter, DataFilter};
-use store::{AssocStorage, DataStore, DataRef, NRows};
+use store::{AssocStorage, DataRef, DataStore, NRows};
 // use data_types::*;
 use access::{self, DataIndex};
 use field::{FieldData, Value};
@@ -387,6 +387,22 @@ impl<T> Clone for Framed<T> {
         }
     }
 }
+impl<T> From<DataRef<T>> for Framed<T> {
+    fn from(orig: DataRef<T>) -> Framed<T> {
+        Framed {
+            permutation: Rc::new(Permutation::default()),
+            data: orig,
+        }
+    }
+}
+impl<T> From<FieldData<T>> for Framed<T> {
+    fn from(orig: FieldData<T>) -> Framed<T> {
+        Framed {
+            permutation: Rc::new(Permutation::default()),
+            data: orig.into(),
+        }
+    }
+}
 
 impl<T> DataIndex for Framed<T>
 where
@@ -456,8 +472,7 @@ where
     Fields: AssocStorage + Debug,
     Fields::Storage: LookupElemByLabel<Label> + NRows,
     ElemOf<Fields::Storage, Label>: Typed,
-    ElemOf<Fields::Storage, Label>:
-        Valued<Value = DataRef<TypeOfElemOf<Fields::Storage, Label>>>,
+    ElemOf<Fields::Storage, Label>: Valued<Value = DataRef<TypeOfElemOf<Fields::Storage, Label>>>,
     // ValueOfElemOf<Fields::Storage, Label>:
     //   DataIndex<DType=TypeOfElemOf<Fields::Storage, Label>>,
     TypeOf<ElemOf<Fields::Storage, Label>>: Debug,

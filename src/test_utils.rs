@@ -28,7 +28,15 @@ macro_rules! emp_table_from_field {
 }
 macro_rules! emp_table {
     ($empids:expr, $deptids:expr, $names:expr) => {{
-        emp_table_from_field![$empids.into(), $deptids.into(), $names.into()]
+        emp_table_from_field![
+            $empids.into(),
+            $deptids.into(),
+            $names
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .into()
+        ]
     }};
 }
 macro_rules! sample_emp_table {
@@ -98,7 +106,14 @@ pub fn sample_dept_table() -> dept_table::Store {
     )
 }
 pub fn dept_table(deptids: Vec<u64>, names: Vec<&str>) -> dept_table::Store {
-    dept_table_from_field(deptids.into(), names.into())
+    dept_table_from_field(
+        deptids.into(),
+        names
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
+            .into(),
+    )
 }
 pub fn dept_table_from_field(
     deptids: FieldData<u64>,

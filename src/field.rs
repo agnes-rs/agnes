@@ -10,6 +10,7 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::{Add, Div, Mul, Sub};
 
 #[cfg(serialize)]
 use serde::ser::{Serialize, SerializeSeq, Serializer};
@@ -160,6 +161,28 @@ impl<T> From<Option<T>> for Value<T> {
     }
 }
 
+macro_rules! impl_value_op {
+    ($trait_name:tt $trait_fn:tt) => {
+        impl<T, U> $trait_name<Value<U>> for Value<T>
+        where
+            T: $trait_name<U>,
+        {
+            type Output = Value<<T as $trait_name<U>>::Output>;
+
+            fn $trait_fn(self, rhs: Value<U>) -> Self::Output {
+                match (self, rhs) {
+                    (Value::Exists(l), Value::Exists(r)) => Value::Exists(l.$trait_fn(r)),
+                    _ => Value::Na,
+                }
+            }
+        }
+    };
+}
+impl_value_op![Add add];
+impl_value_op![Sub sub];
+impl_value_op![Mul mul];
+impl_value_op![Div div];
+
 /// Data vector containing the data for a single field (column) of an agnes data store.
 ///
 /// To support NA types, a `FieldData` object is internally represented as a `Vec` of the
@@ -191,7 +214,8 @@ impl<T> FieldData<T> {
         }
     }
     pub fn take(&mut self, index: usize) -> Option<Value<T>>
-    where T: Default
+    where
+        T: Default,
     {
         if index >= self.data.len() {
             None
@@ -323,11 +347,8 @@ impl<T> FromIterator<T> for FieldData<T> {
         FieldData { data, mask }
     }
 }
-impl<T, U> From<Vec<U>> for FieldData<T>
-where
-    U: Into<T>,
-{
-    fn from(other: Vec<U>) -> FieldData<T> {
+impl<T> From<Vec<T>> for FieldData<T> {
+    fn from(other: Vec<T>) -> FieldData<T> {
         FieldData::from_vec(other)
     }
 }
@@ -356,26 +377,13 @@ where
         self.push_val(value)
     }
     fn take_datum(&mut self, idx: usize) -> error::Result<Value<T>>
-    where T: Default {
+    where
+        T: Default,
+    {
         self.take(idx).ok_or(error::AgnesError::IndexError {
             index: idx,
             len: self.len(),
         })
-    }
-}
-
-impl<T> DataIndex for DataRef<T>
-where
-    FieldData<T>: DataIndex<DType=T>,
-    T: Debug
-{
-    type DType = T;
-
-    fn get_datum(&self, idx: usize) -> error::Result<Value<&T>> {
-        <FieldData<T> as DataIndex>::get_datum(&self.0, idx)
-    }
-    fn len(&self) -> usize {
-        <FieldData<T> as DataIndex>::len(&self.0)
     }
 }
 

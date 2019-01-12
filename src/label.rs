@@ -11,8 +11,8 @@ use typenum::{
     uint::{UInt, UTerm, Unsigned},
 };
 
-use store::DataRef;
 use cons::{Cons, Nil};
+use store::DataRef;
 
 pub trait Label: Identifier {
     const NAME: &'static str;

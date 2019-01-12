@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use std::ops::{Add, Sub, Mul, Div};
+use std::ops::{Add, Div, Mul, Sub};
 
 use access::{DataIndex, DataIndexMut};
 use field::FieldData;
@@ -168,8 +168,8 @@ impl_scalar_ops_nongeneric_prims![f64 f32 u64 u32 usize i64 i32 isize];
 
 #[cfg(test)]
 mod tests {
-    use field::FieldData;
     use access::DataIndex;
+    use field::FieldData;
 
     macro_rules! test_op {
         ($data:expr, $op:tt, $term:expr, $expected:expr) => {{
@@ -280,8 +280,8 @@ mod tests {
         ];
 
         // NaN check (NaN != NaN, so we check value specifically to see if NaN or infinite);
-        let result = (FieldData::<_>::from(vec![2.0f64, -3.0, -8.0, 0.0, -20.0, 3.0, 1.0]) / 0.0)
-            .to_vec();
+        let result =
+            (FieldData::<_>::from(vec![2.0f64, -3.0, -8.0, 0.0, -20.0, 3.0, 1.0]) / 0.0).to_vec();
         assert![result[3].is_nan()];
         for i in (0usize..result.len()).filter(|idx| *idx != 3) {
             assert![result[i].is_infinite()];
