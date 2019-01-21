@@ -131,11 +131,11 @@ where
     pub fn v<LabelList>(
         &self,
     ) -> DataView<
-        <Labels as Filter<LabelList>>::Filtered,
+        <Labels as LabelFilter<LabelList>>::Filtered,
         <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Filtered,
     >
     where
-        Labels: HasLabels<LabelList> + Filter<LabelList> + FrameIndexList,
+        Labels: HasLabels<LabelList> + LabelFilter<LabelList> + FrameIndexList,
         Frames: FilterClone<<Labels as FrameIndexList>::LabelList>,
     {
         DataView {
@@ -146,11 +146,11 @@ where
     pub fn subview<LabelList>(
         &self,
     ) -> DataView<
-        <Labels as Filter<LabelList>>::Filtered,
+        <Labels as LabelFilter<LabelList>>::Filtered,
         <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Filtered,
     >
     where
-        Labels: HasLabels<LabelList> + Filter<LabelList> + FrameIndexList,
+        Labels: HasLabels<LabelList> + LabelFilter<LabelList> + FrameIndexList,
         Frames: FilterClone<<Labels as FrameIndexList>::LabelList>,
     {
         self.v::<LabelList>()
@@ -568,7 +568,7 @@ where
 }
 
 impl<Labels, Frames> DataView<Labels, Frames> {
-    /// merge this `DataView` with another `DataView` object, creating a new `DataView` with the
+    /// Merge this `DataView` with another `DataView` object, creating a new `DataView` with the
     /// same number of rows and all the fields from both source `DataView` objects.
     pub fn merge<RLabels, RFrames>(
         &self,
@@ -576,10 +576,6 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     ) -> error::Result<<Self as ViewMerge<DataView<RLabels, RFrames>>>::Output>
     where
         Self: ViewMerge<DataView<RLabels, RFrames>>,
-        // Self: Merge<RLabels, RFrames>,
-        // RFrames: NRows,
-        // Frames: NRows,
-        // <Self as Merge<RLabels, RFrames>>::OutLabels: IsLabelSet<IsSet=True>,
     {
         ViewMerge::merge(self, right)
     }
