@@ -46,19 +46,32 @@ use store::{AssocStorage, NRows};
 use label::*;
 use select::{FieldSelect, SelectFieldByLabel};
 
-// `Labels` is `FrameLookupCons` cons-list. `Frames` is `ViewFrameCons` cons-list.
+/// Cons-list of `DataFrame`s held by a `DataView. `FrameIndex` is simply an index used by
+/// `FrameLookupCons` to look up `DataFrame`s for a specified `Label`, and `FrameFields` is
+/// set of fields within the specified `DataFrame`.
+pub type ViewFrameCons<FrameIndex, FrameFields, Tail> =
+    LVCons<FrameIndex, DataFrame<FrameFields>, Tail>;
+
+/// Cons-list of field labels along with the details necessary to look up that label in a
+/// `DataView`'s `ViewFrameCons` cons-list of `DataFrame`s. The `FrameIndex` specifies the index
+/// of the `DataFrame` containing the field labeled `Label` in the `ViewFrameCons`, and the
+/// `FrameLabel` specifies the potentially-different (since `DataView` supposrt renaming fields)
+/// `Label` within that `DataFrame`.
+pub type FrameLookupCons<Label, FrameIndex, FrameLabel, Tail> =
+    LMCons<Label, FrameDetailMarkers<FrameIndex, FrameLabel>, Tail>;
+
+/// A `DataView` is a specific view of data stored inside a `DataStore`. It consists of a list of
+/// `DataFrame` objects, which themselves reference individual `DataStore`s.
+///
+/// The type parameter `Frames` is a `ViewFrameCons` cons-list which contains the `DataFrame`
+/// objects referenced by this `DataView`. The type parameter `Labels` is a `FrameLookupCons` which
+/// provides lookup functionality from a specific `Label` into the `Frames` cons-list.
 #[derive(Debug, Clone, Default)]
 pub struct DataView<Labels, Frames> {
     pub(crate) _labels: PhantomData<Labels>,
     pub(crate) frames: Frames,
 }
 
-pub type FrameLookupCons<Label, FrameIndex, FrameLabel, Tail> =
-    LMCons<Label, FrameDetailMarkers<FrameIndex, FrameLabel>, Tail>;
-pub type ViewFrameCons<FrameIndex, FrameFields, Tail> =
-    LVCons<FrameIndex, DataFrame<FrameFields>, Tail>;
-
-// pub type FrameLookupCons<Label, FrameLabel, Tail> = LMCons<Label, FrameLabel, Tail>;
 pub struct FrameDetailMarkers<FrameIndex, FrameLabel> {
     _marker: PhantomData<(FrameIndex, FrameLabel)>,
 }
