@@ -460,20 +460,13 @@ pub type TypeOfElemOf<T, Label> = <<T as LookupTypedElemByLabel<Label>>::Elem as
 /// Any labels in `LabelList` not found in `Self` will be ignored (see `HasLabels` for a trait
 /// that requires all members of `LabelList` to be found).
 pub trait LabelFilter<LabelList> {
-    type Filtered;
-
-    /// Filters `Self`, constructing new cons-list of type `Filtered`.
-    fn filter(self) -> Self::Filtered;
+    type Output;
 }
 
 // End-point. No more list elements to search. We don't care if anything remains or not in
 // `LabelList`.
 impl<LabelList> LabelFilter<LabelList> for Nil {
-    type Filtered = Nil;
-
-    fn filter(self) -> Nil {
-        Nil
-    }
+    type Output = Nil;
 }
 
 // Implementation for `LVCons` cons-lists.
@@ -482,14 +475,10 @@ where
     LabelList: Member<L>,
     LVCons<L, V, T>: LabelFilterPred<LabelList, <LabelList as Member<L>>::IsMember>,
 {
-    type Filtered = <LVCons<L, V, T> as LabelFilterPred<
+    type Output = <LVCons<L, V, T> as LabelFilterPred<
         LabelList,
         <LabelList as Member<L>>::IsMember,
-    >>::Filtered;
-
-    fn filter(self) -> Self::Filtered {
-        self.filter_pred()
-    }
+    >>::Output;
 }
 
 /// Helper filter trait. Used by `Filter` for computing the subset of `Self` cons-list which
@@ -498,9 +487,7 @@ where
 /// `IsMember` specifies whether or not the label of the head value of `Self` is a member of
 /// `LabelList`.
 pub trait LabelFilterPred<LabelList, IsMember> {
-    type Filtered;
-
-    fn filter_pred(self) -> Self::Filtered;
+    type Output;
 }
 
 // `LabelFilterPred` implementation for a cons-list where the head is in `LabelList`.
@@ -509,14 +496,7 @@ where
     T: LabelFilter<LabelList>,
 {
     // head is in list, so we include it and check the tail
-    type Filtered = Cons<H, <T as LabelFilter<LabelList>>::Filtered>;
-
-    fn filter_pred(self) -> Self::Filtered {
-        Cons {
-            head: self.head,
-            tail: self.tail.filter(),
-        }
-    }
+    type Output = Cons<H, <T as LabelFilter<LabelList>>::Output>;
 }
 // `LabelFilterPred` implementation for a cons-list where the head isn't in `LabelList`.
 impl<LabelList, H, T> LabelFilterPred<LabelList, False> for Cons<H, T>
@@ -524,46 +504,44 @@ where
     T: LabelFilter<LabelList>,
 {
     // head isn't in list, so we check the tail
-    type Filtered = <T as LabelFilter<LabelList>>::Filtered;
-
-    fn filter_pred(self) -> Self::Filtered {
-        self.tail.filter()
-    }
+    type Output = <T as LabelFilter<LabelList>>::Output;
 }
 
 /// Trait to find the subset of cons-list `Self` which are labeled with labels in `LabelList`,
-/// providing a method to clone a copy of that list.
+/// and applying a method to each element of that list.
 ///
 /// Any labels in `LabelList` not found in `Self` will be ignored (see `HasLabels` for a trait
 /// that requires all members of `LabelList` to be found).
-pub trait FilterClone<LabelList> {
-    type Filtered;
+pub trait FilterApply<LabelList, FArgs, FOut> {
+    type Output;
 
-    /// Filters `Self` and clones into new cons-list of type `Filtered`.
-    fn filter_clone(&self) -> Self::Filtered;
+    fn filter_apply<F>(&self, f: F) -> Self::Output where F: Clone + FnOnce(&FArgs) -> FOut;
 }
 
-impl<LabelList> FilterClone<LabelList> for Nil {
-    type Filtered = Nil;
+// Base-case (Nil) implementation
+impl<LabelList, FArgs, FOut> FilterApply<LabelList, FArgs, FOut> for Nil {
+    type Output = Nil;
 
-    fn filter_clone(&self) -> Nil {
+    fn filter_apply<F>(&self, _f: F) -> Nil where F: Clone + FnOnce(&FArgs) -> FOut {
         Nil
     }
 }
 
 // Implementation for `LVCons` cons-lists.
-impl<LabelList, L, V, T> FilterClone<LabelList> for LVCons<L, V, T>
+impl<LabelList, FArgs, FOut, L, V, T> FilterApply<LabelList, FArgs, FOut> for LVCons<L, V, T>
 where
     LabelList: Member<L>,
-    LVCons<L, V, T>: FilterPredClone<LabelList, <LabelList as Member<L>>::IsMember>,
+    LVCons<L, V, T>: FilterApplyPred<LabelList, FArgs, FOut, <LabelList as Member<L>>::IsMember>,
 {
-    type Filtered = <LVCons<L, V, T> as FilterPredClone<
+    type Output = <LVCons<L, V, T> as FilterApplyPred<
         LabelList,
+        FArgs,
+        FOut,
         <LabelList as Member<L>>::IsMember,
-    >>::Filtered;
+    >>::Output;
 
-    fn filter_clone(&self) -> Self::Filtered {
-        self.filter_pred_clone()
+    fn filter_apply<F>(&self, f: F) -> Self::Output where F: Clone + FnOnce(&FArgs) -> FOut {
+        self.filter_apply_pred(f)
     }
 }
 
@@ -572,40 +550,77 @@ where
 ///
 /// `IsMember` specifies whether or not the label of the head value of `Self` is a member of
 /// `LabelList`.
-pub trait FilterPredClone<LabelList, IsMember> {
-    type Filtered;
+pub trait FilterApplyPred<LabelList, FArgs, FOut, IsMember> {
+    type Output;
 
-    fn filter_pred_clone(&self) -> Self::Filtered;
+    fn filter_apply_pred<F>(&self, f: F) -> Self::Output where F: Clone + FnOnce(&FArgs) -> FOut;
 }
 
-// `FilterPredClone` implementation for a cons-list where the head is in `LabelList`.
-impl<LabelList, H, T> FilterPredClone<LabelList, True> for Cons<H, T>
+// `FilterApplyPred` implementation for a cons-list where the head is in `LabelList`.
+impl<LabelList, FOut, H, T> FilterApplyPred<LabelList, H, FOut, True> for Cons<H, T>
 where
-    T: FilterClone<LabelList>,
-    H: Clone,
+    T: FilterApply<LabelList, H, FOut>,
 {
     // head is in list, so we include it and check the tail
-    type Filtered = Cons<H, <T as FilterClone<LabelList>>::Filtered>;
+    type Output = Cons<FOut, <T as FilterApply<LabelList, H, FOut>>::Output>;
 
-    fn filter_pred_clone(&self) -> Self::Filtered {
+    fn filter_apply_pred<F>(&self, f: F) -> Self::Output where F: Clone + FnOnce(&H) -> FOut {
         Cons {
-            head: self.head.clone(),
-            tail: self.tail.filter_clone(),
+            head: f.clone()(&self.head),
+            tail: self.tail.filter_apply(f),
         }
     }
 }
 // `FilterPred` implementation for a cons-list where the head isn't in `LabelList`.
-impl<LabelList, H, T> FilterPredClone<LabelList, False> for Cons<H, T>
+impl<LabelList, FOut, H, T> FilterApplyPred<LabelList, H, FOut, False> for Cons<H, T>
 where
-    T: FilterClone<LabelList>,
+    T: FilterApply<LabelList, H, FOut>,
 {
     // head isn't in list, so we check the tail
-    type Filtered = <T as FilterClone<LabelList>>::Filtered;
+    type Output = <T as FilterApply<LabelList, H, FOut>>::Output;
 
-    fn filter_pred_clone(&self) -> Self::Filtered {
-        self.tail.filter_clone()
+    fn filter_apply_pred<F>(&self, f: F) -> Self::Output where F: Clone + FnOnce(&H) -> FOut {
+        self.tail.filter_apply(f)
     }
 }
+
+/// Convenience trait for cloning the values of a cons-list which match a specified `LabelList`.
+///
+/// Any labels in `LabelList` not found in `Self` will be ignored (see `HasLabels` for a trait
+/// that requires all members of `LabelList` to be found).
+pub trait FilterClone<LabelList> {
+    type Output;
+
+    /// Filters `Self` and clones into new cons-list of associated type `Output`.
+    fn filter_clone(&self) -> Self::Output;
+}
+
+impl<LabelList> FilterClone<LabelList> for Nil
+{
+    type Output = Nil;
+    fn filter_clone(&self) -> Nil {
+        Nil
+    }
+}
+
+impl<LabelList, L, V, T> FilterClone<LabelList> for LVCons<L, V, T>
+where
+    LabelList: Member<L>,
+    Labeled<L, V>: Clone,
+    Self: FilterApply<LabelList, Labeled<L, V>, Labeled<L, V>>
+{
+    type Output = <Self as FilterApply<LabelList, Labeled<L, V>, Labeled<L, V>>>::Output;
+
+    fn filter_clone(&self) -> Self::Output {
+        self.filter_apply(|&ref h| h.clone())
+    }
+}
+
+
+
+
+
+
 
 pub trait AssocLabels {
     type Labels;
@@ -978,66 +993,66 @@ mod tests {
 
         {
             // null case
-            type Filtered = <SampleLabels as LabelFilter<Labels![]>>::Filtered;
+            type Filtered = <SampleLabels as LabelFilter<Labels![]>>::Output;
             // empty filter, length should be 0
             assert_eq!(length![Filtered], 0);
         }
         {
             // other null case
-            type Filtered = <Nil as LabelFilter<Labels![F1, F3]>>::Filtered;
+            type Filtered = <Nil as LabelFilter<Labels![F1, F3]>>::Output;
             // empty cons-list, so filtered length should be 0
             assert_eq!(length![Filtered], 0);
         }
         {
-            type Filtered = <SampleLabels as LabelFilter<Labels![F3]>>::Filtered;
+            type Filtered = <SampleLabels as LabelFilter<Labels![F3]>>::Output;
             // we only filtered 1 label, so length should be 1
             assert_eq!(length![Filtered], 1);
         }
         {
-            type Filtered = <SampleLabels as LabelFilter<Labels![F1, F2, F4]>>::Filtered;
+            type Filtered = <SampleLabels as LabelFilter<Labels![F1, F2, F4]>>::Output;
             // we only filtered 3 labels, so length should be 3
             assert_eq!(length![Filtered], 3);
 
             {
-                type Refiltered = <Filtered as LabelFilter<Labels![F1, F2, F4]>>::Filtered;
+                type Refiltered = <Filtered as LabelFilter<Labels![F1, F2, F4]>>::Output;
                 // filtered same labels, so length should stay at 3
                 assert_eq!(length![Refiltered], 3);
             }
             {
-                type Refiltered = <Filtered as LabelFilter<Labels![F1, F2]>>::Filtered;
+                type Refiltered = <Filtered as LabelFilter<Labels![F1, F2]>>::Output;
                 // filtered 2 labels that should exist `Filtered`, so length should be 2
                 assert_eq!(length![Refiltered], 2);
             }
             {
-                type Refiltered = <Filtered as LabelFilter<Labels![F3, F0]>>::Filtered;
+                type Refiltered = <Filtered as LabelFilter<Labels![F3, F0]>>::Output;
                 // filtered 2 labels that should not exist `Filtered`, so length should be 0
                 assert_eq!(length![Refiltered], 0);
             }
             {
-                type Refiltered = <Filtered as LabelFilter<Labels![F0, F1, F2, F3, F4]>>::Filtered;
+                type Refiltered = <Filtered as LabelFilter<Labels![F0, F1, F2, F3, F4]>>::Output;
                 // `F0 and `F3` don't exist in `Filtered`, so length should be 3
                 assert_eq!(length![Refiltered], 3);
             }
         }
         {
-            type Filtered = <SampleLabels as LabelFilter<Labels![F1, F2, F4, F5]>>::Filtered;
+            type Filtered = <SampleLabels as LabelFilter<Labels![F1, F2, F4, F5]>>::Output;
             // F5 doesn't exist in SampleLabels, so we still should only have 3
             assert_eq!(length![Filtered], 3);
         }
         {
-            type Filtered = <SampleLabels as LabelFilter<Labels![F5, F6, F7]>>::Filtered;
+            type Filtered = <SampleLabels as LabelFilter<Labels![F5, F6, F7]>>::Output;
             // None of these labels exist in SampleLabels, so we should have 0
             assert_eq!(length![Filtered], 0);
         }
         {
             // check for problems cause by duplicated in label list
-            type Filtered = <SampleLabels as LabelFilter<Labels![F2, F2, F2]>>::Filtered;
+            type Filtered = <SampleLabels as LabelFilter<Labels![F2, F2, F2]>>::Output;
             // we only filtered 1 label (even if it was duplicated), so length should be 1
             assert_eq!(length![Filtered], 1);
         }
         {
             // check for problems cause by duplicated in label list
-            type Filtered = <SampleLabels as LabelFilter<Labels![F2, F2, F3]>>::Filtered;
+            type Filtered = <SampleLabels as LabelFilter<Labels![F2, F2, F3]>>::Output;
             // we only filtered 2 label (albeit with some duplication), so length should be 2
             assert_eq!(length![Filtered], 2);
         }

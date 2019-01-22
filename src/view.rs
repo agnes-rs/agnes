@@ -144,8 +144,8 @@ where
     pub fn v<LabelList>(
         &self,
     ) -> DataView<
-        <Labels as LabelFilter<LabelList>>::Filtered,
-        <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Filtered,
+        <Labels as LabelFilter<LabelList>>::Output,
+        <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Output,
     >
     where
         Labels: HasLabels<LabelList> + LabelFilter<LabelList> + FrameIndexList,
@@ -159,8 +159,8 @@ where
     pub fn subview<LabelList>(
         &self,
     ) -> DataView<
-        <Labels as LabelFilter<LabelList>>::Filtered,
-        <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Filtered,
+        <Labels as LabelFilter<LabelList>>::Output,
+        <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Output,
     >
     where
         Labels: HasLabels<LabelList> + LabelFilter<LabelList> + FrameIndexList,
