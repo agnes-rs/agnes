@@ -144,27 +144,27 @@ where
     pub fn v<LabelList>(
         &self,
     ) -> DataView<
-        <Labels as LabelFilter<LabelList>>::Output,
-        <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Output,
+        <Labels as LabelSubset<LabelList>>::Output,
+        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
     >
     where
-        Labels: HasLabels<LabelList> + LabelFilter<LabelList> + FrameIndexList,
-        Frames: FilterClone<<Labels as FrameIndexList>::LabelList>,
+        Labels: HasLabels<LabelList> + LabelSubset<LabelList> + FrameIndexList,
+        Frames: SubsetClone<<Labels as FrameIndexList>::LabelList>,
     {
         DataView {
             _labels: PhantomData,
-            frames: self.frames.filter_clone(),
+            frames: self.frames.subset_clone(),
         }
     }
     pub fn subview<LabelList>(
         &self,
     ) -> DataView<
-        <Labels as LabelFilter<LabelList>>::Output,
-        <Frames as FilterClone<<Labels as FrameIndexList>::LabelList>>::Output,
+        <Labels as LabelSubset<LabelList>>::Output,
+        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
     >
     where
-        Labels: HasLabels<LabelList> + LabelFilter<LabelList> + FrameIndexList,
-        Frames: FilterClone<<Labels as FrameIndexList>::LabelList>,
+        Labels: HasLabels<LabelList> + LabelSubset<LabelList> + FrameIndexList,
+        Frames: SubsetClone<<Labels as FrameIndexList>::LabelList>,
     {
         self.v::<LabelList>()
     }
