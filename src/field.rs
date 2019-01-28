@@ -187,7 +187,7 @@ impl_value_op![Div div];
 ///
 /// To support NA types, a `FieldData` object is internally represented as a `Vec` of the
 /// appropriate type, along with a bit mask to denote valid / missing values.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct FieldData<T> {
     mask: BitVec,
     data: Vec<T>,

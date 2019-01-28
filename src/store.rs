@@ -14,7 +14,7 @@ use label::*;
 use select::{FieldSelect, SelectFieldByLabel};
 use view::{DataView, FrameLookupCons, ViewFrameCons};
 
-#[derive(Debug)]
+#[derive(Debug, Hash, PartialEq, Eq)]
 pub struct DataRef<DType>(pub Rc<FieldData<DType>>);
 
 impl<DType> DataRef<DType> {

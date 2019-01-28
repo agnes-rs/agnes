@@ -197,7 +197,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Permutation<I> {
     perm: Option<I>,
 }

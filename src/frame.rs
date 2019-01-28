@@ -9,6 +9,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 // use filter::{Filter, DataFilter};
+use cons::Cons;
 use store::{AssocStorage, DataRef, DataStore, NRows};
 // use data_types::*;
 use access::{self, DataIndex};
@@ -367,7 +368,7 @@ where
 /// Structure to hold references to a data structure (e.g. DataStore) and a frame used to view
 /// that structure. Provides DataIndex for the underlying data structure, as viewed through the
 /// frame.
-#[derive(Debug)]
+#[derive(Debug, Hash, PartialEq, Eq)]
 pub struct Framed<T> {
     permutation: Rc<Permutation>,
     data: DataRef<T>,

@@ -792,11 +792,19 @@ macro_rules! next_label {
 #[macro_export]
 macro_rules! Labels {
     (@labels()) => { Nil };
-    (@labels($label:ident, $($rest:ident,)*)) =>
+    (@labels($label:ident, $($rest:tt,)*)) =>
+    {
+        LCons<$label, Labels![@labels($($rest,)*)]>
+    };
+    (@labels($label:path, $($rest:tt,)*)) =>
     {
         LCons<$label, Labels![@labels($($rest,)*)]>
     };
     ($($label:ident),*$(,)*) =>
+    {
+        Labels![@labels($($label,)*)]
+    };
+    ($($label:path),*$(,)*) =>
     {
         Labels![@labels($($label,)*)]
     }

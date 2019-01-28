@@ -13,7 +13,8 @@ object with all of the records of the two source `DataView`s.
 parameters.
 
 */
-use std::collections::VecDeque;
+use std::collections::{VecDeque, HashSet};
+use std::hash::{Hash, Hasher};
 use std::fmt::{self, Display, Formatter};
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -21,6 +22,7 @@ use std::rc::Rc;
 use prettytable as pt;
 #[cfg(serialize)]
 use serde::ser::{self, Serialize, SerializeMap, Serializer};
+use typenum::Bit;
 
 use access::*;
 use error;
@@ -716,9 +718,347 @@ where
         self.frames.update_permutation(&perm);
         perm
     }
+
+    // pub fn unique<LabelList>(&mut self) -> Vec<usize>
+    // where
+    //     Labels: HasLabels<LabelList> + FrameIndexList,
+    //     Frames: FilterApply<LabelList,
+    //     // Frames: Unique<<Labels as FrameIndexList>::LabelList>,
+    // {
+
+    // }
 }
 
-// #[derive(Debug, Clone)]
+// pub trait Unique<LabelList, Frames> {
+//     fn unique(&mut self) -> Vec<usize>;
+// }
+
+// impl<LabelList, Frames> Unique<LabelList, Frames> for Nil {
+//     fn unique(&mut self) -> Vec<usize> {
+//         vec![]
+//     }
+// }
+
+// impl<Label, FrameIndex, FrameLabel, Tail, LabelList, Frames> Unique<LabelList, Frames>
+//     for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
+// where
+//     LabelList: Member<Label>,
+//     FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>:
+//         UniquePred<LabelList, Frames, <LabelList as Member<Label>>::IsMember>,
+// {
+//     fn unique(&mut self) -> Vec<usize> {
+//         self.unique_pred()
+//     }
+// }
+
+// trait UniquePred<LabelList, Frames, IsMember> {
+//     fn unique_pred(&mut self) -> Vec<usize>;
+// }
+
+// impl<Label, FrameIndex, FrameLabel, Tail, LabelList, Frames> UniquePred<LabelList, Frames, True>
+//     for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
+// where
+//     Tail: Unique<LabelList, Frames>
+// {
+//     fn unique_pred(&mut self) -> Vec<usize> {
+//         // get list of unique indices from tail
+//         let indices = self.tail.unique();
+
+//         for i in 0..self.head.field::<Label>().nrows() {
+
+//         }
+//     }
+// }
+
+
+// impl<Label, FrameIndex, FrameLabel, Tail, LabelList, Frames> UniquePred<LabelList, Frames, False>
+//     for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
+// where
+//     Tail: Unique<LabelList, Frames>
+// {
+//     fn unique_pred(&mut self) -> Vec<usize> {
+//         self.tail.unique()
+//     }
+// }
+
+pub trait FieldList<LabelList, Frames> {
+    type Output;
+
+    fn field_list(frames: &Frames) -> Self::Output;
+}
+
+impl<LabelList, Frames> FieldList<LabelList, Frames> for Nil {
+    type Output = Nil;
+
+    fn field_list(_frames: &Frames) -> Nil {
+        Nil
+    }
+}
+
+impl<LabelList, Frames, Label, FrameIndex, FrameLabel, Tail> FieldList<LabelList, Frames>
+    for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
+where
+    LabelList: Member<Label>,
+    Self: FieldListPred<LabelList, Frames, <LabelList as Member<Label>>::IsMember>,
+{
+    type Output = <
+        Self as FieldListPred<LabelList, Frames, <LabelList as Member<Label>>::IsMember>
+    >::Output;
+
+    fn field_list(frames: &Frames) -> Self::Output {
+        Self::field_list_pred(frames)
+    }
+}
+
+
+pub trait FieldListPred<LabelList, Frames, IsMember> {
+    type Output;
+
+    fn field_list_pred(frames: &Frames) -> Self::Output;
+}
+
+impl<LabelList, Frames, Label, FrameIndex, FrameLabel, Tail>
+    FieldListPred<LabelList, Frames, True>
+    for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
+where
+    Frames: SelectFieldFromLabels<Self, Label>,
+    Tail: FieldList<LabelList, Frames>
+{
+    type Output = Cons<
+        <Frames as SelectFieldFromLabels<
+            FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>,
+            Label
+        >>::Output,
+        <Tail as FieldList<LabelList, Frames>>::Output
+    >;
+
+    fn field_list_pred(frames: &Frames) -> Self::Output {
+        Cons {
+            head: SelectFieldFromLabels::<Self, Label>::select_field(frames),
+            tail: Tail::field_list(frames)
+        }
+    }
+}
+
+
+impl<LabelList, Frames, Label, FrameIndex, FrameLabel, Tail>
+    FieldListPred<LabelList, Frames, False>
+    for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
+where
+    Tail: FieldList<LabelList, Frames>
+{
+    type Output = <Tail as FieldList<LabelList, Frames>>::Output;
+
+    fn field_list_pred(frames: &Frames) -> Self::Output {
+        Tail::field_list(frames)
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct Record<'a, Fields> {
+    // a field cons-list (returned from FieldList trait method)
+    fields: &'a Fields,
+    idx: usize,
+}
+
+impl<'a, Fields> Record<'a, Fields> {
+    fn new(field_list: &'a Fields, idx: usize) -> Record<'a, Fields> {
+        Record { fields: field_list, idx }
+    }
+}
+
+pub trait HashIndex {
+    fn hash_index<H>(&self, idx: usize, state: &mut H)
+    where
+        H: Hasher;
+}
+
+impl<T> HashIndex for Framed<T>
+where
+    for<'a> Value<&'a T>: Hash,
+    Self: DataIndex<DType=T>,
+{
+    fn hash_index<H>(&self, idx: usize, state: &mut H)
+    where
+        H: Hasher
+    {
+        self.get_datum(idx).unwrap().hash(state);
+    }
+}
+
+
+impl HashIndex for Nil
+{
+    fn hash_index<H>(&self, _idx: usize, _state: &mut H)
+    where
+        H: Hasher
+    {}
+}
+
+impl<Head, Tail> HashIndex for Cons<Head, Tail>
+where
+    Head: HashIndex,
+    Tail: HashIndex
+{
+    fn hash_index<H>(&self, idx: usize, state: &mut H)
+    where
+        H: Hasher
+    {
+        self.head.hash_index(idx, state);
+        self.tail.hash_index(idx, state);
+    }
+}
+
+
+impl<'a, Fields> Hash for Record<'a, Fields>
+where
+    Fields: HashIndex
+{
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher
+    {
+        self.fields.hash_index(self.idx, state)
+    }
+}
+
+pub trait PartialEqIndex {
+    fn eq_index(&self, other: &Self, idx: usize) -> bool;
+}
+
+impl<T> PartialEqIndex for Framed<T>
+where
+    for<'a> Value<&'a T>: PartialEq,
+    Self: DataIndex<DType=T>,
+{
+    fn eq_index(&self, other: &Self, idx: usize) -> bool {
+        self.get_datum(idx).unwrap().eq(&other.get_datum(idx).unwrap())
+    }
+}
+
+impl PartialEqIndex for Nil {
+    fn eq_index(&self, _other: &Nil, _idx: usize) -> bool {
+        true
+    }
+}
+
+impl<Head, Tail> PartialEqIndex for Cons<Head, Tail>
+where
+    Head: PartialEqIndex,
+    Tail: PartialEqIndex
+{
+    fn eq_index(&self, other: &Self, idx: usize) -> bool {
+        self.head.eq_index(&other.head, idx) && self.tail.eq_index(&other.tail, idx)
+    }
+}
+
+impl<'a, Fields> PartialEq for Record<'a, Fields>
+where
+    Fields: PartialEqIndex
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.fields.eq_index(other.fields, self.idx)
+    }
+}
+
+impl<'a, Fields> Eq for Record<'a, Fields> where Self: PartialEq {}
+
+impl<'a> Display for Record<'a, Nil> {
+    fn fmt(&self, _f: &mut Formatter) -> Result<(), fmt::Error> {
+        Ok(())
+    }
+}
+
+impl<'a, Head, Tail> Display for Record<'a, Cons<Head, Tail>>
+where
+    Head: DataIndex,
+    <Head as DataIndex>::DType: Display,
+    Record<'a, Tail>: Display
+{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{},", self.fields.head.get_datum(self.idx).unwrap())?;
+        Record { fields: &self.fields.tail, idx: self.idx }.fmt(f)
+    }
+}
+
+// impl<Head, Tail> Display for Record<Cons<Head, Tail>>
+// where
+//     Head: DataIndex,
+//     <Head as DataIndex>::DType: Display,
+//     for<'a> Record<&'a Tail>: Display
+// {
+//     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+//         Record { fields: &self.fields, idx: self.idx }.fmt(f)
+//     }
+// }
+
+
+impl<Labels, Frames> DataView<Labels, Frames> {
+    pub fn field_list<LabelList>(&self)
+        -> <Labels as FieldList<LabelList, Frames>>::Output
+    where
+        Labels: FieldList<LabelList, Frames>
+    {
+        <Labels as FieldList<LabelList, Frames>>::field_list(&self.frames)
+    }
+
+    // pub fn record<LabelList>(&self, idx: usize)
+    //     -> Record<<Labels as FieldList<LabelList, Frames>>::Output>
+    // where
+    //     Labels: FieldList<LabelList, Frames>
+    // {
+    //     Record {
+    //         fields: self.field_list(),
+    //         idx
+    //     }
+    // }
+
+    pub fn unique_indices<LabelList>(&self) -> Vec<usize>
+    where
+        Labels: FieldList<LabelList, Frames>,
+        <Labels as FieldList<LabelList, Frames>>::Output: HashIndex + PartialEqIndex,
+        Frames: NRows,
+    {
+        let fl = self.field_list::<LabelList>();
+        let mut indices = vec![];
+        let mut set = HashSet::new();
+        for i in 0..self.nrows() {
+            let record = Record::new(&fl, i);
+            if !set.contains(&record) {
+                set.insert(record);
+                indices.push(i);
+            }
+        }
+        indices
+    }
+
+    pub fn unique_values<LabelList>(
+        &self,
+    ) -> DataView<
+        <Labels as LabelSubset<LabelList>>::Output,
+        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
+    >
+    where
+        Labels: HasLabels<LabelList> + LabelSubset<LabelList> + FrameIndexList,
+        Frames: SubsetClone<<Labels as FrameIndexList>::LabelList>,
+        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output: UpdatePermutation,
+        Labels: FieldList<LabelList, Frames>,
+        <Labels as FieldList<LabelList, Frames>>::Output: HashIndex + PartialEqIndex,
+        Frames: NRows,
+    {
+        let indices = self.unique_indices::<LabelList>();
+        let mut new_frames = self.frames.subset_clone();
+        new_frames.update_permutation(&indices);
+        DataView {
+            _labels: PhantomData,
+            frames: new_frames,
+        }
+    }
+}
+
+
+
 
 // impl<Ident, FrameIdx, Tail> IdentFrameIdxCons<Ident, FrameIdx, Tail>
 // {
@@ -1922,6 +2262,25 @@ mod tests {
             dv2.field::<EmpName>().to_vec(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louise", "Sally"]
         );
+    }
+
+    #[cfg(feature = "test-utils")]
+    #[test]
+    fn record() {
+        let ds = sample_emp_table();
+        let dv = ds.into_view();
+        println!("{}", dv);
+        let uniques = dv.unique_indices::<Labels![emp_table::DeptId]>();
+        println!("{:?}", uniques);
+        // there are four unique department IDs (1, 2, 3, 4) at indices 0, 1, 4, 5.
+        assert_eq!(uniques, vec![0, 1, 4, 5]);
+        let dept_ids = dv.field::<emp_table::DeptId>();
+        assert_eq![
+            uniques.iter().map(|&idx| dept_ids.get_datum(idx).unwrap()).collect::<Vec<_>>(),
+            vec![1, 2, 3, 4]
+        ];
+
+        println!("{}", dv.unique_values::<Labels![emp_table::DeptId]>());
     }
 
     // #[test]
