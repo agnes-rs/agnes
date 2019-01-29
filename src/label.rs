@@ -475,10 +475,8 @@ where
     LabelList: Member<L>,
     LVCons<L, V, T>: LabelSubsetPred<LabelList, <LabelList as Member<L>>::IsMember>,
 {
-    type Output = <LVCons<L, V, T> as LabelSubsetPred<
-        LabelList,
-        <LabelList as Member<L>>::IsMember,
-    >>::Output;
+    type Output =
+        <LVCons<L, V, T> as LabelSubsetPred<LabelList, <LabelList as Member<L>>::IsMember>>::Output;
 }
 
 /// Helper filter trait. Used by `Filter` for computing the subset of `Self` cons-list which
@@ -597,7 +595,6 @@ subset_apply![
     SubsetClone subset_clone
     SubsetClonePred subset_clone_pred
 ];
-
 
 pub trait AssocLabels {
     type Labels;

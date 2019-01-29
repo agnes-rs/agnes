@@ -13,9 +13,9 @@ object with all of the records of the two source `DataView`s.
 parameters.
 
 */
-use std::collections::{VecDeque, HashSet};
-use std::hash::{Hash, Hasher};
+use std::collections::{HashSet, VecDeque};
 use std::fmt::{self, Display, Formatter};
+use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
 use prettytable as pt;
@@ -26,18 +26,16 @@ use access::*;
 use error;
 use frame::{DataFrame, Framed};
 
+use cons::*;
+use features::{DeriveCapabilities, Func, FuncDefault, Implemented, IsImplemented, PartialMap};
+use field::Value;
+use fieldlist::FieldPayloadCons;
 #[cfg(serialize)]
 use frame::SerializedField;
-use field::Value;
 use join::*;
-use cons::*;
-use features::{
-    DeriveCapabilities, Func, FuncDefault, Implemented, IsImplemented, PartialMap,
-};
-use fieldlist::{FieldPayloadCons};
-use store::{AssocStorage, NRows};
 use label::*;
 use select::{FieldSelect, SelectFieldByLabel};
+use store::{AssocStorage, NRows};
 
 /// Cons-list of `DataFrame`s held by a `DataView. `FrameIndex` is simply an index used by
 /// `FrameLookupCons` to look up `DataFrame`s for a specified `Label`, and `FrameFields` is
@@ -667,15 +665,13 @@ where
     LabelList: Member<Label>,
     Self: FieldListPred<LabelList, Frames, <LabelList as Member<Label>>::IsMember>,
 {
-    type Output = <
-        Self as FieldListPred<LabelList, Frames, <LabelList as Member<Label>>::IsMember>
-    >::Output;
+    type Output =
+        <Self as FieldListPred<LabelList, Frames, <LabelList as Member<Label>>::IsMember>>::Output;
 
     fn field_list(frames: &Frames) -> Self::Output {
         Self::field_list_pred(frames)
     }
 }
-
 
 pub trait FieldListPred<LabelList, Frames, IsMember> {
     type Output;
@@ -683,35 +679,32 @@ pub trait FieldListPred<LabelList, Frames, IsMember> {
     fn field_list_pred(frames: &Frames) -> Self::Output;
 }
 
-impl<LabelList, Frames, Label, FrameIndex, FrameLabel, Tail>
-    FieldListPred<LabelList, Frames, True>
+impl<LabelList, Frames, Label, FrameIndex, FrameLabel, Tail> FieldListPred<LabelList, Frames, True>
     for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
 where
     Frames: SelectFieldFromLabels<Self, Label>,
-    Tail: FieldList<LabelList, Frames>
+    Tail: FieldList<LabelList, Frames>,
 {
     type Output = Cons<
         <Frames as SelectFieldFromLabels<
             FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>,
-            Label
+            Label,
         >>::Output,
-        <Tail as FieldList<LabelList, Frames>>::Output
+        <Tail as FieldList<LabelList, Frames>>::Output,
     >;
 
     fn field_list_pred(frames: &Frames) -> Self::Output {
         Cons {
             head: SelectFieldFromLabels::<Self, Label>::select_field(frames),
-            tail: Tail::field_list(frames)
+            tail: Tail::field_list(frames),
         }
     }
 }
 
-
-impl<LabelList, Frames, Label, FrameIndex, FrameLabel, Tail>
-    FieldListPred<LabelList, Frames, False>
+impl<LabelList, Frames, Label, FrameIndex, FrameLabel, Tail> FieldListPred<LabelList, Frames, False>
     for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
 where
-    Tail: FieldList<LabelList, Frames>
+    Tail: FieldList<LabelList, Frames>,
 {
     type Output = <Tail as FieldList<LabelList, Frames>>::Output;
 
@@ -719,7 +712,6 @@ where
         Tail::field_list(frames)
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Record<'a, Fields> {
@@ -730,7 +722,10 @@ pub struct Record<'a, Fields> {
 
 impl<'a, Fields> Record<'a, Fields> {
     fn new(field_list: &'a Fields, idx: usize) -> Record<'a, Fields> {
-        Record { fields: field_list, idx }
+        Record {
+            fields: field_list,
+            idx,
+        }
     }
 }
 
@@ -743,33 +738,32 @@ pub trait HashIndex {
 impl<T> HashIndex for Framed<T>
 where
     for<'a> Value<&'a T>: Hash,
-    Self: DataIndex<DType=T>,
+    Self: DataIndex<DType = T>,
 {
     fn hash_index<H>(&self, idx: usize, state: &mut H)
     where
-        H: Hasher
+        H: Hasher,
     {
         self.get_datum(idx).unwrap().hash(state);
     }
 }
 
-
-impl HashIndex for Nil
-{
+impl HashIndex for Nil {
     fn hash_index<H>(&self, _idx: usize, _state: &mut H)
     where
-        H: Hasher
-    {}
+        H: Hasher,
+    {
+    }
 }
 
 impl<Head, Tail> HashIndex for Cons<Head, Tail>
 where
     Head: HashIndex,
-    Tail: HashIndex
+    Tail: HashIndex,
 {
     fn hash_index<H>(&self, idx: usize, state: &mut H)
     where
-        H: Hasher
+        H: Hasher,
     {
         self.head.hash_index(idx, state);
         self.tail.hash_index(idx, state);
@@ -778,11 +772,11 @@ where
 
 impl<'a, Fields> Hash for Record<'a, Fields>
 where
-    Fields: HashIndex
+    Fields: HashIndex,
 {
     fn hash<H>(&self, state: &mut H)
     where
-        H: Hasher
+        H: Hasher,
     {
         self.fields.hash_index(self.idx, state)
     }
@@ -795,10 +789,12 @@ pub trait PartialEqIndex {
 impl<T> PartialEqIndex for Framed<T>
 where
     for<'a> Value<&'a T>: PartialEq,
-    Self: DataIndex<DType=T>,
+    Self: DataIndex<DType = T>,
 {
     fn eq_index(&self, other: &Self, idx: usize) -> bool {
-        self.get_datum(idx).unwrap().eq(&other.get_datum(idx).unwrap())
+        self.get_datum(idx)
+            .unwrap()
+            .eq(&other.get_datum(idx).unwrap())
     }
 }
 
@@ -811,7 +807,7 @@ impl PartialEqIndex for Nil {
 impl<Head, Tail> PartialEqIndex for Cons<Head, Tail>
 where
     Head: PartialEqIndex,
-    Tail: PartialEqIndex
+    Tail: PartialEqIndex,
 {
     fn eq_index(&self, other: &Self, idx: usize) -> bool {
         self.head.eq_index(&other.head, idx) && self.tail.eq_index(&other.tail, idx)
@@ -820,7 +816,7 @@ where
 
 impl<'a, Fields> PartialEq for Record<'a, Fields>
 where
-    Fields: PartialEqIndex
+    Fields: PartialEqIndex,
 {
     fn eq(&self, other: &Self) -> bool {
         self.fields.eq_index(other.fields, self.idx)
@@ -839,20 +835,22 @@ impl<'a, Head, Tail> Display for Record<'a, Cons<Head, Tail>>
 where
     Head: DataIndex,
     <Head as DataIndex>::DType: Display,
-    Record<'a, Tail>: Display
+    Record<'a, Tail>: Display,
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         write!(f, "{},", self.fields.head.get_datum(self.idx).unwrap())?;
-        Record { fields: &self.fields.tail, idx: self.idx }.fmt(f)
+        Record {
+            fields: &self.fields.tail,
+            idx: self.idx,
+        }
+        .fmt(f)
     }
 }
 
 impl<Labels, Frames> DataView<Labels, Frames> {
-
-    pub fn field_list<LabelList>(&self)
-        -> <Labels as FieldList<LabelList, Frames>>::Output
+    pub fn field_list<LabelList>(&self) -> <Labels as FieldList<LabelList, Frames>>::Output
     where
-        Labels: FieldList<LabelList, Frames>
+        Labels: FieldList<LabelList, Frames>,
     {
         <Labels as FieldList<LabelList, Frames>>::field_list(&self.frames)
     }
@@ -997,8 +995,8 @@ mod tests {
     #[cfg(feature = "test-utils")]
     use test_utils::*;
 
+    use access::DataIndex;
     use error::*;
-    use access::{DataIndex};
 
     fn load_csv_file<Spec>(filename: &str, spec: Spec) -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
     where
@@ -1272,7 +1270,6 @@ mod tests {
         assert_eq!(subdv4.nfields(), 1);
     }
 
-
     #[cfg(feature = "test-utils")]
     #[test]
     fn subview_merged() {
@@ -1288,7 +1285,6 @@ mod tests {
         assert_eq!(dv.store_ref_counts(), vec![2, 2]);
         assert_eq!(subdv.nrows(), 7);
         assert_eq!(subdv.nfields(), 2);
-
     }
 
     //TODO: multi-frame subview tests (which filter out no-longer-needed frames)
@@ -1445,7 +1441,10 @@ mod tests {
         assert_eq!(uniques, vec![0, 1, 4, 5]);
         let dept_ids = dv.field::<emp_table::DeptId>();
         assert_eq![
-            uniques.iter().map(|&idx| dept_ids.get_datum(idx).unwrap()).collect::<Vec<_>>(),
+            uniques
+                .iter()
+                .map(|&idx| dept_ids.get_datum(idx).unwrap())
+                .collect::<Vec<_>>(),
             vec![1, 2, 3, 4]
         ];
 
@@ -1479,4 +1478,4 @@ mod tests {
         );
     }
 
- }
+}
