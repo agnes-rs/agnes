@@ -507,119 +507,96 @@ where
     type Output = <T as LabelSubset<LabelList>>::Output;
 }
 
-/// Trait to find the subset of cons-list `Self` which are labeled with labels in `LabelList`,
-/// and applying a method to each element of that list.
-///
-/// Any labels in `LabelList` not found in `Self` will be ignored (see `HasLabels` for a trait
-/// that requires all members of `LabelList` to be found).
-pub trait SubsetApply<LabelList, FArgs, FOut> {
-    type Output;
+macro_rules! subset_apply {
+    (
+        $req_trait:tt $req_fn:tt ($($req_fn_output:tt)*)
+        $trait_name:tt $fn_name:tt
+        $trait_name_pred:tt $fn_name_pred:tt
+    ) => {
 
-    fn subset_apply<F>(&self, f: F) -> Self::Output where F: Clone + FnOnce(&FArgs) -> FOut;
-}
+        /// Trait for calling function $req_fn of trait $req_trait for all values of a cons-list
+        /// which match a specified `LabelList`.
+        ///
+        /// Any labels in `LabelList` not found in `Self` will be ignored (see `HasLabels` for a
+        /// trait that requires all members of `LabelList` to be found).
+        pub trait $trait_name<LabelList> {
+            type Output;
 
-// Base-case (Nil) implementation
-impl<LabelList, FArgs, FOut> SubsetApply<LabelList, FArgs, FOut> for Nil {
-    type Output = Nil;
-
-    fn subset_apply<F>(&self, _f: F) -> Nil where F: Clone + FnOnce(&FArgs) -> FOut {
-        Nil
-    }
-}
-
-// Implementation for `LVCons` cons-lists.
-impl<LabelList, FArgs, FOut, L, V, T> SubsetApply<LabelList, FArgs, FOut> for LVCons<L, V, T>
-where
-    LabelList: Member<L>,
-    LVCons<L, V, T>: SubsetApplyPred<LabelList, FArgs, FOut, <LabelList as Member<L>>::IsMember>,
-{
-    type Output = <LVCons<L, V, T> as SubsetApplyPred<
-        LabelList,
-        FArgs,
-        FOut,
-        <LabelList as Member<L>>::IsMember,
-    >>::Output;
-
-    fn subset_apply<F>(&self, f: F) -> Self::Output where F: Clone + FnOnce(&FArgs) -> FOut {
-        self.subset_apply_pred(f)
-    }
-}
-
-/// Helper filter trait. Used by `Filter` for computing the subset of `Self` cons-list which
-/// contains the labels in `LabelList`, and cloning a copy of that subset.
-///
-/// `IsMember` specifies whether or not the label of the head value of `Self` is a member of
-/// `LabelList`.
-pub trait SubsetApplyPred<LabelList, FArgs, FOut, IsMember> {
-    type Output;
-
-    fn subset_apply_pred<F>(&self, f: F) -> Self::Output where F: Clone + FnOnce(&FArgs) -> FOut;
-}
-
-// `SubsetApplyPred` implementation for a cons-list where the head is in `LabelList`.
-impl<LabelList, FOut, H, T> SubsetApplyPred<LabelList, H, FOut, True> for Cons<H, T>
-where
-    T: SubsetApply<LabelList, H, FOut>,
-{
-    // head is in list, so we include it and check the tail
-    type Output = Cons<FOut, <T as SubsetApply<LabelList, H, FOut>>::Output>;
-
-    fn subset_apply_pred<F>(&self, f: F) -> Self::Output where F: Clone + FnOnce(&H) -> FOut {
-        Cons {
-            head: f.clone()(&self.head),
-            tail: self.tail.subset_apply(f),
+            fn $fn_name(&self) -> Self::Output;
         }
+
+        // Base-case (Nil) implementation
+        impl<LabelList> $trait_name<LabelList> for Nil {
+            type Output = Nil;
+
+            fn $fn_name(&self) -> Nil {
+                Nil
+            }
+        }
+
+        // Implementation for `LVCons` cons-lists.
+        impl<LabelList, L, V, T> $trait_name<LabelList> for LVCons<L, V, T>
+        where
+            LabelList: Member<L>,
+            Self: $trait_name_pred<LabelList, <LabelList as Member<L>>::IsMember>
+        {
+            type Output = <LVCons<L, V, T> as $trait_name_pred<
+                LabelList,
+                <LabelList as Member<L>>::IsMember,
+            >>::Output;
+
+            fn $fn_name(&self) -> Self::Output {
+                self.$fn_name_pred()
+            }
+        }
+
+        /// Helper trait. Used by `$trait_name` for computing the subset of `Self` cons-list which
+        /// contains the labels in `LabelList`, and applying a trait function to that subset.
+        ///
+        /// `IsMember` specifies whether or not the label of the head value of `Self` is a member of
+        /// `LabelList`.
+        pub trait $trait_name_pred<LabelList, IsMember> {
+            type Output;
+
+            fn $fn_name_pred(&self) -> Self::Output;
+        }
+
+        // `$trait_name_pred` implementation for a cons-list where the head is in `LabelList`.
+        impl<LabelList, H, T> $trait_name_pred<LabelList, True> for Cons<H, T>
+        where
+            T: $trait_name<LabelList>,
+            H: $req_trait,
+        {
+            type Output = Cons<$($req_fn_output)*, <T as $trait_name<LabelList>>::Output>;
+
+            fn $fn_name_pred(&self) -> Self::Output {
+                Cons {
+                    head: self.head.$req_fn(),
+                    tail: self.tail.$fn_name()
+                }
+            }
+        }
+
+        // `$trait_name_pred` implementation for a cons-list where the head isn't in `LabelList`.
+        impl<LabelList, H, T> $trait_name_pred<LabelList, False> for Cons<H, T>
+        where
+            T: $trait_name<LabelList>,
+        {
+            type Output = <T as $trait_name<LabelList>>::Output;
+
+            fn $fn_name_pred(&self) -> Self::Output {
+                self.tail.$fn_name()
+            }
+        }
+
     }
 }
-// `FilterPred` implementation for a cons-list where the head isn't in `LabelList`.
-impl<LabelList, FOut, H, T> SubsetApplyPred<LabelList, H, FOut, False> for Cons<H, T>
-where
-    T: SubsetApply<LabelList, H, FOut>,
-{
-    // head isn't in list, so we check the tail
-    type Output = <T as SubsetApply<LabelList, H, FOut>>::Output;
 
-    fn subset_apply_pred<F>(&self, f: F) -> Self::Output where F: Clone + FnOnce(&H) -> FOut {
-        self.tail.subset_apply(f)
-    }
-}
-
-/// Convenience trait for cloning the values of a cons-list which match a specified `LabelList`.
-///
-/// Any labels in `LabelList` not found in `Self` will be ignored (see `HasLabels` for a trait
-/// that requires all members of `LabelList` to be found).
-pub trait SubsetClone<LabelList> {
-    type Output;
-
-    /// Filters `Self` and clones into new cons-list of associated type `Output`.
-    fn subset_clone(&self) -> Self::Output;
-}
-
-impl<LabelList> SubsetClone<LabelList> for Nil
-{
-    type Output = Nil;
-    fn subset_clone(&self) -> Nil {
-        Nil
-    }
-}
-
-impl<LabelList, L, V, T> SubsetClone<LabelList> for LVCons<L, V, T>
-where
-    LabelList: Member<L>,
-    Labeled<L, V>: Clone,
-    Self: SubsetApply<LabelList, Labeled<L, V>, Labeled<L, V>>
-{
-    type Output = <Self as SubsetApply<LabelList, Labeled<L, V>, Labeled<L, V>>>::Output;
-
-    fn subset_clone(&self) -> Self::Output {
-        self.subset_apply(|&ref h| h.clone())
-    }
-}
-
-
-
-
-
+subset_apply![
+    Clone clone (H)
+    SubsetClone subset_clone
+    SubsetClonePred subset_clone_pred
+];
 
 
 pub trait AssocLabels {

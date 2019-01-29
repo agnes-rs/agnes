@@ -848,6 +848,7 @@ where
 }
 
 impl<Labels, Frames> DataView<Labels, Frames> {
+
     pub fn field_list<LabelList>(&self)
         -> <Labels as FieldList<LabelList, Frames>>::Output
     where
@@ -1271,6 +1272,25 @@ mod tests {
         assert_eq!(subdv4.nfields(), 1);
     }
 
+
+    #[cfg(feature = "test-utils")]
+    #[test]
+    fn subview_merged() {
+        use test_utils::emp_table::*;
+        use test_utils::extra_emp::*;
+
+        let dv = sample_merged_emp_table();
+        println!("{:?}", dv.store_ref_counts());
+
+        let subdv = dv.v::<Labels![DeptId, DidTraining]>();
+        println!("{}", subdv);
+        assert_eq!(subdv.fieldnames(), vec!["DeptId", "DidTraining"]);
+        assert_eq!(dv.store_ref_counts(), vec![2, 2]);
+        assert_eq!(subdv.nrows(), 7);
+        assert_eq!(subdv.nfields(), 2);
+
+    }
+
     //TODO: multi-frame subview tests (which filter out no-longer-needed frames)
 
     #[cfg(feature = "test-utils")]
@@ -1415,7 +1435,7 @@ mod tests {
 
     #[cfg(feature = "test-utils")]
     #[test]
-    fn record() {
+    fn unique_single() {
         let ds = sample_emp_table();
         let dv = ds.into_view();
         println!("{}", dv);
@@ -1429,44 +1449,34 @@ mod tests {
             vec![1, 2, 3, 4]
         ];
 
-        println!("{}", dv.unique_values::<Labels![emp_table::DeptId]>());
+        // can also check the unique department values with unique_values
+        let unique_deptids = dv.unique_values::<Labels![emp_table::DeptId]>();
+        println!("{}", unique_deptids);
+        assert_eq!(
+            unique_deptids.field::<emp_table::DeptId>().to_vec(),
+            vec![1, 2, 3, 4]
+        );
     }
 
-    // #[test]
-    // fn tmap_closure() {
-    //     let orig_dv = sample_merged_emp_table();
+    #[cfg(feature = "test-utils")]
+    #[test]
+    fn unique_composite() {
+        let dv = sample_merged_emp_table();
+        let uniq_indices =
+            dv.unique_indices::<Labels![emp_table::DeptId, extra_emp::DidTraining]>();
+        // the only repeat is index 3
+        assert_eq!(uniq_indices, vec![0, 1, 2, 4, 5, 6]);
 
-    //     //FIXME: using a closure with tmap currently requires providing the type annotation for
-    //     // the value passed into the closure (a DataIndex trait object). I believe this is related
-    //     // to this issue: https://github.com/rust-lang/rust/issues/41078.
-    //     let has_jamie = orig_dv.tmap(
-    //         "EmpName",
-    //         |data: &dyn DataIndex<Types, DType=String>|
-    //             DataIterator::new(data).any(|emp_name| emp_name == "Jamie".to_string())
-    //     ).unwrap();
-    //     assert_eq!(has_jamie, true);
+        let uniq_vals = dv.unique_values::<Labels![emp_table::DeptId, extra_emp::DidTraining]>();
+        println!("{}", uniq_vals);
+        assert_eq!(
+            uniq_vals.field::<emp_table::DeptId>().to_vec(),
+            vec![1u64, 2, 1, 3, 4, 4]
+        );
+        assert_eq!(
+            uniq_vals.field::<extra_emp::DidTraining>().to_vec(),
+            vec![false, false, true, true, false, true]
+        );
+    }
 
-    //     let has_james = orig_dv.tmap(
-    //         "EmpName",
-    //         |data: &dyn DataIndex<Types, DType=String>|
-    //             DataIterator::new(data).any(|emp_name| emp_name == "James".to_string())
-    //     ).unwrap();
-    //     assert_eq!(has_james, false);
-    // }
-
-    // #[test]
-    // fn tmap_incorrect_field_type() {
-    //     let orig_dv = sample_merged_emp_table();
-
-    //     match orig_dv.tmap(
-    //         "EmpName",
-    //         |data: &dyn DataIndex<Types, DType=u64>|
-    //             DataIterator::new(data).any(|emp_id| emp_id == 1)
-    //     ) {
-    //         Err(AgnesError::IncompatibleTypes { .. }) => {},
-    //         Err(_) => { panic!["wrong error when calling tmap() with incorrect type"]; },
-    //         Ok(_) => { panic!["expected error when calling tmap() with incorrect type, but \
-    //                            received Ok"]; }
-    //     }
-    // }
-}
+ }
