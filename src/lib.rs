@@ -23,8 +23,6 @@ extern crate tokio_io;
 extern crate prettytable;
 extern crate csv_sniffer;
 extern crate tempfile;
-#[macro_use]
-extern crate mashup;
 extern crate typenum;
 
 #[cfg(test)]
@@ -34,7 +32,6 @@ extern crate rand;
 pub mod ops;
 #[macro_use]
 pub mod cons;
-// #[macro_use] pub mod data_types;
 #[macro_use]
 pub mod features;
 #[macro_use]
@@ -56,12 +53,10 @@ pub mod frame;
 pub mod join;
 pub mod source;
 pub mod view;
-// pub mod apply;
 pub mod select;
 pub mod stats;
 pub mod view_stats;
 // pub mod reshape;
-// #[macro_use] pub mod unique;
 
 #[cfg(feature = "experimental")]
 pub mod experimental;
