@@ -51,10 +51,10 @@ pub mod access;
 pub mod error;
 pub mod frame;
 pub mod join;
-pub mod source;
-pub mod view;
 pub mod select;
+pub mod source;
 pub mod stats;
+pub mod view;
 pub mod view_stats;
 // pub mod reshape;
 
