@@ -37,7 +37,6 @@ prettytable-rs = "0.6"
 csv-sniffer = "0.1"
 tempfile = "3"
 num-traits = "0.2.5"
-mashup = "0.1"
 typenum = "1.10.0"
 
 [dev-dependencies]
