@@ -129,6 +129,17 @@ where
             phantom: PhantomData,
         })
     }
+    pub fn map_values<B, F>(self, f: F) -> ValueMap<'a, T, Self, F>
+    where
+        Self: Iterator<Item=Value<&'a T>>,
+        F: FnMut(&'a T) -> B,
+    {
+        ValueMap {
+            iter: self,
+            f,
+            _t: PhantomData
+        }
+    }
 }
 
 impl<'a, 'b, T> Iterator for DataIterator<'a, 'b, T>
@@ -153,6 +164,26 @@ where
         } else {
             None
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct ValueMap<'a, T, I, F> {
+    iter: I,
+    f: F,
+    _t: PhantomData<&'a T>,
+}
+
+impl<'a, B, T, I, F> Iterator for ValueMap<'a, T, I, F>
+where
+    I: Iterator<Item=Value<&'a T>>,
+    F: FnMut(&'a T) -> B
+{
+    type Item = Value<B>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Value<B>>{
+        self.iter.next().map(|value| value.map(&mut self.f))
     }
 }
 
@@ -437,5 +468,26 @@ mod tests {
         ]);
         let sorted_order = field_data.sort_order_by(sort_float_values);
         assert_eq!(sorted_order, vec![2, 1, 0, 4, 3]);
+    }
+
+    #[test]
+    fn convert() {
+        let field_data = FieldData::from_field_vec(vec![
+            Value::Exists(2u64),
+            Value::Exists(5),
+            Value::Na,
+            Value::Exists(1),
+            Value::Exists(8),
+        ]);
+        let new_field_data = field_data.iter().map_values(|u| *u as i64)
+            .collect::<FieldData<i64>>();
+        assert_eq!(new_field_data.to_value_vec(), vec![
+            Value::Exists(2i64),
+            Value::Exists(5),
+            Value::Na,
+            Value::Exists(1),
+            Value::Exists(8),
+        ]);
+
     }
 }
