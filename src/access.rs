@@ -131,13 +131,13 @@ where
     }
     pub fn map_values<B, F>(self, f: F) -> ValueMap<'a, T, Self, F>
     where
-        Self: Iterator<Item=Value<&'a T>>,
+        Self: Iterator<Item = Value<&'a T>>,
         F: FnMut(&'a T) -> B,
     {
         ValueMap {
             iter: self,
             f,
-            _t: PhantomData
+            _t: PhantomData,
         }
     }
 }
@@ -176,13 +176,13 @@ pub struct ValueMap<'a, T, I, F> {
 
 impl<'a, B, T, I, F> Iterator for ValueMap<'a, T, I, F>
 where
-    I: Iterator<Item=Value<&'a T>>,
-    F: FnMut(&'a T) -> B
+    I: Iterator<Item = Value<&'a T>>,
+    F: FnMut(&'a T) -> B,
 {
     type Item = Value<B>;
 
     #[inline]
-    fn next(&mut self) -> Option<Value<B>>{
+    fn next(&mut self) -> Option<Value<B>> {
         self.iter.next().map(|value| value.map(&mut self.f))
     }
 }
@@ -479,15 +479,19 @@ mod tests {
             Value::Exists(1),
             Value::Exists(8),
         ]);
-        let new_field_data = field_data.iter().map_values(|u| *u as i64)
+        let new_field_data = field_data
+            .iter()
+            .map_values(|u| *u as i64)
             .collect::<FieldData<i64>>();
-        assert_eq!(new_field_data.to_value_vec(), vec![
-            Value::Exists(2i64),
-            Value::Exists(5),
-            Value::Na,
-            Value::Exists(1),
-            Value::Exists(8),
-        ]);
-
+        assert_eq!(
+            new_field_data.to_value_vec(),
+            vec![
+                Value::Exists(2i64),
+                Value::Exists(5),
+                Value::Na,
+                Value::Exists(1),
+                Value::Exists(8),
+            ]
+        );
     }
 }
