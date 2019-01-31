@@ -488,10 +488,11 @@ where
 mod tests {
 
     use std::path::Path;
+    use typenum::U0;
 
     use csv_sniffer::metadata::Metadata;
 
-    use super::DataStore;
+    use super::{DataStore, NRows};
     use cons::*;
     use field::Value;
     use select::FieldSelect;
@@ -528,9 +529,11 @@ mod tests {
     #[test]
     fn storage_create() {
         let ds = DataStore::<Nil>::empty();
-        #[derive(Debug)]
-        struct Test;
-        let ds = ds.add_field_from_iter::<Test, _, _, _>(vec![
+
+        type TestNamespace = U0;
+        first_label![Test, TestNamespace, u64];
+
+        let data = vec![
             Value::Exists(4u64),
             Value::Exists(1),
             Value::Na,
@@ -538,8 +541,13 @@ mod tests {
             Value::Exists(7),
             Value::Exists(8),
             Value::Na,
-        ]);
+        ];
+        let expected_nrows = data.len();
+
+        let ds = ds.add_field_from_iter::<Test, _, _, _>(data);
         println!("{:?}", ds);
+        assert_eq!(ds.nrows(), expected_nrows);
+        assert_eq!(ds.field::<Test>().len(), expected_nrows);
 
         let gdp_spec = spec![
             fieldname gdp::CountryName = "Country Name";
@@ -549,6 +557,8 @@ mod tests {
 
         let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
         let ds = csv_rdr.read().unwrap();
-        println!("{:?}", ds.field::<gdp::CountryName>());
+        const EXPECTED_GDP_NROWS: usize = 264;
+        assert_eq!(ds.nrows(), EXPECTED_GDP_NROWS);
+        assert_eq!(ds.field::<gdp::CountryName>().len(), EXPECTED_GDP_NROWS);
     }
 }
