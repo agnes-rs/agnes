@@ -114,43 +114,11 @@ where
     }
 }
 
-// ways to add:
-// - push_field(FieldData) -> DataStore<...>
-// - push_field_from_iter(Iterator<Item=T>) -> DataStore<...>
-// - new_field::<Field>() -> DataStore<...>
-// - field_mut::<Field>() -> DataIndexMut<Item=T>
 pub type NewFieldStorage<NewLabel, NewDType> =
     Labeled<NewLabel, TypedValue<NewDType, DataRef<NewDType>>>;
 
 pub type AddedField<PrevFields, NewLabel, NewDType> =
     <PrevFields as PushBack<FieldSpec<NewLabel, NewDType>>>::Output;
-
-// pub trait PushField<NewLabel, NewDType>
-// {
-//     type OutputFields: AssocStorage;
-
-//     fn push_field(self, data: FieldData<NewDType>)
-//         -> DataStore<Self::OutputFields>;
-// }
-// impl<PrevFields, NewLabel, NewDType> PushField<NewLabel, NewDType>
-//     for DataStore<PrevFields>
-//     where PrevFields: AssocStorage,
-//           NewLabel: Debug,
-//           NewDType: Debug,
-// {
-//     type OutputFields = FieldCons<NewLabel, NewDType, PrevFields>;
-
-//     fn push_field(self, data: FieldData<NewDType>)
-//         -> DataStore<Self::OutputFields>
-//     {
-//         DataStore {
-//             data: StorageCons{
-//                 head: TypedValue::from(Rc::new(data)).into(),
-//                 tail: self.data
-//             }
-//         }
-//     }
-// }
 
 pub trait AddField<NewLabel, NewDType> {
     type OutputFields: AssocStorage;
@@ -178,37 +146,6 @@ where
         }
     }
 }
-
-// pub trait PushFieldFromValueIter<NewLabel, NewDType> {
-//     type OutputFields: AssocStorage;
-
-//     fn push_field_from_value_iter<IntoIter, Iter>(self, iter: IntoIter)
-//         -> DataStore<Self::OutputFields>
-//         where Iter: Iterator<Item=Value<NewDType>>,
-//               IntoIter: IntoIterator<IntoIter=Iter, Item=Value<NewDType>>;
-// }
-// impl<PrevFields, NewLabel, NewDType> PushFieldFromValueIter<NewLabel, NewDType>
-//     for DataStore<PrevFields>
-//     where PrevFields: AssocStorage,
-//           NewDType: Default + Clone,
-//           NewLabel: Debug, NewDType: Debug,
-// {
-//     type OutputFields = FieldCons<NewLabel, NewDType, PrevFields>;
-
-//     fn push_field_from_value_iter<IntoIter, Iter>(self, iter: IntoIter)
-//         -> DataStore<Self::OutputFields>
-//         where Iter: Iterator<Item=Value<NewDType>>,
-//               IntoIter: IntoIterator<IntoIter=Iter, Item=Value<NewDType>>
-//     {
-//         DataStore {
-//             data: StorageCons {
-//                 head: TypedValue::from(Rc::new(iter.into_iter().collect::<FieldData<NewDType>>()))
-//                     .into(),
-//                 tail: self.data
-//             }
-//         }
-//     }
-// }
 
 pub trait AddFieldFromValueIter<NewLabel, NewDType> {
     type OutputFields: AssocStorage;
@@ -387,31 +324,6 @@ where
     }
 }
 
-// pub trait PushEmptyField<NewLabel, NewDType> {
-//     type OutputFields: AssocStorage;
-
-//     fn push_empty_field(self)
-//         -> DataStore<Self::OutputFields>;
-// }
-// impl<PrevFields, NewLabel, NewDType> PushEmptyField<NewLabel, NewDType>
-//     for DataStore<PrevFields>
-//     where PrevFields: AssocStorage,
-//           NewLabel: Debug, NewDType: Debug,
-// {
-//     type OutputFields = FieldCons<NewLabel, NewDType, PrevFields>;
-
-//     fn push_empty_field(self)
-//         -> DataStore<Self::OutputFields>
-//     {
-//         DataStore {
-//             data: StorageCons {
-//                 head: TypedValue::from(Rc::new(FieldData::default())).into(),
-//                 tail: self.data
-//             }
-//         }
-//     }
-// }
-
 pub trait AddEmptyField<NewLabel, NewDType> {
     type OutputFields: AssocStorage;
 
@@ -439,36 +351,10 @@ where
     }
 }
 
-// #[macro_export]
-// macro_rules! push_field {
-//     ($ds:ident<$fields:ty>.$new_label:ident = $data:expr;) => {
-//         pub type $new_label = $crate::label::Label<
-//             typenum::Add1<<$fields as $crate::label::Natural>::Nat>
-//         >;
-//         let $ds = $ds.push_field::<$new_label, _>($data);
-//     }
-// }
-// #[macro_export]
-// macro_rules! push_field_from_iter {
-//     ($ds:ident<$fields:ty>.$new_label:ident = $iter:expr;) => {
-//         pub type $new_label = $crate::label::Label<
-//             typenum::Add1<<$fields as $crate::label::Natural>::Nat>
-//         >;
-//         let $ds = $ds.push_field_from_iter::<$new_label, _>($iter);
-//     }
-// }
-
 impl<PrevFields> DataStore<PrevFields>
 where
     PrevFields: AssocStorage,
 {
-    // pub fn push_field<NewLabel, NewDType>(self, data: FieldData<NewDType>)
-    //     -> DataStore<<Self as PushField<NewLabel, NewDType>>::OutputFields>
-    //     where Self: PushField<NewLabel, NewDType>
-    // {
-    //     PushField::push_field(self, data)
-    // }
-
     pub fn add_field<NewLabel, NewDType>(
         self,
         data: FieldData<NewDType>,
@@ -478,15 +364,6 @@ where
     {
         AddField::add_field(self, data)
     }
-
-    // pub fn push_field_from_iter<NewLabel, NewDType, IntoIter, Iter>(self, iter: IntoIter)
-    //     -> DataStore<<Self as PushFieldFromIter<NewLabel, NewDType>>::OutputFields>
-    //     where Iter: Iterator<Item=NewDType>,
-    //           IntoIter: IntoIterator<IntoIter=Iter, Item=NewDType>,
-    //           Self: PushFieldFromIter<NewLabel, NewDType>
-    // {
-    //     PushFieldFromIter::push_field_from_iter(self, iter)
-    // }
 
     pub fn add_field_from_iter<NewLabel, NewDType, IntoIter, Iter>(
         self,
@@ -512,15 +389,6 @@ where
     {
         AddClonedFieldFromIter::add_cloned_field_from_iter(self, iter)
     }
-
-    // pub fn push_field_from_value_iter<NewLabel, NewDType, IntoIter, Iter>(self, iter: IntoIter)
-    //     -> DataStore<<Self as PushFieldFromValueIter<NewLabel, NewDType>>::OutputFields>
-    //     where Iter: Iterator<Item=Value<NewDType>>,
-    //           IntoIter: IntoIterator<IntoIter=Iter, Item=Value<NewDType>>,
-    //           Self: PushFieldFromValueIter<NewLabel, NewDType>
-    // {
-    //     PushFieldFromValueIter::push_field_from_value_iter(self, iter)
-    // }
 
     pub fn add_field_from_value_iter<NewLabel, NewDType, IntoIter, Iter>(
         self,
@@ -557,41 +425,6 @@ where
     }
 }
 
-// impl<PrevFields> DataStore<PrevFields>
-//     where PrevFields: AssocStorage + LabelIndex,
-//           <PrevFields as LabelIndex>::Idx: Add<B1>
-// {
-//     pub fn push_field<NewDType>(self, data: FieldData<NewDType>)
-//         -> DataStore<<Self as PushField<NextLabelIndex<PrevFields>, NewDType>>::OutputFields>
-//         where NewDType: fmt::Debug,
-//               Self: PushField<NextLabelIndex<PrevFields>, NewDType>
-//     {
-//         PushField::push_field(self, data)
-//     }
-
-//     pub fn push_field_from_iter<NewDType, IntoIter, Iter>(self, iter: IntoIter)
-//         -> DataStore<
-//             <Self as PushFieldFromIter<NextLabelIndex<PrevFields>, NewDType>>::OutputFields
-//         >
-//         where Iter: Iterator<Item=Value<NewDType>>,
-//               IntoIter: IntoIterator<IntoIter=Iter, Item=Value<NewDType>>,
-//               NewDType: fmt::Debug + Default + Clone,
-//               Self: PushFieldFromIter<NextLabelIndex<PrevFields>, NewDType>
-//     {
-//         PushFieldFromIter::push_field_from_iter(self, iter)
-//     }
-
-//     pub fn push_empty_field<NewDType>(self)
-//         -> DataStore<
-//             <Self as PushEmptyField<NextLabelIndex<PrevFields>, NewDType>>::OutputFields
-//         >
-//         where NewDType: fmt::Debug,
-//               Self: PushEmptyField<NextLabelIndex<PrevFields>, NewDType>
-//     {
-//         PushEmptyField::push_empty_field(self)
-//     }
-// }
-
 impl<Label, Fields> SelectFieldByLabel<Label> for DataStore<Fields>
 where
     Fields: AssocStorage,
@@ -608,23 +441,6 @@ where
     }
 }
 impl<Fields> FieldSelect for DataStore<Fields> where Fields: AssocStorage {}
-
-// pub struct FrameLookupLabel<FrameLabel>
-// {
-//     _marker: PhantomData<FrameLabel>
-// }
-// impl<FrameLabel> Label for FrameLookupLabel<FrameLabel>
-//     where FrameLabel: Label
-// {
-//     const NAME: &'static str = FrameLabel::NAME;
-// }
-// impl<FrameLabel> Identifier for FrameLookupLabel<FrameLabel>
-//     where FrameLabel: Identifier
-// {
-//     type Ident = Ident<Self::Namespace, Self::Natural>;
-//     type Namespace = LocalNamespace;
-//     type Natural = <FrameLabel as Identifier>::Natural;
-// }
 
 pub trait AssocFrameLookup {
     type Output;
@@ -671,37 +487,30 @@ where
 #[cfg(test)]
 mod tests {
 
-    use std::fmt::Debug;
     use std::path::Path;
 
     use csv_sniffer::metadata::Metadata;
 
-    use field::Value;
-    use source::csv::{CsvReader, CsvSource, IntoCsvSrcSpec};
-    // use data_types::csv::*;
     use super::DataStore;
     use cons::*;
-    use label::LookupElemByLabel;
+    use field::Value;
     use select::FieldSelect;
-    use view::DataView;
+    use source::csv::{CsvReader, CsvSource, IntoCsvSrcSpec};
 
     fn load_csv_file<Spec>(filename: &str, spec: Spec) -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
     where
-        Spec: IntoCsvSrcSpec, // where CsvSrcSpec: FromSpec<Spec>
-                              // where Spec: Debug// + FieldSpecs<Types> + AssocFields + AttachSrcPos
+        Spec: IntoCsvSrcSpec,
     {
         let data_filepath = Path::new(file!()) // start as this file
             .parent()
             .unwrap() // navigate up to src directory
             .parent()
             .unwrap() // navigate up to root directory
-            .join("tests") // navigate into integration tests directory            .join("data")                      // navigate into data directory
+            .join("tests") // navigate into integration tests directory
             .join("data") // navigate into data directory
             .join(filename); // navigate to target file
 
         let source = CsvSource::new(data_filepath.into()).unwrap();
-        // let csv_rdr = CsvReader::new(&source, spec);
-        // csv_rdr.adsjfiaosj();
         (
             CsvReader::new(&source, spec).unwrap(),
             source.metadata().clone(),
@@ -737,27 +546,9 @@ mod tests {
             fieldname gdp::CountryCode = "Country Code";
             fieldname gdp::Year1983 = "1983";
         ];
-        // println!("{:?}", gdp_spec);
 
-        // gdp_spec.tail.tail.head.ajdfiaoj();
-
-        // ds.adjiaofj();
         let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
         let ds = csv_rdr.read().unwrap();
-
-        // LookupElemByLabel::<CountryName>::elem(&ds.data).adjfiaoj();
-
-        // println!("{:?}", ds);
         println!("{:?}", ds.field::<gdp::CountryName>());
-
-        // let dv = ds.into_view();
-        // use view::LookupFrameByLabel;
-        // use typenum::UTerm;
-        // use label::Label;
-        // dv.select_frame_by_label::<Label<UTerm>>();
-
-        // println!("{}", dv);
-        // println!("{:?}", csv_rdr);
-        // println!("{:?}", metadata);
     }
 }

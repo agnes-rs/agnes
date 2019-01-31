@@ -4,7 +4,6 @@ use access::DataIndex;
 use cons::*;
 use fieldlist::*;
 use label::{LVCons, SelfValued, TypedValue, Valued};
-use select::FieldSelect;
 use view::{AssocDataIndexConsOf, DataIndexCons};
 
 #[derive(Debug, Clone)]
@@ -30,8 +29,6 @@ impl<'a, DType, DI, Feature, IsImpl> SelfValued for StorageCapabilities<DType, D
 {
 }
 
-// pub type FieldCapabilitiesCons<Label, DType, Feature, IsImpl, Tail>
-//     = LMCons<Label, Capabilities<DType, Feature, IsImpl>, Tail>;
 pub type StorageCapabilitiesCons<Label, DType, DI, Feature, IsImpl, Tail> =
     LVCons<Label, StorageCapabilities<DType, DI, Feature, IsImpl>, Tail>;
 
@@ -54,20 +51,10 @@ impl<'a, F> PartialMap<F> for Nil {
 }
 impl<'a, Label, DType, DI, Feature, Tail, F> PartialMap<F>
     for StorageCapabilitiesCons<Label, DType, DI, Feature, Implemented, Tail>
-// for FieldCapabilitiesCons<Label, DType, Feature, Implemented, Tail>
 where
     Tail: PartialMap<F>,
     F: Func<DType>,
-    // DType: Debug,
     DI: DataIndex<DType = DType>,
-    // &'a DI: DataIndex<DType=DType>
-
-    // Labeled<Label, TypedValue<DType,
-    //   MarkerValue<Capabilities<DType, Feature, Implemented>, Payload>>>: Valued,
-
-    // S: FieldSelect,
-    // for<'a> S: SelectFieldByLabel<Label>,
-    // for<'a> <S as SelectFieldByLabel<Label>>::Output: DataIndex<DType=DType>
 {
     type Output = FieldPayloadCons<Label, DType, F::Output, Tail::Output>;
 
@@ -80,7 +67,6 @@ where
 }
 impl<'a, Label, DType, DI, Feature, Tail, F> PartialMap<F>
     for StorageCapabilitiesCons<Label, DType, DI, Feature, Unimplemented, Tail>
-// for FieldCapabilitiesCons<Label, DType, Feature, Unimplemented, Tail>
 where
     Tail: PartialMap<F>,
     DI: DataIndex<DType = DType>,
@@ -107,11 +93,6 @@ pub trait FuncDefault {
     type Output;
     fn call(&mut self) -> Self::Output;
 }
-
-// pub trait ReqFeature {
-//     type Feature;
-// }
-// pub type ReqFeatureOf<T> = <T as ReqFeature>::Feature;
 
 pub trait DeriveCapabilities<F> {
     type Output: PartialMap<F>;
@@ -160,29 +141,3 @@ where
 
 pub type DeriveCapabilitiesOf<Labels, Frames, F> =
     <AssocDataIndexConsOf<Labels, Frames> as DeriveCapabilities<F>>::Output;
-
-// pub type DerivePartialMap<Fields, Func>
-//     = <Fields as DeriveCapabilities<'a, <Func as ReqFeature>::Feature>>::Output;
-
-// pub trait Derivable<Fields, Func>
-//     where Func: ReqFeature,
-//           Fields: DeriveCapabilities<<Func as ReqFeature>::Feature> {}
-// impl<T, Fields, Func> Derivable<Fields, Func> for T
-//     where Func: ReqFeature,
-//           Fields: DeriveCapabilities<<Func as ReqFeature>::Feature> {}
-
-// #[macro_export]
-// macro_rules! partial_map {
-//     ($fields:ty, $func:ty) => {{
-//         DerivePartialMap<Fields, Func><
-//             <
-//                 $fields as $crate::features::DeriveCapabilities<
-//                     <$func as $crate::features::ReqFeature>::Feature
-//                 >
-//             >::Output as $crate::features::PartialMap<$func>
-//         >::map(<$func>::default())
-//     }}
-// }
-
-// #[derive(Debug, Clone)]
-// pub struct DisplayFeat;
