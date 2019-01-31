@@ -76,6 +76,7 @@ impl<'a, T: Clone> Value<&'a T> {
     }
 }
 
+#[macro_export]
 macro_rules! valref {
     ($value:expr) => {
         Value::Exists(&$value)

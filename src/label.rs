@@ -716,6 +716,7 @@ macro_rules! namespace {
     };
 }
 
+#[macro_export]
 macro_rules! nat_label {
     ($label:ident, $ns:ty, $nat:ty, $dtype:ty, $name:expr) => {
         #[derive(Debug, Clone)]
