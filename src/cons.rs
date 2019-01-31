@@ -79,33 +79,16 @@ where
     }
 }
 
-// #[macro_export]
-// macro_rules! map {
-//     (@continue($elems:expr)($($output:tt)*) ) => {
-//         $($output)*
-//     };
-//     (@continue($elems:expr)($($output:tt)*) [$($f0:tt)*] $([$($f:tt)*])*) => {
-//         map![@continue($elems.tail)($($output)*.prepend(($($f0)*)(&$elems.head))) $([$($f)*])*]
-//     };
-//     ($elems:expr, $([$($f:tt)*])*) => {{
-//         #[allow(unused_imports)]
-//         use $crate::cons::Prepend;
-//         map![@continue($elems)(Nil) $([$($f)*])*]
-//     }}
-// }
-
-// doesn't work
-// #[macro_export]
-// macro_rules! apply_to {
-//     (@step(Nil)($value:ident)($($f:tt)*)) => {};
-//     (@step($elems:expr)($value:ident)($($f:tt)*)) => {{
-//         |$value| {$($f)*}($value);
-//         apply_to![@step($elems.tail)($value)($($f)*)]
-//     }};
-//     ($elems:expr; |$value:ident| $($f:tt)*) => {{
-//         apply_to![@step($elems)($value)($($f)*)]
-//     }}
-// }
+// TODO: idea for macro framework for applying function to each value in a cons-list
+//
+// list_apply![
+//     self.frames; // list to apply this to
+//     |order: &[usize]| { /* closure to apply for recursive case */
+//         head.update_permutation(order);
+//         tail.update_permutation(order);
+//     }
+//     |order: &[usize]| {} /* base-case closure */
+// ]
 
 pub trait Len {
     type Len: Unsigned;

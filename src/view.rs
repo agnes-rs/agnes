@@ -563,17 +563,6 @@ where
     }
 }
 
-// TODO: idea for macro framework for applying function to each value in a cons-list
-//
-// list_apply![
-//     self.frames;
-//     |&mut value, order: &[usize]| {
-//         value.update_permutation(order);
-//         self.tail.update_permutation(order);
-//     }
-//     |order: &[usize]| {}
-// ]
-
 impl<Labels, Frames> DataView<Labels, Frames>
 where
     Frames: UpdatePermutation,
@@ -934,10 +923,7 @@ pub struct FieldView<Fields> {
 }
 
 #[cfg(serialize)]
-impl<Fields> Serialize for FieldView<Fields>
-// where DTypes: DTypeList,
-//       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>,
-{
+impl<Fields> Serialize for FieldView<Fields> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -954,16 +940,10 @@ impl<Fields> Serialize for FieldView<Fields>
     }
 }
 #[cfg(serialize)]
-impl<Fields> SerializeAsVec for FieldView<Fields>
-// where DTypes: DTypeList,
-//       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>
-{
-}
+impl<Fields> SerializeAsVec for FieldView<Fields> {}
 
 #[cfg(serialize)]
-impl<Idents, Frames> DataView<Idents, Frames>
-// where DTypes: DTypeList
-{
+impl<Idents, Frames> DataView<Idents, Frames> {
     /// Create a `FieldView` object from a `DataView` object, if possible. Typically, use this on
     /// `DataView` objects with only a single field; however, if the `DataView` object has multiple
     /// fields, the first one will be used for this `FieldView`. Returns `None` if the `DataView`

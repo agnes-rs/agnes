@@ -15,15 +15,9 @@ use std::ops::{Add, Div, Mul, Sub};
 #[cfg(serialize)]
 use serde::ser::{Serialize, SerializeSeq, Serializer};
 
-use bit_vec::BitVec;
-use store::DataRef;
-// use store::{IntoDataStore, DataStore, WithDataFromIter};
 use access::{DataIndex, DataIndexMut};
+use bit_vec::BitVec;
 use error;
-
-/// Marker trait for types supporting common traits (such as being displayed).
-// pub trait DataType: Debug + Display {}
-// impl<T> DataType for T where T: Debug + Display {}
 
 /// (Possibly missing) data value container.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -246,9 +240,7 @@ impl<T> FieldData<T> {
             .collect()
     }
 }
-impl<T> Default for FieldData<T>
-// where T: DataType,
-{
+impl<T> Default for FieldData<T> {
     fn default() -> FieldData<T> {
         FieldData {
             data: vec![],
@@ -256,9 +248,7 @@ impl<T> Default for FieldData<T>
         }
     }
 }
-impl<T> FieldData<T>
-// where T: DataType
-{
+impl<T> FieldData<T> {
     /// Create a `FieldData` struct from a vector of non-NA values. Resulting `FieldData` struct
     /// will have no `Value::Na` values.
     pub fn from_vec<U: Into<T>>(mut v: Vec<U>) -> FieldData<T> {
@@ -407,14 +397,6 @@ where
         seq.end()
     }
 }
-
-// impl<T> IntoDataStore for FieldData<T>
-//     where T: 'static + DataType + Default + Clone
-// {
-//     fn into_datastore<I: Into<FieldIdent>>(self, ident: I) -> error::Result<DataStore<DTypes>> {
-//         DataStore::empty().with_data_from_iter(ident, self.iter())
-//     }
-// }
 
 /// Identifier for a field in the source.
 #[derive(Debug, Clone)]
