@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::ops::{Add, BitAnd, BitOr, Not, Sub};
-use std::rc::Rc;
 
 use typenum::{
     bit::{B0, B1},
