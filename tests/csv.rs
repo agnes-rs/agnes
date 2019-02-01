@@ -3,9 +3,6 @@ extern crate agnes;
 extern crate csv_sniffer;
 extern crate typenum;
 
-use agnes::cons::Nil;
-use agnes::label::LCons;
-
 mod common;
 
 namespace![
