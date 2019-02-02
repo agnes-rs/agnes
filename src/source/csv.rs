@@ -15,7 +15,7 @@ use fieldlist::{FieldDesignator, FieldPayloadCons, FieldSpec, SpecCons};
 use label::{TypedValue, Valued};
 use source::decode::decode;
 use source::file::{FileLocator, LocalFileReader};
-use store::{AddFieldFromValueIter, AssocStorage, DataStore};
+use store::{AssocStorage, DataStore, PushFrontFromValueIter};
 
 /// CSV Data source. Contains location of data file, and computes CSV metadata. Can be turned into
 /// `CsvReader` object.
@@ -114,14 +114,14 @@ impl BuildDStore for Nil {
 impl<Label, DType, Tail> BuildDStore for FieldPayloadCons<Label, DType, usize, Tail>
 where
     Tail: BuildDStore,
-    DataStore<<Tail as BuildDStore>::OutputFields>: AddFieldFromValueIter<Label, DType>,
+    DataStore<<Tail as BuildDStore>::OutputFields>: PushFrontFromValueIter<Label, DType>,
     Tail::OutputFields: PushBack<FieldSpec<Label, DType>>,
     <Tail::OutputFields as PushBack<FieldSpec<Label, DType>>>::Output: AssocStorage,
     Label: Debug,
     DType: FromStr + Debug + Default + Clone,
     ParseError: From<<DType as FromStr>::Err>,
 {
-    type OutputFields = <DataStore<<Tail as BuildDStore>::OutputFields> as AddFieldFromValueIter<
+    type OutputFields = <DataStore<<Tail as BuildDStore>::OutputFields> as PushFrontFromValueIter<
         Label,
         DType,
     >>::OutputFields;
@@ -154,7 +154,7 @@ where
                 })
             })
             .collect::<Result<_>>()?;
-        let ds = ds.add_field_from_value_iter::<Label, DType, _, _>(values);
+        let ds = ds.push_front_from_value_iter::<Label, DType, _, _>(values);
 
         Ok(ds)
     }
@@ -166,7 +166,10 @@ pub struct CsvReader<CsvSpec> {
     csv_src_spec: CsvSpec,
 }
 
-impl<CsvSrcSpec> CsvReader<CsvSrcSpec> {
+impl<CsvSrcSpec> CsvReader<CsvSrcSpec>
+where
+    CsvSrcSpec: Debug,
+{
     /// Create a new CSV reader from a CSV source specification. This will process header row (if
     /// exists), and verify the fields specified in the `CsvSource` object exist in this CSV file.
     pub fn new<Spec>(src: &CsvSource, spec: Spec) -> Result<CsvReader<Spec::CsvSrcSpec>>

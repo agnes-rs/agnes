@@ -209,7 +209,7 @@ mod tests {
     #[test]
     fn na_count() {
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(0.0),
                 Value::Exists(-5.0),
                 Value::Na,
@@ -224,7 +224,7 @@ mod tests {
     #[test]
     fn sum() {
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(0u64),
                 Value::Exists(5),
                 Value::Na,
@@ -235,7 +235,7 @@ mod tests {
         assert_eq!(dv.field::<foo::Foo>().sum(), 8);
 
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(0),
                 Value::Exists(-5),
                 Value::Na,
@@ -246,7 +246,7 @@ mod tests {
         assert_eq!(dv.field::<foo::Foo>().sum(), -8);
 
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(true),
                 Value::Exists(true),
                 Value::Exists(false),
@@ -264,7 +264,7 @@ mod tests {
         );
 
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(0.0),
                 Value::Exists(-5.0),
                 Value::Na,
@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn stdev() {
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(-5.0),
                 Value::Exists(-4.0),
                 Value::Na,
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn min() {
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(0u32),
                 Value::Exists(9),
                 Value::Na,
@@ -312,7 +312,7 @@ mod tests {
         assert_eq!(dv.field::<foo::Foo>().min(), Some(&0));
 
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(0i32),
                 Value::Exists(-9),
                 Value::Na,
@@ -323,7 +323,7 @@ mod tests {
         assert_eq!(dv.field::<foo::Foo>().min(), Some(&-9));
 
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(true),
                 Value::Exists(true),
                 Value::Exists(false),
@@ -334,7 +334,7 @@ mod tests {
         assert_eq!(dv.field::<foo::Foo>().min(), Some(&false));
 
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(0.0),
                 Value::Exists(-9.0),
                 Value::Na,
@@ -345,7 +345,7 @@ mod tests {
         assert_eq!(dv.field::<foo::Foo>().min(), Some(&-9.0));
 
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, f64, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, f64, _, _>(vec![
                 Value::Na,
                 Value::Na,
                 Value::Na,
@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn max() {
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(0u32),
                 Value::Exists(9),
                 Value::Na,
@@ -370,7 +370,7 @@ mod tests {
         assert_eq!(dv.field::<foo::Foo>().max(), Some(&9));
 
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(0i64),
                 Value::Exists(-9),
                 Value::Na,
@@ -381,7 +381,7 @@ mod tests {
         assert_eq!(dv.field::<foo::Foo>().max(), Some(&0));
 
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(true),
                 Value::Exists(true),
                 Value::Exists(false),
@@ -392,7 +392,7 @@ mod tests {
         assert_eq!(dv.field::<foo::Foo>().max(), Some(&true));
 
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, _, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, _, _, _>(vec![
                 Value::Exists(0.0),
                 Value::Exists(-9.0),
                 Value::Na,
@@ -403,7 +403,7 @@ mod tests {
         assert_eq!(dv.field::<foo::Foo>().max(), Some(&0.0));
 
         let dv = DataStore::<Nil>::empty()
-            .add_field_from_value_iter::<foo::Foo, f64, _, _>(vec![
+            .push_back_from_value_iter::<foo::Foo, f64, _, _>(vec![
                 Value::Na,
                 Value::Na,
                 Value::Na,

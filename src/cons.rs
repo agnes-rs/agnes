@@ -20,18 +20,27 @@ pub fn cons<H, T>(head: H, tail: T) -> Cons<H, T> {
 }
 
 /// Trait for adding a new element to the front of a [heterogeneous list](struct.Cons.html).
-pub trait PushFront {
+pub trait PushFront<H> {
+    type Output;
+
     /// Add an element to the front of this heterogeneous list.
-    fn push_front<H>(self, head: H) -> Cons<H, Self>
-    where
-        Self: Sized,
-    {
+    fn push_front(self, head: H) -> Self::Output;
+}
+
+impl<NewH, H, T> PushFront<NewH> for Cons<H, T> {
+    type Output = Cons<NewH, Self>;
+
+    fn push_front(self, head: NewH) -> Self::Output {
         cons(head, self)
     }
 }
+impl<NewH> PushFront<NewH> for Nil {
+    type Output = Cons<NewH, Nil>;
 
-impl<H, T> PushFront for Cons<H, T> {}
-impl PushFront for Nil {}
+    fn push_front(self, head: NewH) -> Self::Output {
+        cons(head, self)
+    }
+}
 
 /// Trait for adding a new element to the end of a [heterogeneous list](struct.Cons.html).
 pub trait PushBack<U> {

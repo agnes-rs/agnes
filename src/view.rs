@@ -965,6 +965,7 @@ impl<Idents, Frames> DataView<Idents, Frames> {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Debug;
     use std::path::Path;
 
     use csv_sniffer::metadata::Metadata;
@@ -981,6 +982,7 @@ mod tests {
     fn load_csv_file<Spec>(filename: &str, spec: Spec) -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
     where
         Spec: IntoCsvSrcSpec,
+        <Spec as IntoCsvSrcSpec>::CsvSrcSpec: Debug,
     {
         let data_filepath = Path::new(file!()) // start as this file
             .parent()

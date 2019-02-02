@@ -225,6 +225,7 @@ mod tests {
     fn load_csv_file<Spec>(filename: &str, spec: Spec) -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
     where
         Spec: IntoCsvSrcSpec,
+        <Spec as IntoCsvSrcSpec>::CsvSrcSpec: Debug,
     {
         let data_filepath = Path::new(file!()) // start as this file
             .parent()

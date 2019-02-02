@@ -117,313 +117,349 @@ where
 pub type NewFieldStorage<NewLabel, NewDType> =
     Labeled<NewLabel, TypedValue<NewDType, DataRef<NewDType>>>;
 
-pub type AddedField<PrevFields, NewLabel, NewDType> =
-    <PrevFields as PushBack<FieldSpec<NewLabel, NewDType>>>::Output;
+macro_rules! make_add_field {
+    (
+        $add_trait:tt $add_fn:tt;
+        $add_valiter_trait:tt $add_valiter_fn:tt;
+        $add_iter_trait:tt $add_iter_fn:tt;
+        $add_cloned_valiter_trait:tt $add_cloned_valiter_fn:tt;
+        $add_cloned_iter_trait:tt $add_cloned_iter_fn:tt;
+        $add_empty_trait:tt $add_empty_fn:tt;
+        $push_trait:tt $push_fn:tt $pushed_alias:tt
+    ) => {
+        pub type $pushed_alias<PrevFields, NewLabel, NewDType> =
+            <PrevFields as $push_trait<FieldSpec<NewLabel, NewDType>>>::Output;
 
-pub trait AddField<NewLabel, NewDType> {
-    type OutputFields: AssocStorage;
+        pub trait $add_trait<NewLabel, NewDType> {
+            type OutputFields: AssocStorage;
 
-    fn add_field(self, data: FieldData<NewDType>) -> DataStore<Self::OutputFields>;
-}
-impl<PrevFields, NewLabel, NewDType> AddField<NewLabel, NewDType> for DataStore<PrevFields>
-where
-    PrevFields: AssocStorage + PushBack<FieldSpec<NewLabel, NewDType>>,
-    AddedField<PrevFields, NewLabel, NewDType>: AssocStorage,
-    PrevFields::Storage: PushBack<
-        NewFieldStorage<NewLabel, NewDType>,
-        Output = <AddedField<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
-    >,
-    NewLabel: Debug,
-    NewDType: Debug,
-{
-    type OutputFields = AddedField<PrevFields, NewLabel, NewDType>;
-
-    fn add_field(self, data: FieldData<NewDType>) -> DataStore<Self::OutputFields> {
-        DataStore {
-            data: self
-                .data
-                .push_back(TypedValue::from(DataRef::new(data)).into()),
+            fn $add_fn(self, data: FieldData<NewDType>) -> DataStore<Self::OutputFields>;
         }
-    }
-}
 
-pub trait AddFieldFromValueIter<NewLabel, NewDType> {
-    type OutputFields: AssocStorage;
+        impl<PrevFields, NewLabel, NewDType> $add_trait<NewLabel, NewDType>
+            for DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
+            PrevFields::Storage: $push_trait<
+                NewFieldStorage<NewLabel, NewDType>,
+                Output = <$pushed_alias<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
+            >,
+            NewLabel: Debug,
+            NewDType: Debug,
+        {
+            type OutputFields = $pushed_alias<PrevFields, NewLabel, NewDType>;
 
-    fn add_field_from_value_iter<IntoIter, Iter>(
-        self,
-        iter: IntoIter,
-    ) -> DataStore<Self::OutputFields>
-    where
-        Iter: Iterator<Item = Value<NewDType>>,
-        IntoIter: IntoIterator<IntoIter = Iter, Item = Value<NewDType>>;
-}
-impl<PrevFields, NewLabel, NewDType> AddFieldFromValueIter<NewLabel, NewDType>
-    for DataStore<PrevFields>
-where
-    PrevFields: AssocStorage + PushBack<FieldSpec<NewLabel, NewDType>>,
-    AddedField<PrevFields, NewLabel, NewDType>: AssocStorage,
-    PrevFields::Storage: PushBack<
-        NewFieldStorage<NewLabel, NewDType>,
-        Output = <AddedField<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
-    >,
-    NewLabel: Debug,
-    NewDType: Default + Debug,
-{
-    type OutputFields = AddedField<PrevFields, NewLabel, NewDType>;
-
-    fn add_field_from_value_iter<IntoIter, Iter>(
-        self,
-        iter: IntoIter,
-    ) -> DataStore<Self::OutputFields>
-    where
-        Iter: Iterator<Item = Value<NewDType>>,
-        IntoIter: IntoIterator<IntoIter = Iter, Item = Value<NewDType>>,
-    {
-        DataStore {
-            data: self.data.push_back(
-                TypedValue::from(DataRef::new(
-                    iter.into_iter().collect::<FieldData<NewDType>>(),
-                ))
-                .into(),
-            ),
+            fn $add_fn(self, data: FieldData<NewDType>) -> DataStore<Self::OutputFields> {
+                DataStore {
+                    data: self
+                        .data
+                        .$push_fn(TypedValue::from(DataRef::new(data)).into()),
+                }
+            }
         }
-    }
-}
 
-pub trait AddFieldFromIter<NewLabel, NewDType> {
-    type OutputFields: AssocStorage;
+        pub trait $add_valiter_trait<NewLabel, NewDType> {
+            type OutputFields: AssocStorage;
 
-    fn add_field_from_iter<IntoIter, Iter>(self, iter: IntoIter) -> DataStore<Self::OutputFields>
-    where
-        Iter: Iterator<Item = NewDType>,
-        IntoIter: IntoIterator<IntoIter = Iter, Item = NewDType>;
-}
-impl<PrevFields, NewLabel, NewDType> AddFieldFromIter<NewLabel, NewDType> for DataStore<PrevFields>
-where
-    PrevFields: AssocStorage + PushBack<FieldSpec<NewLabel, NewDType>>,
-    AddedField<PrevFields, NewLabel, NewDType>: AssocStorage,
-    PrevFields::Storage: PushBack<
-        NewFieldStorage<NewLabel, NewDType>,
-        Output = <AddedField<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
-    >,
-    NewLabel: Debug,
-    NewDType: Debug,
-{
-    type OutputFields = AddedField<PrevFields, NewLabel, NewDType>;
-
-    fn add_field_from_iter<IntoIter, Iter>(self, iter: IntoIter) -> DataStore<Self::OutputFields>
-    where
-        Iter: Iterator<Item = NewDType>,
-        IntoIter: IntoIterator<IntoIter = Iter, Item = NewDType>,
-    {
-        DataStore {
-            data: self.data.push_back(
-                TypedValue::from(DataRef::new(
-                    iter.into_iter().collect::<FieldData<NewDType>>(),
-                ))
-                .into(),
-            ),
+            fn $add_valiter_fn<IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = Value<NewDType>>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = Value<NewDType>>;
         }
-    }
-}
+        impl<PrevFields, NewLabel, NewDType> $add_valiter_trait<NewLabel, NewDType>
+            for DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
+            PrevFields::Storage: $push_trait<
+                NewFieldStorage<NewLabel, NewDType>,
+                Output = <$pushed_alias<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
+            >,
+            NewLabel: Debug,
+            NewDType: Default + Debug,
+        {
+            type OutputFields = $pushed_alias<PrevFields, NewLabel, NewDType>;
 
-pub trait AddClonedFieldFromIter<NewLabel, NewDType> {
-    type OutputFields: AssocStorage;
-
-    fn add_cloned_field_from_iter<'a, IntoIter, Iter>(
-        self,
-        iter: IntoIter,
-    ) -> DataStore<Self::OutputFields>
-    where
-        Iter: Iterator<Item = &'a NewDType>,
-        IntoIter: IntoIterator<IntoIter = Iter, Item = &'a NewDType>,
-        NewDType: 'a;
-}
-impl<PrevFields, NewLabel, NewDType> AddClonedFieldFromIter<NewLabel, NewDType>
-    for DataStore<PrevFields>
-where
-    PrevFields: AssocStorage + PushBack<FieldSpec<NewLabel, NewDType>>,
-    AddedField<PrevFields, NewLabel, NewDType>: AssocStorage,
-    PrevFields::Storage: PushBack<
-        NewFieldStorage<NewLabel, NewDType>,
-        Output = <AddedField<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
-    >,
-    NewLabel: Debug,
-    NewDType: Clone + Debug,
-{
-    type OutputFields = AddedField<PrevFields, NewLabel, NewDType>;
-
-    fn add_cloned_field_from_iter<'a, IntoIter, Iter>(
-        self,
-        iter: IntoIter,
-    ) -> DataStore<Self::OutputFields>
-    where
-        Iter: Iterator<Item = &'a NewDType>,
-        IntoIter: IntoIterator<IntoIter = Iter, Item = &'a NewDType>,
-        NewDType: 'a,
-    {
-        DataStore {
-            data: self.data.push_back(
-                TypedValue::from(DataRef::new(
-                    iter.into_iter()
-                        .map(|x| x.clone())
-                        .collect::<FieldData<NewDType>>(),
-                ))
-                .into(),
-            ),
+            fn $add_valiter_fn<IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = Value<NewDType>>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = Value<NewDType>>,
+            {
+                DataStore {
+                    data: self.data.$push_fn(
+                        TypedValue::from(DataRef::new(
+                            iter.into_iter().collect::<FieldData<NewDType>>(),
+                        ))
+                        .into(),
+                    ),
+                }
+            }
         }
-    }
-}
 
-pub trait AddClonedFieldFromValueIter<NewLabel, NewDType> {
-    type OutputFields: AssocStorage;
+        pub trait $add_iter_trait<NewLabel, NewDType> {
+            type OutputFields: AssocStorage;
 
-    fn add_cloned_field_from_value_iter<'a, IntoIter, Iter>(
-        self,
-        iter: IntoIter,
-    ) -> DataStore<Self::OutputFields>
-    where
-        Iter: Iterator<Item = Value<&'a NewDType>>,
-        IntoIter: IntoIterator<IntoIter = Iter, Item = Value<&'a NewDType>>,
-        NewDType: 'a;
-}
-impl<PrevFields, NewLabel, NewDType> AddClonedFieldFromValueIter<NewLabel, NewDType>
-    for DataStore<PrevFields>
-where
-    PrevFields: AssocStorage + PushBack<FieldSpec<NewLabel, NewDType>>,
-    AddedField<PrevFields, NewLabel, NewDType>: AssocStorage,
-    PrevFields::Storage: PushBack<
-        NewFieldStorage<NewLabel, NewDType>,
-        Output = <AddedField<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
-    >,
-    NewLabel: Debug,
-    NewDType: Default + Clone + Debug,
-{
-    type OutputFields = AddedField<PrevFields, NewLabel, NewDType>;
-
-    fn add_cloned_field_from_value_iter<'a, IntoIter, Iter>(
-        self,
-        iter: IntoIter,
-    ) -> DataStore<Self::OutputFields>
-    where
-        Iter: Iterator<Item = Value<&'a NewDType>>,
-        IntoIter: IntoIterator<IntoIter = Iter, Item = Value<&'a NewDType>>,
-        NewDType: 'a,
-    {
-        DataStore {
-            data: self.data.push_back(
-                TypedValue::from(DataRef::new(
-                    iter.into_iter()
-                        .map(|x| x.clone())
-                        .collect::<FieldData<NewDType>>(),
-                ))
-                .into(),
-            ),
+            fn $add_iter_fn<IntoIter, Iter>(self, iter: IntoIter) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = NewDType>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = NewDType>;
         }
-    }
-}
+        impl<PrevFields, NewLabel, NewDType> $add_iter_trait<NewLabel, NewDType>
+            for DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
+            PrevFields::Storage: $push_trait<
+                NewFieldStorage<NewLabel, NewDType>,
+                Output = <$pushed_alias<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
+            >,
+            NewLabel: Debug,
+            NewDType: Debug,
+        {
+            type OutputFields = $pushed_alias<PrevFields, NewLabel, NewDType>;
 
-pub trait AddEmptyField<NewLabel, NewDType> {
-    type OutputFields: AssocStorage;
-
-    fn add_empty_field(self) -> DataStore<Self::OutputFields>;
-}
-impl<PrevFields, NewLabel, NewDType> AddEmptyField<NewLabel, NewDType> for DataStore<PrevFields>
-where
-    PrevFields: AssocStorage + PushBack<FieldSpec<NewLabel, NewDType>>,
-    AddedField<PrevFields, NewLabel, NewDType>: AssocStorage,
-    PrevFields::Storage: PushBack<
-        NewFieldStorage<NewLabel, NewDType>,
-        Output = <AddedField<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
-    >,
-    NewLabel: Debug,
-    NewDType: Debug,
-{
-    type OutputFields = AddedField<PrevFields, NewLabel, NewDType>;
-
-    fn add_empty_field(self) -> DataStore<Self::OutputFields> {
-        DataStore {
-            data: self
-                .data
-                .push_back(TypedValue::from(DataRef::new(FieldData::default())).into()),
+            fn $add_iter_fn<IntoIter, Iter>(self, iter: IntoIter) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = NewDType>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = NewDType>,
+            {
+                DataStore {
+                    data: self.data.$push_fn(
+                        TypedValue::from(DataRef::new(
+                            iter.into_iter().collect::<FieldData<NewDType>>(),
+                        ))
+                        .into(),
+                    ),
+                }
+            }
         }
-    }
+
+        pub trait $add_cloned_valiter_trait<NewLabel, NewDType> {
+            type OutputFields: AssocStorage;
+
+            fn $add_cloned_valiter_fn<'a, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = Value<&'a NewDType>>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = Value<&'a NewDType>>,
+                NewDType: 'a;
+        }
+        impl<PrevFields, NewLabel, NewDType> $add_cloned_valiter_trait<NewLabel, NewDType>
+            for DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
+            PrevFields::Storage: $push_trait<
+                NewFieldStorage<NewLabel, NewDType>,
+                Output = <$pushed_alias<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
+            >,
+            NewLabel: Debug,
+            NewDType: Default + Clone + Debug,
+        {
+            type OutputFields = $pushed_alias<PrevFields, NewLabel, NewDType>;
+
+            fn $add_cloned_valiter_fn<'a, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = Value<&'a NewDType>>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = Value<&'a NewDType>>,
+                NewDType: 'a,
+            {
+                DataStore {
+                    data: self.data.$push_fn(
+                        TypedValue::from(DataRef::new(
+                            iter.into_iter()
+                                .map(|x| x.clone())
+                                .collect::<FieldData<NewDType>>(),
+                        ))
+                        .into(),
+                    ),
+                }
+            }
+        }
+
+        pub trait $add_cloned_iter_trait<NewLabel, NewDType> {
+            type OutputFields: AssocStorage;
+
+            fn $add_cloned_iter_fn<'a, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = &'a NewDType>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = &'a NewDType>,
+                NewDType: 'a;
+        }
+        impl<PrevFields, NewLabel, NewDType> $add_cloned_iter_trait<NewLabel, NewDType>
+            for DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
+            PrevFields::Storage: $push_trait<
+                NewFieldStorage<NewLabel, NewDType>,
+                Output = <$pushed_alias<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
+            >,
+            NewLabel: Debug,
+            NewDType: Clone + Debug,
+        {
+            type OutputFields = $pushed_alias<PrevFields, NewLabel, NewDType>;
+
+            fn $add_cloned_iter_fn<'a, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = &'a NewDType>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = &'a NewDType>,
+                NewDType: 'a,
+            {
+                DataStore {
+                    data: self.data.$push_fn(
+                        TypedValue::from(DataRef::new(
+                            iter.into_iter()
+                                .map(|x| x.clone())
+                                .collect::<FieldData<NewDType>>(),
+                        ))
+                        .into(),
+                    ),
+                }
+            }
+        }
+
+        pub trait $add_empty_trait<NewLabel, NewDType> {
+            type OutputFields: AssocStorage;
+
+            fn $add_empty_fn(self) -> DataStore<Self::OutputFields>;
+        }
+        impl<PrevFields, NewLabel, NewDType> $add_empty_trait<NewLabel, NewDType>
+            for DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
+            PrevFields::Storage: $push_trait<
+                NewFieldStorage<NewLabel, NewDType>,
+                Output = <$pushed_alias<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
+            >,
+            NewLabel: Debug,
+            NewDType: Debug,
+        {
+            type OutputFields = $pushed_alias<PrevFields, NewLabel, NewDType>;
+
+            fn $add_empty_fn(self) -> DataStore<Self::OutputFields> {
+                DataStore {
+                    data: self
+                        .data
+                        .$push_fn(TypedValue::from(DataRef::new(FieldData::default())).into()),
+                }
+            }
+        }
+
+        impl<PrevFields> DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage,
+        {
+            pub fn $add_fn<NewLabel, NewDType>(
+                self,
+                data: FieldData<NewDType>,
+            ) -> DataStore<<Self as $add_trait<NewLabel, NewDType>>::OutputFields>
+            where
+                Self: $add_trait<NewLabel, NewDType>,
+            {
+                $add_trait::$add_fn(self, data)
+            }
+
+            pub fn $add_valiter_fn<NewLabel, NewDType, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<<Self as $add_valiter_trait<NewLabel, NewDType>>::OutputFields>
+            where
+                Iter: Iterator<Item = Value<NewDType>>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = Value<NewDType>>,
+                Self: $add_valiter_trait<NewLabel, NewDType>,
+            {
+                $add_valiter_trait::$add_valiter_fn(self, iter)
+            }
+
+            pub fn $add_iter_fn<NewLabel, NewDType, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<<Self as $add_iter_trait<NewLabel, NewDType>>::OutputFields>
+            where
+                Iter: Iterator<Item = NewDType>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = NewDType>,
+                Self: $add_iter_trait<NewLabel, NewDType>,
+            {
+                $add_iter_trait::$add_iter_fn(self, iter)
+            }
+
+            pub fn $add_cloned_valiter_fn<'a, NewLabel, NewDType, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<<Self as $add_cloned_valiter_trait<NewLabel, NewDType>>::OutputFields>
+            where
+                Iter: Iterator<Item = Value<&'a NewDType>>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = Value<&'a NewDType>>,
+                Self: $add_cloned_valiter_trait<NewLabel, NewDType>,
+                NewDType: 'a,
+            {
+                $add_cloned_valiter_trait::$add_cloned_valiter_fn(self, iter)
+            }
+
+            pub fn $add_cloned_iter_fn<'a, NewLabel, NewDType, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<<Self as $add_cloned_iter_trait<NewLabel, NewDType>>::OutputFields>
+            where
+                Iter: Iterator<Item = &'a NewDType>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = &'a NewDType>,
+                Self: $add_cloned_iter_trait<NewLabel, NewDType>,
+                NewDType: 'a,
+            {
+                $add_cloned_iter_trait::$add_cloned_iter_fn(self, iter)
+            }
+
+            pub fn $add_empty_fn<NewLabel, NewDType>(
+                self,
+            ) -> DataStore<<Self as $add_empty_trait<NewLabel, NewDType>>::OutputFields>
+            where
+                Self: $add_empty_trait<NewLabel, NewDType>,
+            {
+                $add_empty_trait::$add_empty_fn(self)
+            }
+        }
+    };
 }
 
-impl<PrevFields> DataStore<PrevFields>
-where
-    PrevFields: AssocStorage,
-{
-    pub fn add_field<NewLabel, NewDType>(
-        self,
-        data: FieldData<NewDType>,
-    ) -> DataStore<<Self as AddField<NewLabel, NewDType>>::OutputFields>
-    where
-        Self: AddField<NewLabel, NewDType>,
-    {
-        AddField::add_field(self, data)
-    }
+make_add_field![
+    PushFrontField push_front_field;
+    PushFrontFromValueIter push_front_from_value_iter;
+    PushFrontFromIter push_front_from_iter;
+    PushFrontClonedFromValueIter push_front_cloned_from_value_iter;
+    PushFrontClonedFromIter push_front_cloned_from_iter;
+    PushFrontEmpty push_front_empty;
+    PushFront push_front PushedFrontField
+];
 
-    pub fn add_field_from_iter<NewLabel, NewDType, IntoIter, Iter>(
-        self,
-        iter: IntoIter,
-    ) -> DataStore<<Self as AddFieldFromIter<NewLabel, NewDType>>::OutputFields>
-    where
-        Iter: Iterator<Item = NewDType>,
-        IntoIter: IntoIterator<IntoIter = Iter, Item = NewDType>,
-        Self: AddFieldFromIter<NewLabel, NewDType>,
-    {
-        AddFieldFromIter::add_field_from_iter(self, iter)
-    }
-
-    pub fn add_cloned_field_from_iter<'a, NewLabel, NewDType, IntoIter, Iter>(
-        self,
-        iter: IntoIter,
-    ) -> DataStore<<Self as AddClonedFieldFromIter<NewLabel, NewDType>>::OutputFields>
-    where
-        Iter: Iterator<Item = &'a NewDType>,
-        IntoIter: IntoIterator<IntoIter = Iter, Item = &'a NewDType>,
-        Self: AddClonedFieldFromIter<NewLabel, NewDType>,
-        NewDType: 'a,
-    {
-        AddClonedFieldFromIter::add_cloned_field_from_iter(self, iter)
-    }
-
-    pub fn add_field_from_value_iter<NewLabel, NewDType, IntoIter, Iter>(
-        self,
-        iter: IntoIter,
-    ) -> DataStore<<Self as AddFieldFromValueIter<NewLabel, NewDType>>::OutputFields>
-    where
-        Iter: Iterator<Item = Value<NewDType>>,
-        IntoIter: IntoIterator<IntoIter = Iter, Item = Value<NewDType>>,
-        Self: AddFieldFromValueIter<NewLabel, NewDType>,
-    {
-        AddFieldFromValueIter::add_field_from_value_iter(self, iter)
-    }
-
-    pub fn add_cloned_field_from_value_iter<'a, NewLabel, NewDType, IntoIter, Iter>(
-        self,
-        iter: IntoIter,
-    ) -> DataStore<<Self as AddClonedFieldFromValueIter<NewLabel, NewDType>>::OutputFields>
-    where
-        Iter: Iterator<Item = Value<&'a NewDType>>,
-        IntoIter: IntoIterator<IntoIter = Iter, Item = Value<&'a NewDType>>,
-        Self: AddClonedFieldFromValueIter<NewLabel, NewDType>,
-        NewDType: 'a,
-    {
-        AddClonedFieldFromValueIter::add_cloned_field_from_value_iter(self, iter)
-    }
-
-    pub fn add_empty_field<NewLabel, NewDType>(
-        self,
-    ) -> DataStore<<Self as AddEmptyField<NewLabel, NewDType>>::OutputFields>
-    where
-        Self: AddEmptyField<NewLabel, NewDType>,
-    {
-        AddEmptyField::add_empty_field(self)
-    }
-}
+make_add_field![
+    PushBackField push_back_field;
+    PushBackFromValueIter push_back_from_value_iter;
+    PushBackFromIter push_back_from_iter;
+    PushBackClonedFromValueIter push_back_cloned_from_value_iter;
+    PushBackClonedFromIter push_back_cloned_from_iter;
+    PushBackEmpty push_back_empty;
+    PushBack push_back PushedBackField
+];
 
 impl<Label, Fields> SelectFieldByLabel<Label> for DataStore<Fields>
 where
@@ -487,6 +523,7 @@ where
 #[cfg(test)]
 mod tests {
 
+    use std::fmt::Debug;
     use std::path::Path;
     use typenum::U0;
 
@@ -501,6 +538,7 @@ mod tests {
     fn load_csv_file<Spec>(filename: &str, spec: Spec) -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
     where
         Spec: IntoCsvSrcSpec,
+        <Spec as IntoCsvSrcSpec>::CsvSrcSpec: Debug,
     {
         let data_filepath = Path::new(file!()) // start as this file
             .parent()
@@ -544,7 +582,7 @@ mod tests {
         ];
         let expected_nrows = data.len();
 
-        let ds = ds.add_field_from_iter::<Test, _, _, _>(data);
+        let ds = ds.push_back_from_iter::<Test, _, _, _>(data);
         println!("{:?}", ds);
         assert_eq!(ds.nrows(), expected_nrows);
         assert_eq!(ds.field::<Test>().len(), expected_nrows);

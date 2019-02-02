@@ -8,7 +8,7 @@ use error::*;
 use field::Value;
 use label::*;
 use select::*;
-use store::{AddClonedFieldFromValueIter, AssocStorage, DataStore, IntoView};
+use store::{AssocStorage, DataStore, IntoView, PushBackClonedFromValueIter};
 use view::*;
 
 pub trait Offset<O> {
@@ -435,14 +435,14 @@ impl<Label, FrameIndex, FrameLabel, Tail, Frames, Store>
 where
     Frames: LookupValuedElemByLabel<FrameIndex>,
     FrameByFrameIndexOf<Frames, FrameIndex>: SelectFieldByLabel<FrameLabel>,
-    Store: AddClonedFieldFromValueIter<
+    Store: PushBackClonedFromValueIter<
         Label,
         FieldTypeFromFrameDetailsOf<Frames, FrameIndex, FrameLabel>,
     >,
     Frames: JoinIntoStore<
         Tail,
         DataStore<
-            <Store as AddClonedFieldFromValueIter<
+            <Store as PushBackClonedFromValueIter<
                 Label,
                 FieldTypeFromFrameDetailsOf<Frames, FrameIndex, FrameLabel>,
             >>::OutputFields,
@@ -452,7 +452,7 @@ where
     type Output = <Frames as JoinIntoStore<
         Tail,
         DataStore<
-            <Store as AddClonedFieldFromValueIter<
+            <Store as PushBackClonedFromValueIter<
                 Label,
                 FieldTypeFromFrameDetailsOf<Frames, FrameIndex, FrameLabel>,
             >>::OutputFields,
@@ -460,7 +460,7 @@ where
     >>::Output;
 
     fn join_into_store(&self, store: Store, permutation: &[usize]) -> Result<Self::Output> {
-        let store = store.add_cloned_field_from_value_iter(
+        let store = store.push_back_cloned_from_value_iter(
             SelectFieldByLabel::<FrameLabel>::select_field(
                 LookupValuedElemByLabel::<FrameIndex>::elem(self).value_ref(),
             )

@@ -21,9 +21,9 @@ namespace![
 macro_rules! emp_table_from_field {
     ($empids:expr, $deptids:expr, $names:expr) => {{
         $crate::store::DataStore::<$crate::cons::Nil>::empty()
-            .add_field($empids)
-            .add_field($deptids)
-            .add_field($names)
+            .push_back_field($empids)
+            .push_back_field($deptids)
+            .push_back_field($names)
     }};
 }
 macro_rules! emp_table {
@@ -62,9 +62,9 @@ namespace![
 
 pub fn sample_emp_table_extra() -> extra_emp::Store {
     DataStore::<Nil>::empty()
-        .add_cloned_field_from_iter(&[-5i64, 4, 12, -33, 10, 0, -1])
-        .add_cloned_field_from_iter(&[false, false, true, true, true, false, true])
-        .add_cloned_field_from_iter(&[47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5])
+        .push_back_cloned_from_iter(&[-5i64, 4, 12, -33, 10, 0, -1])
+        .push_back_cloned_from_iter(&[false, false, true, true, true, false, true])
+        .push_back_cloned_from_iter(&[47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5])
 }
 
 namespace![
@@ -80,16 +80,16 @@ namespace![
 
 pub fn sample_emp_table_full() -> full_emp_table::Store {
     DataStore::<Nil>::empty()
-        .add_cloned_field_from_iter(&[0u64, 2, 5, 6, 8, 9, 10])
-        .add_cloned_field_from_iter(&[1u64, 2, 1, 1, 3, 4, 4])
-        .add_field_from_iter(
+        .push_back_cloned_from_iter(&[0u64, 2, 5, 6, 8, 9, 10])
+        .push_back_cloned_from_iter(&[1u64, 2, 1, 1, 3, 4, 4])
+        .push_back_from_iter(
             ["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"]
                 .iter()
                 .map(|&s| s.to_string()),
         )
-        .add_cloned_field_from_iter(&[-5i64, 4, 12, -33, 10, 0, -1])
-        .add_cloned_field_from_iter(&[false, false, true, true, true, false, true])
-        .add_cloned_field_from_iter(&[47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5])
+        .push_back_cloned_from_iter(&[-5i64, 4, 12, -33, 10, 0, -1])
+        .push_back_cloned_from_iter(&[false, false, true, true, true, false, true])
+        .push_back_cloned_from_iter(&[47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5])
 }
 
 namespace![
@@ -120,8 +120,8 @@ pub fn dept_table_from_field(
     names: FieldData<String>,
 ) -> dept_table::Store {
     dept_table::Store::empty()
-        .add_field(deptids)
-        .add_field(names)
+        .push_back_field(deptids)
+        .push_back_field(names)
 }
 
 pub fn sample_merged_emp_table() -> <emp_table::View as ViewMerge<extra_emp::View>>::Output {
