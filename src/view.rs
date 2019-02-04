@@ -13,14 +13,16 @@ object with all of the records of the two source `DataView`s.
 parameters.
 
 */
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
+#[cfg(test)]
+use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
 use prettytable as pt;
 #[cfg(feature = "serialize")]
-use serde::ser::{self, Serialize, SerializeMap, Serializer};
+use serde::ser::{Serialize, SerializeMap, Serializer};
 
 use access::*;
 use error;

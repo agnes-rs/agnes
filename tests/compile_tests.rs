@@ -1,7 +1,9 @@
 extern crate compiletest_rs as compiletest;
 
+#[cfg(all(feature = "test-utils", feature = "compiletests"))]
 use std::path::PathBuf;
 
+#[cfg(all(feature = "test-utils", feature = "compiletests"))]
 fn run_mode(mode: &'static str) {
     let mut config = compiletest::Config::default().tempdir();
 
