@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Add, Div, Mul, Sub};
 
-#[cfg(serialize)]
+#[cfg(feature = "serialize")]
 use serde::ser::{Serialize, SerializeSeq, Serializer};
 
 use access::{DataIndex, DataIndexMut};
@@ -177,6 +177,22 @@ impl_value_op![Add add];
 impl_value_op![Sub sub];
 impl_value_op![Mul mul];
 impl_value_op![Div div];
+
+#[cfg(feature = "serialize")]
+impl<'a, T> Serialize for Value<&'a T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            Value::Exists(ref val) => serializer.serialize_some(val),
+            Value::Na => serializer.serialize_none(),
+        }
+    }
+}
 
 /// Data vector containing the data for a single field (column) of an agnes data store.
 ///
@@ -378,7 +394,7 @@ where
     }
 }
 
-#[cfg(serialize)]
+#[cfg(feature = "serialize")]
 impl<T> Serialize for FieldData<T>
 where
     T: Serialize,
@@ -504,5 +520,30 @@ impl<T> TFieldIdent<T> {
             ident,
             phantom: PhantomData,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn value_serialize() {
+        let val = 6.4f64;
+        let value = Value::Exists(&val);
+        assert_eq!(serde_json::to_string(&value).unwrap(), "6.4");
+
+        let value: Value<&f64> = Value::Na;
+        assert_eq!(serde_json::to_string(&value).unwrap(), "null");
+    }
+
+    #[test]
+    fn field_serialize() {
+        let field: FieldData<f64> = vec![5.0f64, 3.4, -1.3, 5.2, 6.0, -126.9].into();
+        assert_eq!(
+            serde_json::to_string(&field).unwrap(),
+            "[5.0,3.4,-1.3,5.2,6.0,-126.9]"
+        );
     }
 }

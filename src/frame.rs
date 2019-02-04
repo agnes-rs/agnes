@@ -2,8 +2,9 @@
 Structs and implementation for Frame-level data structure. A `DataFrame` is a reference to an
 underlying data store, along with record-based filtering and sorting details.
 */
-#[cfg(serialize)]
-use serde::{Serialize, Serializer};
+
+#[cfg(feature = "serialize")]
+use serde::ser::{Serialize, SerializeSeq, Serializer};
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -152,41 +153,21 @@ where
     }
 }
 
-#[cfg(serialize)]
-pub(crate) struct SerializedField<'a, Ident, FIdx, Fields>
+#[cfg(feature = "serialize")]
+impl<T> Serialize for Framed<T>
 where
-    Fields: 'a + AssocStorage,
-{
-    _ident: PhantomData<Ident>,
-    _fidx: PhantomData<FIdx>,
-    frame: &'a DataFrame<Fields>,
-}
-#[cfg(serialize)]
-impl<'a, Ident, FIdx, Fields> SerializedField<'a, Ident, FIdx, Fields>
-where
-    Fields: 'a + AssocStorage,
-{
-    pub fn new(frame: &'a DataFrame<Fields>) -> SerializedField<'a, Ident, FIdx, Fields> {
-        SerializedField {
-            _ident: PhantomData,
-            _fidx: PhantomData,
-            frame,
-        }
-    }
-}
-
-#[cfg(serialize)]
-impl<'a, Ident, FIdx, Fields> Serialize for SerializedField<'a, Ident, FIdx, Fields>
-where
-    Fields: 'a + AssocStorage,
+    T: Serialize,
+    Self: DataIndex<DType = T>,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        self.frame
-            .store
-            .serialize_field(&self.ident, self.frame, serializer)
+        let mut seq = serializer.serialize_seq(Some(self.len()))?;
+        for elem in self.iter() {
+            seq.serialize_element(&elem)?;
+        }
+        seq.end()
     }
 }
 
@@ -216,6 +197,7 @@ mod tests {
     use std::path::Path;
 
     use csv_sniffer::metadata::Metadata;
+    use serde_json;
 
     use super::*;
 
@@ -264,5 +246,16 @@ mod tests {
 
         let frame = DataFrame::from(ds);
         println!("{:?}", frame.field::<gdp::CountryName>());
+    }
+
+    #[test]
+    fn framed_serialize() {
+        let field: FieldData<f64> = vec![5.0f64, 3.4, -1.3, 5.2, 6.0, -126.9].into();
+        let framed: Framed<f64> = field.into();
+        assert_eq!(
+            serde_json::to_string(&framed).unwrap(),
+            "[5.0,3.4,-1.3,5.2,6.0,-126.9]"
+        );
+        println!("{}", serde_json::to_string(&framed).unwrap());
     }
 }

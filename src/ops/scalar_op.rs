@@ -300,12 +300,12 @@ mod tests {
     #[test]
     #[should_panic]
     fn div_zero_scalar() {
-        test_op![vec![2u64, 3, 0, 0, 20, 3, 1], /, 0u64, vec![/*panic!*/]];
+        test_op![vec![2u64, 3, 0, 0, 20, 3, 1], /, 0u64, Vec::<u64>::new(/*panic!*/)];
     }
 
     #[test]
     #[should_panic]
     fn div_zero_datum() {
-        test_oprev![vec![2i64, -3, 0, 0, -20, 3, 1], /, 60i64, vec![/*panic!*/]];
+        test_oprev![vec![2i64, -3, 0, 0, -20, 3, 1], /, 60i64, Vec::<i64>::new(/*panic!*/)];
     }
 }

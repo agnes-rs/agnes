@@ -3,7 +3,6 @@ extern crate agnes;
 extern crate csv_sniffer;
 extern crate serde;
 extern crate serde_json;
-extern crate typenum;
 
 mod common;
 
@@ -60,11 +59,24 @@ fn rename() {
     let (mut csv_rdr, _) = common::load_csv_file("sample1.csv", sample_spec);
 
     let dv = csv_rdr.read().unwrap().into_view();
-    println!("{}", dv);
-    // println!("{}", serde_json::to_string(&dv).unwrap());
+    assert_eq!(
+        serde_json::to_string(&dv).unwrap(),
+        "{\
+         \"State\":[\"OH\",\"PA\",\"NH\",\"NC\",\"CA\",\"NY\",\"VA\",\"SC\"],\
+         \"Value1\":[4,54,23,21,85,32,44,89],\
+         \"Value2\":[5.03,2.34,0.42,0.204,0.32,3.21,5.66,9.11]\
+         }"
+    );
+
     let dv = dv.relabel::<State, ST>();
-    println!("{}", dv);
-    // println!("{}", serde_json::to_string(&dv).unwrap());
+    assert_eq!(
+        serde_json::to_string(&dv).unwrap(),
+        "{\
+         \"ST\":[\"OH\",\"PA\",\"NH\",\"NC\",\"CA\",\"NY\",\"VA\",\"SC\"],\
+         \"Value1\":[4,54,23,21,85,32,44,89],\
+         \"Value2\":[5.03,2.34,0.42,0.204,0.32,3.21,5.66,9.11]\
+         }"
+    );
 }
 
 namespace![

@@ -19,7 +19,7 @@ use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
 use prettytable as pt;
-#[cfg(serialize)]
+#[cfg(feature = "serialize")]
 use serde::ser::{self, Serialize, SerializeMap, Serializer};
 
 use access::*;
@@ -30,8 +30,6 @@ use cons::*;
 use features::{DeriveCapabilities, Func, FuncDefault, Implemented, IsImplemented, PartialMap};
 use field::Value;
 use fieldlist::FieldPayloadCons;
-#[cfg(serialize)]
-use frame::SerializedField;
 use join::*;
 use label::*;
 use select::{FieldSelect, SelectFieldByLabel};
@@ -180,10 +178,20 @@ where
     pub fn is_empty(&self) -> bool {
         length![Labels] == 0 || self.frames.is_empty()
     }
+}
+impl<Labels, Frames> DataView<Labels, Frames>
+where
+    Labels: Len,
+{
     /// Number of fields in this data view
     pub fn nfields(&self) -> usize {
         length![Labels]
     }
+}
+impl<Labels, Frames> DataView<Labels, Frames>
+where
+    Frames: Len,
+{
     /// Number of frames this data view covers
     pub fn nframes(&self) -> usize {
         length![Frames]
@@ -887,79 +895,55 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     }
 }
 
-#[cfg(serialize)]
-impl<Idents, Frames> Serialize for DataView<Idents, Frames>
-// where DTypes: DTypeList,
-//       DTypes::Storage: MaxLen<DTypes> + FieldSerialize<DTypes>
+#[cfg(feature = "serialize")]
+impl<Labels, Frames> Serialize for DataView<Labels, Frames>
+where
+    Labels: Len + SerializeViewField<Frames>,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let mut map = serializer.serialize_map(Some(self.fields.len()))?;
-        for field in self.fields.values() {
-            map.serialize_entry(
-                &field.rident.to_string(),
-                &SerializedField::new(field.rident.ident.clone(), &self.frames[field.frame_idx]),
-            )?;
-        }
+        let map = serializer.serialize_map(Some(self.nfields()))?;
+        Labels::serialize_view_field(&self.frames, map)
+    }
+}
+
+#[cfg(feature = "serialize")]
+pub trait SerializeViewField<Frames> {
+    fn serialize_view_field<M>(frames: &Frames, map: M) -> Result<M::Ok, M::Error>
+    where
+        M: SerializeMap;
+}
+
+#[cfg(feature = "serialize")]
+impl<Frames> SerializeViewField<Frames> for Nil {
+    fn serialize_view_field<M>(_frames: &Frames, map: M) -> Result<M::Ok, M::Error>
+    where
+        M: SerializeMap,
+    {
         map.end()
     }
 }
 
-/// Marker trait to denote an object that serializes into a vector format
-#[cfg(serialize)]
-pub trait SerializeAsVec: Serialize {}
-#[cfg(serialize)]
-impl<T> SerializeAsVec for Vec<T> where T: Serialize {}
-
-/// A 'view' into a single field's data in a data frame. This is a specialty view used to serialize
-/// a `DataView` as a single sequence instead of as a map.
-#[cfg(serialize)]
-#[derive(Debug, Clone)]
-pub struct FieldView<Fields> {
-    frame: DataFrame<Fields>,
-    field: RFieldIdent,
-}
-
-#[cfg(serialize)]
-impl<Fields> Serialize for FieldView<Fields> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+#[cfg(feature = "serialize")]
+impl<Frames, Label, FrameIndex, FrameLabel, Tail> SerializeViewField<Frames>
+    for FrameLookupCons<Label, FrameIndex, FrameLabel, Tail>
+where
+    Frames: SelectFieldFromLabels<Self, Label>,
+    <Frames as SelectFieldFromLabels<Self, Label>>::Output: Serialize,
+    Label: LabelName,
+    Tail: SerializeViewField<Frames>,
+{
+    fn serialize_view_field<M>(frames: &Frames, mut map: M) -> Result<M::Ok, M::Error>
     where
-        S: Serializer,
+        M: SerializeMap,
     {
-        if self.frame.has_field(&self.field.ident) {
-            SerializedField::new(self.field.to_renamed_field_ident(), &self.frame)
-                .serialize(serializer)
-        } else {
-            Err(ser::Error::custom(format!(
-                "missing field: {}",
-                self.field.to_string()
-            )))
-        }
-    }
-}
-#[cfg(serialize)]
-impl<Fields> SerializeAsVec for FieldView<Fields> {}
-
-#[cfg(serialize)]
-impl<Idents, Frames> DataView<Idents, Frames> {
-    /// Create a `FieldView` object from a `DataView` object, if possible. Typically, use this on
-    /// `DataView` objects with only a single field; however, if the `DataView` object has multiple
-    /// fields, the first one will be used for this `FieldView`. Returns `None` if the `DataView`
-    /// has no fields (is empty).
-    pub fn as_fieldview(&self) -> Option<FieldView<Fields>> {
-        if self.fields.is_empty() {
-            None
-        } else {
-            // self.fields it not empty, so unwrap is safe
-            let field = self.fields.values().next().unwrap();
-
-            Some(FieldView {
-                frame: self.frames[field.frame_idx].clone(),
-                field: field.rident.clone(),
-            })
-        }
+        map.serialize_entry(
+            Label::name(),
+            &SelectFieldFromLabels::<Self, Label>::select_field(frames),
+        )?;
+        Tail::serialize_view_field(frames, map)
     }
 }
 
@@ -1459,5 +1443,4 @@ mod tests {
             vec![false, false, true, true, false, true]
         );
     }
-
 }

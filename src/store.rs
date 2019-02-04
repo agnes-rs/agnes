@@ -2,6 +2,8 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use std::rc::Rc;
 
+#[cfg(feature = "serialize")]
+use serde::ser::{Serialize, Serializer};
 use typenum::uint::UTerm;
 
 use access::DataIndex;
@@ -55,6 +57,19 @@ where
     }
     fn len(&self) -> usize {
         <FieldData<T> as DataIndex>::len(&self.0)
+    }
+}
+
+#[cfg(feature = "serialize")]
+impl<T> Serialize for DataRef<T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.0.serialize(serializer)
     }
 }
 

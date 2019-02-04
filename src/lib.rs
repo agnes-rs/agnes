@@ -27,6 +27,8 @@ extern crate typenum;
 
 #[cfg(test)]
 extern crate rand;
+#[cfg(test)]
+extern crate serde_json;
 
 #[macro_use]
 pub mod ops;
