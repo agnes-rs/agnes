@@ -1,11 +1,11 @@
-use std::path::{Path, PathBuf};
-use std::mem;
-use std::io::{self, Read, Write, Seek, SeekFrom};
 use std::fs::File;
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::mem;
+use std::path::{Path, PathBuf};
 
-use hyper;
-use futures::Stream;
 use futures::stream::StreamFuture;
+use futures::Stream;
+use hyper;
 use hyper::client::Client;
 use tempfile;
 
@@ -19,8 +19,10 @@ use error::*;
 pub enum FileLocator {
     /// A web-based location (URI)
     Http(hyper::Uri),
+    /// A secured web-based location (URI)
+    Https(hyper::Uri),
     /// A local file
-    File(PathBuf)
+    File(PathBuf),
 }
 
 impl<'a> From<&'a Path> for FileLocator {
@@ -44,11 +46,10 @@ impl From<hyper::Uri> for FileLocator {
     }
 }
 
-
 /// File reader for reading from files locally.
 #[derive(Debug)]
 pub struct LocalFileReader {
-    file: File
+    file: File,
 }
 impl LocalFileReader {
     /// Create new reader from a file locator, creating a temporary local file if the file specified
@@ -62,8 +63,8 @@ impl LocalFileReader {
             FileLocator::File(ref path) => {
                 let file = File::open(path)?;
                 Ok(LocalFileReader { file })
-            },
-            FileLocator::Http(_) => {
+            }
+            FileLocator::Http(_) | FileLocator::Https(_) => {
                 // download file up to nbytes and save it to temp directory
                 const BUF_SIZE: usize = 1 << 13; // 8 * 1024
                 let mut buffer = vec![0; BUF_SIZE];
@@ -77,8 +78,11 @@ impl LocalFileReader {
                     }
                     let n_wrote = temp_file.write(&buffer[0..n_read])?;
                     if n_read != n_wrote {
-                        return Err(io::Error::new(io::ErrorKind::WriteZero,
-                            "unable to write to temporary file").into());
+                        return Err(io::Error::new(
+                            io::ErrorKind::WriteZero,
+                            "unable to write to temporary file",
+                        )
+                        .into());
                     }
                 }
                 temp_file.seek(SeekFrom::Start(0))?;
@@ -112,20 +116,30 @@ impl HttpFileReader {
     /// the remote file.
     pub fn new(loc: &FileLocator) -> Result<HttpFileReader> {
         match *loc {
-            FileLocator::File(_) => {
-                Err(NetError::LocalFile.into())
-            },
+            FileLocator::File(_) => Err(NetError::LocalFile.into()),
             FileLocator::Http(ref uri) => {
                 // establish event loop
                 let mut core = Core::new()?;
-                let handle = core.handle();
                 // configure a HTTP client to retrieve the file
-                let client = Client::configure()
-                    .connector(HttpsConnector::new(4, &handle)?)
-                    .build(&handle);
+                let client = Client::new();
                 // set up a future to retrieve the file.
                 let resp = client.get(uri.clone());
-                Ok(HttpFileReader { core, response_state: State::Awaiting(resp) })
+                Ok(HttpFileReader {
+                    core,
+                    response_state: State::Awaiting(resp),
+                })
+            }
+            FileLocator::Https(ref uri) => {
+                // establish event loop
+                let mut core = Core::new()?;
+                // configure a HTTP client to retrieve the file
+                let client = Client::builder().build::<_, hyper::Body>(HttpsConnector::new(4)?);
+                // set up a future to retrieve the file.
+                let resp = client.get(uri.clone());
+                Ok(HttpFileReader {
+                    core,
+                    response_state: State::Awaiting(resp),
+                })
             }
         }
     }
@@ -139,12 +153,13 @@ impl Read for HttpFileReader {
         let (body, mut buf) = match mem::replace(response_state, State::Empty) {
             State::Awaiting(resp) => {
                 // run the response future and block until we get it
-                let resp = core.run(resp)
+                let resp = core
+                    .run(resp)
                     .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-                (resp.body().into_future(), vec![])
-            },
+                (resp.into_body().into_future(), vec![])
+            }
             State::Body { body, buffer } => (body, buffer),
-            State::Empty => panic!("double empty!")
+            State::Empty => panic!("double empty!"),
         };
 
         // start by putting everything from the buffer into the output
@@ -171,7 +186,8 @@ impl Read for HttpFileReader {
         }
 
         // let's get the next chunk of the body
-        let (chunk, body) = core.run(body)
+        let (chunk, body) = core
+            .run(body)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.0))?;
 
         let total_len = match chunk {
@@ -189,15 +205,18 @@ impl Read for HttpFileReader {
                     buf.extend_from_slice(&chunk[outlen - buflen..]);
                     outlen
                 }
-            },
-            None => buflen
+            }
+            None => buflen,
         };
 
         if total_len > 0 {
-            mem::replace(response_state, State::Body {
-                body: body.into_future(),
-                buffer: buf
-            });
+            mem::replace(
+                response_state,
+                State::Body {
+                    body: body.into_future(),
+                    buffer: buf,
+                },
+            );
         } else {
             mem::replace(response_state, State::Empty);
         }
@@ -207,12 +226,12 @@ impl Read for HttpFileReader {
 
 #[derive(Debug)]
 enum State {
-    Awaiting(hyper::client::FutureResponse),
+    Awaiting(hyper::client::ResponseFuture),
     Body {
         body: StreamFuture<hyper::Body>,
-        buffer: Vec<u8>
+        buffer: Vec<u8>,
     },
-    Empty
+    Empty,
 }
 
 /// Abstract general file reader, implementing `Read`.
@@ -228,10 +247,8 @@ impl FileReader {
     /// Create new reader from a file locator.
     pub fn new(loc: &FileLocator) -> Result<FileReader> {
         match *loc {
-            FileLocator::File(_) => {
-                Ok(FileReader::Local(LocalFileReader::new(loc)?))
-            },
-            FileLocator::Http(_) => {
+            FileLocator::File(_) => Ok(FileReader::Local(LocalFileReader::new(loc)?)),
+            FileLocator::Http(_) | FileLocator::Https(_) => {
                 Ok(FileReader::Http(Box::new(HttpFileReader::new(loc)?)))
             }
         }
@@ -240,12 +257,8 @@ impl FileReader {
 impl Read for FileReader {
     fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
         match *self {
-            FileReader::Local(ref mut reader) => {
-                reader.read(out)
-            },
-            FileReader::Http(ref mut reader) => {
-                reader.read(out)
-            }
+            FileReader::Local(ref mut reader) => reader.read(out),
+            FileReader::Http(ref mut reader) => reader.read(out),
         }
     }
 }

@@ -1,50 +1,130 @@
+#[macro_use]
 extern crate agnes;
+extern crate csv_sniffer;
 extern crate serde;
 extern crate serde_json;
-extern crate csv_sniffer;
 
 mod common;
 
-use agnes::data_types::csv::*;
+namespace![
+    pub namespace gdp {
+        field CountryName: String;
+        field CountryCode: String;
+        field Year1983: f64;
+    }
+];
 
 #[test]
 fn subview() {
-    let (mut csv_rdr, _) = common::load_csv_file("gdp.csv");
-    let dv: DataView = csv_rdr.read().unwrap().into();
-    assert_eq!(dv.nrows(), 264);
-    assert_eq!(dv.nfields(), 63);
-    let subview = dv.v(["Country Name", "1983"]);
-    assert_eq!(subview.nrows(), 264);
-    assert_eq!(subview.nfields(), 2);
+    use gdp::*;
+
+    let gdp_spec = spec![
+        fieldname CountryName = "Country Name";
+        fieldname CountryCode = "Country Code";
+        fieldname Year1983 = "1983";
+    ];
+
+    let (mut csv_rdr, _) = common::load_csv_file("gdp.csv", gdp_spec);
+    let dv = csv_rdr.read().unwrap().into_view();
+    assert_eq!(dv.nfields(), 3);
+    let subdv = dv.v::<Labels![CountryName, Year1983]>();
+    assert_eq!(subdv.nrows(), 264);
+    assert_eq!(subdv.nfields(), 2);
 }
+
+namespace![
+    pub namespace sample {
+        field State: String;
+        field Value1: u64;
+        field Value2: f64;
+    }
+];
+
+namespace![
+    pub namespace sample2 {
+        field ST: String;
+    }
+];
 
 #[test]
 fn rename() {
-    let (mut csv_rdr, _) = common::load_csv_file("sample1.csv");
+    use sample::*;
+    use sample2::*;
 
-    let mut dv: DataView = csv_rdr.read().unwrap().into();
-    println!("{}", dv);
-    println!("{}", serde_json::to_string(&dv).unwrap());
-    dv.rename("state", "ST").unwrap();
-    println!("{}", dv);
-    println!("{}", serde_json::to_string(&dv).unwrap());
+    let sample_spec = spec![
+        fieldname State = "state";
+        fieldname Value1 = "val1";
+        fieldname Value2 = "val2";
+    ];
+    let (mut csv_rdr, _) = common::load_csv_file("sample1.csv", sample_spec);
+
+    let dv = csv_rdr.read().unwrap().into_view();
+    assert_eq!(
+        serde_json::to_string(&dv).unwrap(),
+        "{\
+         \"State\":[\"OH\",\"PA\",\"NH\",\"NC\",\"CA\",\"NY\",\"VA\",\"SC\"],\
+         \"Value1\":[4,54,23,21,85,32,44,89],\
+         \"Value2\":[5.03,2.34,0.42,0.204,0.32,3.21,5.66,9.11]\
+         }"
+    );
+
+    let dv = dv.relabel::<State, ST>();
+    assert_eq!(
+        serde_json::to_string(&dv).unwrap(),
+        "{\
+         \"ST\":[\"OH\",\"PA\",\"NH\",\"NC\",\"CA\",\"NY\",\"VA\",\"SC\"],\
+         \"Value1\":[4,54,23,21,85,32,44,89],\
+         \"Value2\":[5.03,2.34,0.42,0.204,0.32,3.21,5.66,9.11]\
+         }"
+    );
 }
+
+namespace![
+    pub namespace life: gdp {
+        field CountryName: String;
+        field CountryCode: String;
+        field Year1983: f64;
+    }
+];
+
+namespace![
+    pub namespace renamed: life {
+        field Gdp1983: f64;
+        field Life1983: f64;
+    }
+];
 
 #[test]
 fn merge() {
-    let (mut csv_rdr, _) = common::load_csv_file("gdp.csv");
-    let mut dv_gdp: DataView = DataView::from(csv_rdr.read().unwrap())
-        .v(["Country Name", "Country Code", "1983"]);
+    let gdp_spec = spec![
+        fieldname gdp::CountryName = "Country Name";
+        fieldname gdp::CountryCode = "Country Code";
+        fieldname gdp::Year1983 = "1983";
+    ];
+    let (mut csv_rdr, _) = common::load_csv_file("gdp.csv", gdp_spec);
+    let dv_gdp = csv_rdr.read().unwrap().into_view().v::<Labels![
+        gdp::CountryName,
+        gdp::CountryCode,
+        gdp::Year1983
+    ]>();
 
-    let (mut csv_rdr, _) = common::load_csv_file("life.csv");
+    let life_spec = spec![
+        fieldname life::CountryName = "Country Name";
+        fieldname life::CountryCode = "Country Code";
+        fieldname life::Year1983 = "1983";
+    ];
+    let (mut csv_rdr, _) = common::load_csv_file("life.csv", life_spec);
+    let dv_life = csv_rdr.read().unwrap().into_view();
     // only take extra '1983' column
-    let mut dv_life: DataView = DataView::from(csv_rdr.read().unwrap()).v("1983");
+    let dv_life = dv_life.v::<Labels![life::Year1983]>();
 
-
-    dv_gdp.rename("1983", "1983 GDP").unwrap();
-    dv_life.rename("1983", "1983 Life Expectancy").unwrap();
+    let dv_gdp = dv_gdp.relabel::<gdp::Year1983, renamed::Gdp1983>();
+    let dv_life = dv_life.relabel::<life::Year1983, renamed::Life1983>();
 
     let dv = dv_gdp.merge(&dv_life).unwrap();
     println!("{}", dv);
-    // println!("{}", serde_json::to_string(&dv).unwrap());
+    assert_eq!(
+        dv.fieldnames(),
+        vec!["CountryName", "CountryCode", "Gdp1983", "Life1983"]
+    );
 }

@@ -6,190 +6,383 @@ use std::fmt;
 
 use prettytable as pt;
 
-use data_types::{MaxLen};
-use apply::stats::{MinFn, MaxFn, SumFn, MeanFn, StdevFn};
-use view::DataView;
-use field::FieldIdent;
-use frame::{Reindexer};
-use data_types::{DTypeList, MapPartial, FuncPartial, FieldLocator};
-use error::*;
+// use apply::stats::{MinFn, MaxFn, SumFn, MeanFn, StdevFn};
+use access::DataIndex;
+use cons::Len;
+use features::*;
+use label::{StrLabels, StrTypes};
+use stats::*;
+use store::NRows;
+use view::{AssocDataIndexCons, AssocDataIndexConsOf, DataView};
 
-/// Function (implementing [FuncPartial](../data_types/trait.FuncPartial.html)) that wraps
-/// another `FuncPartial` and calls `to_string()` on its output.
-pub struct StringifyFn<F> {
-    inner: F,
-}
-impl<DTypes, F> FuncPartial<DTypes> for StringifyFn<F>
-    where DTypes: DTypeList,
-          F: FuncPartial<DTypes>,
-          F::Output: ToString,
-{
-    type Output = String;
-    fn call_partial<L, R>(
-        &mut self,
-        locator: &L,
-        reindexer: &R,
-        storage: &DTypes::Storage,
-    )
-        -> Option<String>
-        where L: FieldLocator<DTypes>,
-              R: Reindexer<DTypes>
-    {
-        self.inner.call_partial(locator, reindexer, storage).map(|out| out.to_string())
-    }
-}
+// /// Function (implementing [Func](../features/trait.Func.html)) that wraps
+// /// another `Func` and calls `to_string()` on its output.
+// pub struct StringifyFn<F> {
+//     inner: F,
+// }
+// impl<DType, F> Func<DType> for StringifyFn<F>
+// where F: Func<DType>,
+//       F::Output: DataIndex,
+//       <F::Output as DataIndex>::DType: ToString
+// {
+//     type Output = FieldData<String>;
+//     fn call<DI>(&mut self, data: &DI) -> Self::Output
+//     where DI: DataIndex<DType=DType>
+//     {
+//         self.inner.call(data).iter().map(|val| val.to_string()).collect()
+//     }
+// }
 
 /// Structure containing general statistics of a `DataView`.
 #[derive(Debug, Clone)]
-pub struct ViewStats<DTypes: DTypeList> {
+pub struct ViewStats {
     nrows: usize,
-    fields: Vec<FieldStats<DTypes>>
+    nfields: usize,
+    idents: Vec<String>,
+    tys: Vec<String>,
+    mins: Vec<String>,
+    maxs: Vec<String>,
+    sums: Vec<String>,
+    means: Vec<String>,
+    stdevs: Vec<String>,
 }
 
-/// Structure containing various statistics of a single field in a `DataView`.
-#[derive(Debug, Clone)]
-pub struct FieldStats<DTypes: DTypeList> {
-    ident: FieldIdent,
-    ty: DTypes::DType,
-    min: Option<String>,
-    max: Option<String>,
-    sum: Option<String>,
-    mean: Option<String>,
-    stdev: Option<String>,
+#[derive(Debug)]
+pub struct MinFn {
+    values: Vec<String>,
 }
-
-impl<DTypes: DTypeList> DataView<DTypes>
-    where DTypes: DTypeList,
-          DTypes::Storage: MaxLen<DTypes>,
-          MinFn: FuncPartial<DTypes>, <MinFn as FuncPartial<DTypes>>::Output: ToString,
-          MaxFn: FuncPartial<DTypes>, <MaxFn as FuncPartial<DTypes>>::Output: ToString,
-          SumFn: FuncPartial<DTypes>, <SumFn as FuncPartial<DTypes>>::Output: ToString,
-          MeanFn: FuncPartial<DTypes>, <MeanFn as FuncPartial<DTypes>>::Output: ToString,
-          StdevFn: FuncPartial<DTypes>, <StdevFn as FuncPartial<DTypes>>::Output: ToString,
-          DTypes::Storage: MapPartial<DTypes, StringifyFn<MinFn>>,
-          DTypes::Storage: MapPartial<DTypes, StringifyFn<MaxFn>>,
-          DTypes::Storage: MapPartial<DTypes, StringifyFn<SumFn>>,
-          DTypes::Storage: MapPartial<DTypes, StringifyFn<MeanFn>>,
-          DTypes::Storage: MapPartial<DTypes, StringifyFn<StdevFn>>,
-{
-    /// Compute and return general statistics for this `DataView`.
-    pub fn view_stats(&self) -> Result<ViewStats<DTypes>>
-    {
-        Ok(ViewStats {
-            nrows: self.nrows(),
-            fields: self.idents().map(|ident| -> Result<FieldStats<DTypes>> {
-                Ok(FieldStats {
-                    ident: ident.clone(),
-                    ty: self.get_field_type(ident).unwrap(),
-                    min: self.map_partial(ident, StringifyFn { inner: MinFn })?,
-                    max: self.map_partial(ident, StringifyFn { inner: MaxFn })?,
-                    sum: self.map_partial(ident, StringifyFn { inner: SumFn })?,
-                    mean: self.map_partial(ident, StringifyFn { inner: MeanFn })?,
-                    stdev: self.map_partial(ident, StringifyFn { inner: StdevFn })?,
-                })
-            }).collect::<Result<_>>()?
-        })
+impl Default for MinFn {
+    fn default() -> MinFn {
+        MinFn { values: vec![] }
+    }
+}
+impl FuncDefault for MinFn {
+    type Output = ();
+    fn call(&mut self) -> () {
+        self.values.push(String::new());
     }
 }
 
-impl<DTypes: DTypeList> fmt::Display for ViewStats<DTypes> {
+#[derive(Debug)]
+pub struct MaxFn {
+    values: Vec<String>,
+}
+impl Default for MaxFn {
+    fn default() -> MaxFn {
+        MaxFn { values: vec![] }
+    }
+}
+impl FuncDefault for MaxFn {
+    type Output = ();
+    fn call(&mut self) -> () {
+        self.values.push(String::new());
+    }
+}
+
+#[derive(Debug)]
+pub struct SumFn {
+    values: Vec<String>,
+}
+impl Default for SumFn {
+    fn default() -> SumFn {
+        SumFn { values: vec![] }
+    }
+}
+impl FuncDefault for SumFn {
+    type Output = ();
+    fn call(&mut self) -> () {
+        self.values.push(String::new());
+    }
+}
+
+#[derive(Debug)]
+pub struct MeanFn {
+    values: Vec<String>,
+}
+impl Default for MeanFn {
+    fn default() -> MeanFn {
+        MeanFn { values: vec![] }
+    }
+}
+impl FuncDefault for MeanFn {
+    type Output = ();
+    fn call(&mut self) -> () {
+        self.values.push(String::new());
+    }
+}
+
+#[derive(Debug)]
+pub struct StDevFn {
+    values: Vec<String>,
+}
+impl Default for StDevFn {
+    fn default() -> StDevFn {
+        StDevFn { values: vec![] }
+    }
+}
+impl FuncDefault for StDevFn {
+    type Output = ();
+    fn call(&mut self) -> () {
+        self.values.push(String::new());
+    }
+}
+
+macro_rules! impl_stats_fns {
+    ($($dtype:ty)*) => {$(
+
+        impl Func<$dtype> for MinFn {
+            type Output = ();
+            fn call<DI>(&mut self, data: &DI) -> ()
+            where
+                DI: DataIndex<DType=$dtype>
+            {
+                self.values.push(data.min().map_or(String::new(), ToString::to_string));
+            }
+        }
+        impl IsImplemented<MinFn> for $dtype {
+            type IsImpl = Implemented;
+        }
+
+        impl Func<$dtype> for MaxFn {
+            type Output = ();
+            fn call<DI>(&mut self, data: &DI) -> ()
+            where
+                DI: DataIndex<DType=$dtype>
+            {
+                self.values.push(data.max().map_or(String::new(), ToString::to_string));
+            }
+        }
+        impl IsImplemented<MaxFn> for $dtype {
+            type IsImpl = Implemented;
+        }
+
+        impl Func<$dtype> for SumFn {
+            type Output = ();
+            fn call<DI>(&mut self, data: &DI) -> ()
+            where
+                DI: DataIndex<DType=$dtype>
+            {
+                self.values.push(data.sum().to_string());
+            }
+        }
+        impl IsImplemented<SumFn> for $dtype {
+            type IsImpl = Implemented;
+        }
+
+        impl Func<$dtype> for MeanFn {
+            type Output = ();
+            fn call<DI>(&mut self, data: &DI) -> ()
+            where
+                DI: DataIndex<DType=$dtype>
+            {
+                self.values.push(data.mean().to_string());
+            }
+        }
+        impl IsImplemented<MeanFn> for $dtype {
+            type IsImpl = Implemented;
+        }
+
+        impl Func<$dtype> for StDevFn {
+            type Output = ();
+            fn call<DI>(&mut self, data: &DI) -> ()
+            where
+                DI: DataIndex<DType=$dtype>
+            {
+                self.values.push(data.stdev().to_string());
+            }
+        }
+        impl IsImplemented<StDevFn> for $dtype {
+            type IsImpl = Implemented;
+        }
+
+    )*}
+}
+
+impl_stats_fns![f64 f32 u64 u32 usize i64 i32 isize];
+
+macro_rules! impl_stats_fns_nonimpl {
+    ($($dtype:ty)*) => {$(
+
+        impl IsImplemented<MinFn> for $dtype {
+            type IsImpl = Unimplemented;
+        }
+        impl IsImplemented<MaxFn> for $dtype {
+            type IsImpl = Unimplemented;
+        }
+        impl IsImplemented<SumFn> for $dtype {
+            type IsImpl = Unimplemented;
+        }
+        impl IsImplemented<MeanFn> for $dtype {
+            type IsImpl = Unimplemented;
+        }
+        impl IsImplemented<StDevFn> for $dtype {
+            type IsImpl = Unimplemented;
+        }
+
+    )*}
+}
+
+impl_stats_fns_nonimpl![bool String];
+
+impl<Labels, Frames> DataView<Labels, Frames>
+where
+    Frames: Len + NRows + AssocDataIndexCons<Labels>,
+    AssocDataIndexConsOf<Labels, Frames>: DeriveCapabilities<MinFn>,
+    AssocDataIndexConsOf<Labels, Frames>: DeriveCapabilities<MaxFn>,
+    AssocDataIndexConsOf<Labels, Frames>: DeriveCapabilities<SumFn>,
+    AssocDataIndexConsOf<Labels, Frames>: DeriveCapabilities<MeanFn>,
+    AssocDataIndexConsOf<Labels, Frames>: DeriveCapabilities<StDevFn>,
+    // DeriveCapabilitiesOf<Labels, Frames, MinFn>: PartialMap<MinFn, Output=String>,
+    Labels: Len + StrLabels + StrTypes,
+    // MinFn: FuncPartial<DTypes>, <MinFn as FuncPartial<DTypes>>::Output: ToString,
+    // MaxFn: FuncPartial<DTypes>, <MaxFn as FuncPartial<DTypes>>::Output: ToString,
+    // SumFn: FuncPartial<DTypes>, <SumFn as FuncPartial<DTypes>>::Output: ToString,
+    // MeanFn: FuncPartial<DTypes>, <MeanFn as FuncPartial<DTypes>>::Output: ToString,
+    // StdevFn: FuncPartial<DTypes>, <StdevFn as FuncPartial<DTypes>>::Output: ToString,
+    // DTypes::Storage: MapPartial<DTypes, StringifyFn<MinFn>>,
+    // DTypes::Storage: MapPartial<DTypes, StringifyFn<MaxFn>>,
+    // DTypes::Storage: MapPartial<DTypes, StringifyFn<SumFn>>,
+    // DTypes::Storage: MapPartial<DTypes, StringifyFn<MeanFn>>,
+    // DTypes::Storage: MapPartial<DTypes, StringifyFn<StdevFn>>,
+{
+    /// Compute and return general statistics for this `DataView`.
+    pub fn view_stats(&self) -> ViewStats {
+        let mut min_fn = MinFn::default();
+        DeriveCapabilities::<MinFn>::derive(self.frames.assoc_data()).map(&mut min_fn);
+        let mut max_fn = MaxFn::default();
+        DeriveCapabilities::<MaxFn>::derive(self.frames.assoc_data()).map(&mut max_fn);
+        let mut sum_fn = SumFn::default();
+        DeriveCapabilities::<SumFn>::derive(self.frames.assoc_data()).map(&mut sum_fn);
+        let mut mean_fn = MeanFn::default();
+        DeriveCapabilities::<MeanFn>::derive(self.frames.assoc_data()).map(&mut mean_fn);
+        let mut stdev_fn = StDevFn::default();
+        DeriveCapabilities::<StDevFn>::derive(self.frames.assoc_data()).map(&mut stdev_fn);
+
+        let view_stats = ViewStats {
+            nrows: self.nrows(),
+            nfields: self.nfields(),
+            idents: <Labels as StrLabels>::labels()
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            tys: <Labels as StrTypes>::str_types()
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            mins: min_fn.values,
+            maxs: max_fn.values,
+            sums: sum_fn.values,
+            means: mean_fn.values,
+            stdevs: stdev_fn.values,
+        };
+
+        view_stats
+    }
+}
+
+impl fmt::Display for ViewStats {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "DataView with {} rows, {} fields", self.nrows, self.fields.len())?;
+        writeln!(
+            f,
+            "DataView with {} rows, {} fields",
+            self.nrows, self.nfields
+        )?;
 
         let mut table = pt::Table::new();
-        table.set_titles(["Field", "Type", "Min*", "Max*", "Sum", "Mean", "StDev"].iter().into());
+        table.set_titles(
+            ["Field", "Type", "Min", "Max", "Sum", "Mean", "StDev"]
+                .iter()
+                .into(),
+        );
 
-        for fstats in &self.fields {
+        debug_assert_eq!(self.idents.len(), self.tys.len());
+        debug_assert_eq!(self.idents.len(), self.mins.len());
+        debug_assert_eq!(self.idents.len(), self.maxs.len());
+        debug_assert_eq!(self.idents.len(), self.sums.len());
+        debug_assert_eq!(self.idents.len(), self.means.len());
+        debug_assert_eq!(self.idents.len(), self.stdevs.len());
+
+        for i in 0..self.mins.len() {
             table.add_row(pt::row::Row::new(vec![
-                cell![fstats.ident],
-                cell![fstats.ty],
-                cell![fstats.min.clone().unwrap_or_default()],
-                cell![fstats.max.clone().unwrap_or_default()],
-                cell![fstats.sum.clone().unwrap_or_default()],
-                cell![fstats.mean.clone().unwrap_or_default()],
-                cell![fstats.stdev.clone().unwrap_or_default()],
+                cell![self.idents[i]],
+                cell![self.tys[i]],
+                cell![self.mins[i]],
+                cell![self.maxs[i]],
+                cell![self.sums[i]],
+                cell![self.means[i]],
+                cell![self.stdevs[i]],
             ]));
         }
 
         table.set_format(*pt::format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
         table.fmt(f)?;
 
-        // TODO: add this footer (and footnore markers on Min and Max) only if text field exists
-        // in DataView
-        writeln!(f, "* For text fields, Min and Max refer to length of contents.")?;
         Ok(())
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use test_utils::*;
-    use data_types::standard::*;
 
+    macro_rules! assert_float_eq {
+        ($actual:expr, $expected:expr) => {{
+            assert!(($actual.clone().parse::<f64>().unwrap() - $expected).abs() < 1e-4);
+        }};
+    }
     #[test]
     fn view_stats_display() {
-        let dv1: DataView = sample_emp_table().into();
-        let vs1 = dv1.view_stats().unwrap();
+        let dv_emp = sample_emp_table().into_view();
+        println!("{}", dv_emp);
+        let vs1 = dv_emp.view_stats();
         println!("{}", vs1);
         assert_eq!(vs1.nrows, 7);
-        assert_eq!(vs1.fields.len(), 3);
-        println!("{:?}", vs1.fields);
-        assert_eq!(vs1.fields[0].ty, DType::u64);
-        assert_eq!(vs1.fields[1].ty, DType::u64);
-        assert_eq!(vs1.fields[2].ty, DType::String);
+        assert_eq!(vs1.nfields, 3);
+        assert_eq!(vs1.tys[0], "u64".to_string());
+        assert_eq!(vs1.tys[1], "u64".to_string());
+        assert_eq!(vs1.tys[2], "String".to_string());
 
-        assert_eq!(vs1.fields[0].min, Some("0".to_string())); // EmpId min
-        assert_eq!(vs1.fields[0].max, Some("10".to_string())); // EmpId max
-        assert_eq!(vs1.fields[0].sum, Some("40".to_string())); // EmpId sum
-        assert!((vs1.fields[0].mean.clone().unwrap().parse::<f64>().unwrap() - 5.714286).abs()
-            < 1e-6); // EmpId mean
-        assert!((vs1.fields[0].stdev.clone().unwrap().parse::<f64>().unwrap() - 3.683942).abs()
-            < 1e-6); // EmpId stdev
+        assert_eq!(vs1.mins[0], "0".to_string()); // EmpId min
+        assert_eq!(vs1.maxs[0], "10".to_string()); // EmpId max
+        assert_eq!(vs1.sums[0], "40".to_string()); // EmpId sum
+        assert_float_eq!(vs1.means[0], 5.714286); // EmpId mean
+        assert_float_eq!(vs1.stdevs[0], 3.683942); // EmpId stdev
 
-        assert_eq!(vs1.fields[2].min, Some("3".to_string())); // EmpName shortest len
-        assert_eq!(vs1.fields[2].max, Some("6".to_string())); // EmpName longest len
-        assert_eq!(vs1.fields[2].sum, None); // EmpName sum is NA
-        assert_eq!(vs1.fields[2].mean, None); // EmpName mean is NA
-        assert_eq!(vs1.fields[2].stdev, None); // EmpName stdev is NA
+        assert_eq!(vs1.mins[2], "".to_string()); // EmpName shortest len
+        assert_eq!(vs1.maxs[2], "".to_string()); // EmpName longest len
+        assert_eq!(vs1.sums[2], "".to_string()); // EmpName sum is NA
+        assert_eq!(vs1.means[2], "".to_string()); // EmpName mean is NA
+        assert_eq!(vs1.stdevs[2], "".to_string()); // EmpName stdev is NA
 
         println!("{}", vs1);
 
-
-        let dv2: DataView = sample_emp_table_extra().into();
-        let vs2 = dv2.view_stats().unwrap();
+        let dv_extra = sample_emp_table_extra().into_view();
+        println!("{}", dv_extra);
+        let vs2 = dv_extra.view_stats();
         println!("{}", vs2);
 
         assert_eq!(vs2.nrows, 7);
-        assert_eq!(vs2.fields.len(), 3);
-        assert_eq!(vs2.fields[0].ty, DType::i64);
-        assert_eq!(vs2.fields[1].ty, DType::bool);
-        assert_eq!(vs2.fields[2].ty, DType::f64);
+        assert_eq!(vs2.nfields, 3);
+        assert_eq!(vs2.tys[0], "i64".to_string());
+        assert_eq!(vs2.tys[1], "bool".to_string());
+        assert_eq!(vs2.tys[2], "f32".to_string());
 
-        assert_eq!(vs2.fields[0].min, Some("-33".to_string())); // SalaryOffset min
-        assert_eq!(vs2.fields[0].max, Some("12".to_string())); // SalaryOffset max
-        assert_eq!(vs2.fields[0].sum, Some("-13".to_string())); // SalaryOffset sum (# of true)
-        assert!((vs2.fields[0].mean.clone().unwrap().parse::<f64>().unwrap() - -1.857143).abs()
-            < 1e-6); // SalaryOffset mean
-        assert!((vs2.fields[0].stdev.clone().unwrap().parse::<f64>().unwrap() - 15.004761).abs()
-            < 1e-6); // SalaryOffset stdev
+        assert_eq!(vs2.mins[0], "-33".to_string()); // SalaryOffset min
+        assert_eq!(vs2.maxs[0], "12".to_string()); // SalaryOffset max
+        assert_eq!(vs2.sums[0], "-13".to_string()); // SalaryOffset sum (# of true)
+        assert_float_eq!(vs2.means[0], -1.857143); // SalaryOffset mean
+        assert_float_eq!(vs2.stdevs[0], 15.004761); // SalaryOffset stdev
 
-        assert_eq!(vs2.fields[1].min, Some("false".to_string())); // DidTraining min
-        assert_eq!(vs2.fields[1].max, Some("true".to_string())); // DidTraining max
-        assert_eq!(vs2.fields[1].sum, Some("4".to_string())); // DidTraining sum (# of true)
-        assert!((vs2.fields[1].mean.clone().unwrap().parse::<f64>().unwrap() - 0.571429).abs()
-            < 1e-6); // DidTraining mean
-        assert!((vs2.fields[1].stdev.clone().unwrap().parse::<f64>().unwrap() - 0.534522).abs()
-            < 1e-6); // DidTraining stdev
+        assert_eq!(vs2.mins[1], "".to_string()); // DidTraining min
+        assert_eq!(vs2.maxs[1], "".to_string()); // DidTraining max
+        assert_eq!(vs2.sums[1], "".to_string()); // DidTraining sum
+        assert_eq!(vs2.means[1], "".to_string()); // DidTraining mean
+        assert_eq!(vs2.stdevs[1], "".to_string()); // DidTraining stdev
 
-        assert_eq!(vs2.fields[2].min, Some("-1.2".to_string())); // VacationHrs min
-        assert_eq!(vs2.fields[2].max, Some("98.3".to_string())); // VacationHrs max
-        assert_eq!(vs2.fields[2].sum, Some("238.6".to_string())); // VacationHrs sum
-        assert!((vs2.fields[2].mean.clone().unwrap().parse::<f64>().unwrap() - 34.0857143).abs()
-            < 1e-6); // VacationHrs mean
-        assert!((vs2.fields[2].stdev.clone().unwrap().parse::<f64>().unwrap() -  35.070948).abs()
-            < 1e-6); // VacationHrs stdev
-
-
+        assert_eq!(vs2.mins[2], "-1.2".to_string()); // VacationHrs min
+        assert_eq!(vs2.maxs[2], "98.3".to_string()); // VacationHrs max
+        assert_float_eq!(vs2.sums[2], 238.6); // VacationHrs sum
+        assert_float_eq!(vs2.means[2], 34.0857143); // VacationHrs mean
+        assert_float_eq!(vs2.stdevs[2], 35.070948); // VacationHrs stdev
     }
 }

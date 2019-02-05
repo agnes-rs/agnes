@@ -1,639 +1,617 @@
-//! Data storage struct and implentation.
+use std::fmt::Debug;
+use std::ops::Deref;
+use std::rc::Rc;
 
-use std::collections::HashMap;
+#[cfg(feature = "serialize")]
+use serde::ser::{Serialize, Serializer};
+use typenum::uint::UTerm;
 
-use serde::Serializer;
-use serde::ser;
+use access::DataIndex;
+use cons::*;
+use error;
+use field::{FieldData, Value};
+use fieldlist::{FieldCons, FieldPayloadCons, FieldSpec};
+use frame::DataFrame;
+use label::*;
+use select::{FieldSelect, SelectFieldByLabel};
+use view::{DataView, FrameLookupCons, ViewFrameCons};
 
-use field::{FieldIdent, TFieldIdent, FieldData, Value};
-use error::*;
-use frame::{Reindexer};
-use access::{DataIndex, DataIndexMut, OwnedOrRef};
-use select::{SelectField};
-use data_types::*;
-use view::DataView;
+#[derive(Debug, Hash, PartialEq, Eq)]
+pub struct DataRef<DType>(pub Rc<FieldData<DType>>);
 
-/// Details of a field within a data store
-#[derive(Debug, Clone)]
-pub struct DsField<DTypes: AssocTypes> {
-    /// Field identifier
-    ident: FieldIdent,
-    /// Index of field within 'fields' vector in the data store
-    ds_index: usize,
-    /// `DataType` for this field
-    ty: DTypes::DType,
-    /// Index of field within the `TypeData` vector of fields of a specific type
-    td_index: usize,
+impl<DType> DataRef<DType> {
+    fn new(field: FieldData<DType>) -> DataRef<DType> {
+        DataRef(Rc::new(field))
+    }
 }
-impl<DTypes> DsField<DTypes>
-    where DTypes: AssocTypes
+
+impl<DType> Clone for DataRef<DType> {
+    fn clone(&self) -> DataRef<DType> {
+        DataRef(Rc::clone(&self.0))
+    }
+}
+
+impl<T> Deref for DataRef<T> {
+    type Target = FieldData<T>;
+
+    fn deref(&self) -> &FieldData<T> {
+        &self.0.deref()
+    }
+}
+
+impl<T> From<FieldData<T>> for DataRef<T> {
+    fn from(orig: FieldData<T>) -> DataRef<T> {
+        DataRef(Rc::new(orig))
+    }
+}
+
+impl<T> DataIndex for DataRef<T>
+where
+    FieldData<T>: DataIndex<DType = T>,
+    T: Debug,
 {
-    /// Create a new `DsField`.
-    pub(crate) fn new(
-        ident: FieldIdent, ds_index: usize, ty: DTypes::DType, td_index: usize,
-    )
-        -> DsField<DTypes>
+    type DType = T;
+
+    fn get_datum(&self, idx: usize) -> error::Result<Value<&T>> {
+        <FieldData<T> as DataIndex>::get_datum(&self.0, idx)
+    }
+    fn len(&self) -> usize {
+        <FieldData<T> as DataIndex>::len(&self.0)
+    }
+}
+
+#[cfg(feature = "serialize")]
+impl<T> Serialize for DataRef<T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
     {
-        DsField {
-            ident,
-            ds_index,
-            ty,
-            td_index
-        }
-    }
-}
-impl<'a, DTypes> FieldLocator<DTypes> for &'a DsField<DTypes> where DTypes: AssocTypes {
-    fn ty(&self) -> DTypes::DType {
-        self.ty
-    }
-    fn td_idx(&self) -> usize {
-        self.td_index
+        self.0.serialize(serializer)
     }
 }
 
-/// Data storage underlying a dataframe. Data is retrievable both by index (of the fields vector)
-/// and by field name.
-///
-/// DataStores are growable (through `AddData` and `AddDataVec`), but existing data is immutable.
+pub type StorageCons<Label, DType, Tail> = FieldPayloadCons<Label, DType, DataRef<DType>, Tail>;
+
 #[derive(Debug)]
-pub struct DataStore<DTypes: AssocTypes> {
-    /// List of fields within the data store
-    fields: Vec<DsField<DTypes>>,
-    /// Map of field names to index of the fields vector
-    field_map: HashMap<FieldIdent, usize>,
-
-    /// Storage
-    data: DTypes::Storage
+pub struct DataStore<Fields: AssocStorage> {
+    data: Fields::Storage,
 }
-impl<DTypes> DataStore<DTypes>
-    where DTypes: AssocTypes,
-          DTypes::Storage: CreateStorage,
+
+pub trait AssocStorage {
+    type Storage: Debug;
+}
+impl<Label, DType, Tail> AssocStorage for FieldCons<Label, DType, Tail>
+where
+    Tail: AssocStorage,
+    Label: Debug,
+    DType: Debug,
+{
+    type Storage = StorageCons<Label, DType, Tail::Storage>;
+}
+impl AssocStorage for Nil {
+    type Storage = Nil;
+}
+
+impl<Fields> DataStore<Fields>
+where
+    Fields: AssocStorage,
 {
     /// Generate and return an empty data store
-    pub fn empty() -> DataStore<DTypes> {
-        DataStore {
-            fields: Vec::new(),
-            field_map: HashMap::new(),
-
-            data: DTypes::Storage::create_storage(),
-        }
+    pub fn empty() -> DataStore<Nil> {
+        DataStore { data: Nil }
     }
 }
-impl<DTypes> DataStore<DTypes>
-    where DTypes: DTypeList
+
+pub trait NRows {
+    fn nrows(&self) -> usize;
+}
+impl NRows for Nil {
+    fn nrows(&self) -> usize {
+        0
+    }
+}
+impl<Label, DType, Tail> NRows for StorageCons<Label, DType, Tail> {
+    fn nrows(&self) -> usize {
+        self.head.value_ref().len()
+    }
+}
+
+impl<Fields> NRows for DataStore<Fields>
+where
+    Fields: AssocStorage,
+    Fields::Storage: NRows,
 {
-    fn add_field_from_iter<T, I, V>(&mut self, field: TFieldIdent<T>, iter: I)
-        -> Result<()>
-        where T: 'static + DataType<DTypes> + Default + Clone,
-              DTypes::Storage: TypeSelector<DTypes, T> + DTypeSelector<DTypes, T>,
-              I: Iterator<Item=V>,
-              V: Into<Value<T>>
-    {
-        match self.field_map.get(&field.ident) {
-            Some(_) => {
-                // field already exists
-                Err(AgnesError::FieldCollision(vec![field.ident.clone()]))
-            },
-            None => {
-                // add data to self.data structure
-                let (dtype, data) = (self.data.select_dtype(), self.data.select_type_mut());
-                let td_idx = data.len();
-                data.push(iter.map(|v| v.into()).collect::<FieldData<DTypes, T>>());
-
-                // add indexing information
-                let fields_idx = self.fields.len();
-                self.field_map.insert(field.ident.clone(), fields_idx);
-                self.fields.push(DsField::new(field.ident, fields_idx, dtype, td_idx));
-
-                Ok(())
-            }
-        }
-    }
-
-    /// Add an empty field to a DataStore.
-    fn add_empty_field<T>(&mut self, field: TFieldIdent<T>)
-        -> Result<()>
-        where T: 'static + DataType<DTypes>,
-              DTypes::Storage: TypeSelector<DTypes, T> + DTypeSelector<DTypes, T>,
-    {
-        match self.field_map.get(&field.ident) {
-            Some(_) => {
-                // field already exists
-                Err(AgnesError::FieldCollision(vec![field.ident.clone()]))
-            },
-            None => {
-                // add data to self.data structure
-                let (dtype, data) = (self.data.select_dtype(), self.data.select_type_mut());
-                let td_idx = data.len();
-                data.push(FieldData::default());
-
-                // add indexing information
-                let fields_idx = self.fields.len();
-                self.field_map.insert(field.ident.clone(), fields_idx);
-                self.fields.push(DsField::new(field.ident, fields_idx, dtype, td_idx));
-
-                Ok(())
-            }
-        }
-    }
-
-    fn insert<T>(&mut self, ident: &FieldIdent, value: Value<T>)
-        -> Result<()>
-        where T: 'static + DataType<DTypes> + Default + Clone,
-              DTypes::Storage: TypeSelector<DTypes, T>
-    {
-        match self.field_map.get(ident) {
-            Some(&idx) => {
-                let ds_field = &self.fields[idx];
-                let data = self.data.select_type_mut();
-                data[ds_field.td_index].push(value);
-                Ok(())
-            },
-            None => {
-                Err(AgnesError::FieldNotFound(ident.clone()))
-            }
-        }
-    }
-
-    /// Applies the provided `Func` to the data in the specified field. This `Func` must be
-    /// implemented for all types in `DTypes`.
-    ///
-    /// Fails if the specified identifier is not found in this `DataStore`.
-    pub fn map<F, FOut>(&self, ident: &FieldIdent, f: F) -> Result<FOut>
-        where DTypes::Storage: Map<DTypes, F, FOut>,
-    {
-        let ds_field = self.field_map
-            .get(&ident)
-            .ok_or_else(|| AgnesError::FieldNotFound(ident.clone()))
-            .map(|&field_idx| &self.fields[field_idx])?;
-
-        self.data.map(
-            &ds_field,
-            f,
-        )
-    }
-
-    /// Applies the provided `Func` to the data in the specified field. This `Func` must be
-    /// implemented for type `T`.
-    ///
-    /// Fails if the specified identifier is not found in this `DataStore` or the incorrect type `T`
-    /// is used.
-    pub fn tmap<T, F>(&self, ident: &FieldIdent, f: F) -> Result<F::Output>
-        where F: Func<DTypes, T>,
-              T: DataType<DTypes>,
-              DTypes::Storage: TMap<DTypes, T, F>,
-    {
-        let ds_field = self.field_map
-            .get(&ident)
-            .ok_or_else(|| AgnesError::FieldNotFound(ident.clone()))
-            .map(|&field_idx| &self.fields[field_idx])?;
-
-        if ds_field.ty != T::DTYPE {
-            return Err(AgnesError::IncompatibleTypes {
-                expected: ds_field.ty.to_string(),
-                actual: T::DTYPE.to_string()
-            });
-        }
-
-        self.data.tmap(
-            &ds_field,
-            f,
-        )
-    }
-
-    /// Applies the provided `FuncExt` to the data in the specified field. This `FuncExt` must be
-    /// implemented for all types in `DTypes`.
-    ///
-    /// Fails if the specified identifier is not found in this `DataStore`.
-    pub fn map_ext<F, FOut>(&self, ident: &FieldIdent, f: F) -> Result<FOut>
-        where DTypes::Storage: MapExt<DTypes, F, FOut>,
-    {
-        let ds_field = self.field_map
-            .get(&ident)
-            .ok_or_else(|| AgnesError::FieldNotFound(ident.clone()))
-            .map(|&field_idx| &self.fields[field_idx])?;
-
-        self.data.map_ext(
-            &ds_field,
-            f,
-        )
-    }
-
-    /// Applies the provided `FuncPartial` to the data in the specified field.
-    ///
-    /// Fails if the specified identifier is not found in this `DataStore`.
-    pub fn map_partial<F, R>(&self, ident: &FieldIdent, reindexer: &R, f: F)
-        -> Result<Option<F::Output>>
-        where DTypes::Storage: MapPartial<DTypes, F>,
-              F: FuncPartial<DTypes>,
-              R: Reindexer<DTypes>
-    {
-        let ds_field = self.field_map
-            .get(&ident)
-            .ok_or_else(|| AgnesError::FieldNotFound(ident.clone()))
-            .map(|&field_idx| &self.fields[field_idx])?;
-
-        Ok(self.data.map_partial(
-            &ds_field,
-            reindexer,
-            f,
-        ))
-    }
-
-    pub(crate) fn serialize_field<R, S>(&self, ident: &FieldIdent, reindexer: &R, serializer: S)
-        -> ::std::result::Result<S::Ok, S::Error>
-        where R: Reindexer<DTypes>,
-              S: Serializer,
-              DTypes: AssocTypes,
-              DTypes::Storage: FieldSerialize<DTypes>
-    {
-        match self.field_map.get(ident) {
-            Some(&idx) => {
-                let ds_field = &self.fields[idx];
-                self.data.serialize(&ds_field, reindexer, serializer)
-            },
-            None => {
-                Err(ser::Error::custom(format!("missing field: {}", ident.to_string())))
-            }
-        }
+    fn nrows(&self) -> usize {
+        self.data.nrows()
     }
 }
 
-/// Function (implementing [Func](../data_types/trait.Func.html)) that copies data into a
-/// target location.
-pub struct CopyIntoFn<'a, DTypes: 'a + AssocTypes> {
-    /// Source data index to copy from.
-    pub src_idx: usize,
-    /// Target field.
-    pub target_ident: FieldIdent,
-    /// Target `DataStore`.
-    pub target_ds: &'a mut DataStore<DTypes>
-}
-impl<'a, T, DTypes> FuncExt<DTypes, T> for CopyIntoFn<'a, DTypes>
-    where T: 'static + DataType<DTypes> + Default + Clone,
-          DTypes: 'a + DTypeList,
-          DTypes::Storage: CreateStorage + AddVec<T> + TypeSelector<DTypes, T>,
-{
-    type Output = ();
-    fn call<L>(
-        &mut self,
-        data: &dyn DataIndex<DTypes, DType=T>,
-        locator: &L,
-    )
-        where L: FieldLocator<DTypes>
-    {
-        // ensure that there is a place to put the data
-        if !self.target_ds.field_map.contains_key(&self.target_ident) {
-            // add new data field in TypeData structure
-            // add_vec only fails if the type number doesn't exist, but we know it exists
-            // because DTypes is the same for both data structures
-            let td_idx = self.target_ds.data.add_vec().unwrap();
+pub type NewFieldStorage<NewLabel, NewDType> =
+    Labeled<NewLabel, TypedValue<NewDType, DataRef<NewDType>>>;
 
-            // add indexing information
-            let field_idx = self.target_ds.fields.len();
-            self.target_ds.field_map.insert(self.target_ident.clone(), field_idx);
-            self.target_ds.fields.push(DsField::new(self.target_ident.clone(), field_idx,
-                locator.ty(), td_idx));
+macro_rules! make_add_field {
+    (
+        $add_trait:tt $add_fn:tt;
+        $add_valiter_trait:tt $add_valiter_fn:tt;
+        $add_iter_trait:tt $add_iter_fn:tt;
+        $add_cloned_valiter_trait:tt $add_cloned_valiter_fn:tt;
+        $add_cloned_iter_trait:tt $add_cloned_iter_fn:tt;
+        $add_empty_trait:tt $add_empty_fn:tt;
+        $push_trait:tt $push_fn:tt $pushed_alias:tt
+    ) => {
+        pub type $pushed_alias<PrevFields, NewLabel, NewDType> =
+            <PrevFields as $push_trait<FieldSpec<NewLabel, NewDType>>>::Output;
+
+        pub trait $add_trait<NewLabel, NewDType> {
+            type OutputFields: AssocStorage;
+
+            fn $add_fn(self, data: FieldData<NewDType>) -> DataStore<Self::OutputFields>;
         }
 
-        // insert only fails if identifier doesn't exist, but we just ensured it does.
-        // unwrap is safe.
-        self.target_ds.insert(
-            &self.target_ident.clone(),
-            data.get_datum(self.src_idx).unwrap().cloned()
-        ).unwrap();
-    }
+        impl<PrevFields, NewLabel, NewDType> $add_trait<NewLabel, NewDType>
+            for DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
+            PrevFields::Storage: $push_trait<
+                NewFieldStorage<NewLabel, NewDType>,
+                Output = <$pushed_alias<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
+            >,
+            NewLabel: Debug,
+            NewDType: Debug,
+        {
+            type OutputFields = $pushed_alias<PrevFields, NewLabel, NewDType>;
 
-}
-
-impl<DTypes: AssocTypes> DataStore<DTypes> {
-    /// Returns an iterator of [FieldIdent](../field/enum.FieldIdent.html)s contained in this
-    /// `DataStore`.
-    pub fn fields(&self) -> impl Iterator<Item=&FieldIdent> {
-        self.fields.iter().map(|ds_field| &ds_field.ident)
-    }
-
-    /// Returns `true` if this `DataStore` contains this field.
-    pub fn has_field(&self, ident: &FieldIdent) -> bool {
-        self.field_map.contains_key(ident)
-    }
-
-    /// Get the field information struct for a given field name
-    pub fn get_field_type(&self, ident: &FieldIdent) -> Option<DTypes::DType> {
-        self.field_map.get(ident)
-            .and_then(|&index| self.fields.get(index).map(|dsfield| dsfield.ty))
-    }
-
-    /// Retrieve number of rows for this data store
-    pub fn nrows(&self) -> usize
-        where DTypes: AssocTypes,
-              DTypes::Storage: MaxLen<DTypes>
-    {
-        self.data.max_len()
-    }
-}
-impl<DTypes> Default for DataStore<DTypes>
-    where DTypes: AssocTypes,
-          DTypes::Storage: CreateStorage
-{
-    fn default() -> DataStore<DTypes> {
-        DataStore::empty()
-    }
-}
-
-impl<'a, DTypes, T> SelectField<'a, T, DTypes> for DataStore<DTypes>
-    where T: 'static + DataType<DTypes>,
-          DTypes: 'a + DTypeList
-{
-    type Output = OwnedOrRef<'a, DTypes, T>;
-
-    fn select(&'a self, ident: FieldIdent)
-        -> Result<OwnedOrRef<'a, DTypes, T>>
-        where DTypes::Storage: TypeSelector<DTypes, T>
-    {
-        self.field_map
-            .get(&ident)
-            .ok_or_else(|| AgnesError::FieldNotFound(ident.clone()))
-            .map(|&field_idx| &self.fields[field_idx])
-            .and_then(|ds_field| {
-                if ds_field.ty != T::DTYPE {
-                    Err(AgnesError::IncompatibleTypes {
-                        expected: ds_field.ty.to_string(),
-                        actual: T::DTYPE.to_string()
-                    })
-                } else {
-                    // by construction, td_index is always in range, so unwrap is safe
-                    Ok(self.data.select_type().get(ds_field.td_index).unwrap())
+            fn $add_fn(self, data: FieldData<NewDType>) -> DataStore<Self::OutputFields> {
+                DataStore {
+                    data: self
+                        .data
+                        .$push_fn(TypedValue::from(DataRef::new(data)).into()),
                 }
-            })
-            .map(|field| OwnedOrRef::Ref(field) )
-    }
-}
-
-impl<DTypes> DataStore<DTypes>
-    where DTypes: DTypeList
-{
-    /// Add a field to this `DataStore` with `ident` and `value`.
-    pub fn add<T, V>(&mut self, ident: FieldIdent, value: V) -> Result<()>
-        where T: 'static + DataType<DTypes> + Default,
-              V: Into<Value<T>>,
-              Self: AddData<T, DTypes>,
-              DTypes::Storage: TypeSelector<DTypes, T>
-    {
-        AddData::<T, DTypes>::add(self, ident, value)
-    }
-}
-
-/// Trait for adding data (of valid types) to a `DataStore`.
-pub trait AddData<T, DTypes>
-    where T: DataType<DTypes>,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T>
-{
-    /// Add a single value to the specified field.
-    fn add<V: Into<Value<T>>>(&mut self, ident: FieldIdent, value: V) -> Result<()>;
-}
-
-impl<DTypes, T> AddData<T, DTypes>
-    for DataStore<DTypes>
-    where T: 'static + DataType<DTypes> + Default + Clone,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T> + DTypeSelector<DTypes, T>
-{
-    fn add<V: Into<Value<T>>>(&mut self, ident: FieldIdent, value: V)
-        -> Result<()>
-    {
-        if !self.has_field(&ident) {
-            self.add_empty_field::<T>(TFieldIdent::new(ident.clone()))?;
+            }
         }
-        self.insert(&ident, value.into())
+
+        pub trait $add_valiter_trait<NewLabel, NewDType> {
+            type OutputFields: AssocStorage;
+
+            fn $add_valiter_fn<IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = Value<NewDType>>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = Value<NewDType>>;
+        }
+        impl<PrevFields, NewLabel, NewDType> $add_valiter_trait<NewLabel, NewDType>
+            for DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
+            PrevFields::Storage: $push_trait<
+                NewFieldStorage<NewLabel, NewDType>,
+                Output = <$pushed_alias<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
+            >,
+            NewLabel: Debug,
+            NewDType: Default + Debug,
+        {
+            type OutputFields = $pushed_alias<PrevFields, NewLabel, NewDType>;
+
+            fn $add_valiter_fn<IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = Value<NewDType>>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = Value<NewDType>>,
+            {
+                DataStore {
+                    data: self.data.$push_fn(
+                        TypedValue::from(DataRef::new(
+                            iter.into_iter().collect::<FieldData<NewDType>>(),
+                        ))
+                        .into(),
+                    ),
+                }
+            }
+        }
+
+        pub trait $add_iter_trait<NewLabel, NewDType> {
+            type OutputFields: AssocStorage;
+
+            fn $add_iter_fn<IntoIter, Iter>(self, iter: IntoIter) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = NewDType>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = NewDType>;
+        }
+        impl<PrevFields, NewLabel, NewDType> $add_iter_trait<NewLabel, NewDType>
+            for DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
+            PrevFields::Storage: $push_trait<
+                NewFieldStorage<NewLabel, NewDType>,
+                Output = <$pushed_alias<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
+            >,
+            NewLabel: Debug,
+            NewDType: Debug,
+        {
+            type OutputFields = $pushed_alias<PrevFields, NewLabel, NewDType>;
+
+            fn $add_iter_fn<IntoIter, Iter>(self, iter: IntoIter) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = NewDType>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = NewDType>,
+            {
+                DataStore {
+                    data: self.data.$push_fn(
+                        TypedValue::from(DataRef::new(
+                            iter.into_iter().collect::<FieldData<NewDType>>(),
+                        ))
+                        .into(),
+                    ),
+                }
+            }
+        }
+
+        pub trait $add_cloned_valiter_trait<NewLabel, NewDType> {
+            type OutputFields: AssocStorage;
+
+            fn $add_cloned_valiter_fn<'a, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = Value<&'a NewDType>>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = Value<&'a NewDType>>,
+                NewDType: 'a;
+        }
+        impl<PrevFields, NewLabel, NewDType> $add_cloned_valiter_trait<NewLabel, NewDType>
+            for DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
+            PrevFields::Storage: $push_trait<
+                NewFieldStorage<NewLabel, NewDType>,
+                Output = <$pushed_alias<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
+            >,
+            NewLabel: Debug,
+            NewDType: Default + Clone + Debug,
+        {
+            type OutputFields = $pushed_alias<PrevFields, NewLabel, NewDType>;
+
+            fn $add_cloned_valiter_fn<'a, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = Value<&'a NewDType>>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = Value<&'a NewDType>>,
+                NewDType: 'a,
+            {
+                DataStore {
+                    data: self.data.$push_fn(
+                        TypedValue::from(DataRef::new(
+                            iter.into_iter()
+                                .map(|x| x.clone())
+                                .collect::<FieldData<NewDType>>(),
+                        ))
+                        .into(),
+                    ),
+                }
+            }
+        }
+
+        pub trait $add_cloned_iter_trait<NewLabel, NewDType> {
+            type OutputFields: AssocStorage;
+
+            fn $add_cloned_iter_fn<'a, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = &'a NewDType>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = &'a NewDType>,
+                NewDType: 'a;
+        }
+        impl<PrevFields, NewLabel, NewDType> $add_cloned_iter_trait<NewLabel, NewDType>
+            for DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
+            PrevFields::Storage: $push_trait<
+                NewFieldStorage<NewLabel, NewDType>,
+                Output = <$pushed_alias<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
+            >,
+            NewLabel: Debug,
+            NewDType: Clone + Debug,
+        {
+            type OutputFields = $pushed_alias<PrevFields, NewLabel, NewDType>;
+
+            fn $add_cloned_iter_fn<'a, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<Self::OutputFields>
+            where
+                Iter: Iterator<Item = &'a NewDType>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = &'a NewDType>,
+                NewDType: 'a,
+            {
+                DataStore {
+                    data: self.data.$push_fn(
+                        TypedValue::from(DataRef::new(
+                            iter.into_iter()
+                                .map(|x| x.clone())
+                                .collect::<FieldData<NewDType>>(),
+                        ))
+                        .into(),
+                    ),
+                }
+            }
+        }
+
+        pub trait $add_empty_trait<NewLabel, NewDType> {
+            type OutputFields: AssocStorage;
+
+            fn $add_empty_fn(self) -> DataStore<Self::OutputFields>;
+        }
+        impl<PrevFields, NewLabel, NewDType> $add_empty_trait<NewLabel, NewDType>
+            for DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
+            PrevFields::Storage: $push_trait<
+                NewFieldStorage<NewLabel, NewDType>,
+                Output = <$pushed_alias<PrevFields, NewLabel, NewDType> as AssocStorage>::Storage,
+            >,
+            NewLabel: Debug,
+            NewDType: Debug,
+        {
+            type OutputFields = $pushed_alias<PrevFields, NewLabel, NewDType>;
+
+            fn $add_empty_fn(self) -> DataStore<Self::OutputFields> {
+                DataStore {
+                    data: self
+                        .data
+                        .$push_fn(TypedValue::from(DataRef::new(FieldData::default())).into()),
+                }
+            }
+        }
+
+        impl<PrevFields> DataStore<PrevFields>
+        where
+            PrevFields: AssocStorage,
+        {
+            pub fn $add_fn<NewLabel, NewDType>(
+                self,
+                data: FieldData<NewDType>,
+            ) -> DataStore<<Self as $add_trait<NewLabel, NewDType>>::OutputFields>
+            where
+                Self: $add_trait<NewLabel, NewDType>,
+            {
+                $add_trait::$add_fn(self, data)
+            }
+
+            pub fn $add_valiter_fn<NewLabel, NewDType, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<<Self as $add_valiter_trait<NewLabel, NewDType>>::OutputFields>
+            where
+                Iter: Iterator<Item = Value<NewDType>>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = Value<NewDType>>,
+                Self: $add_valiter_trait<NewLabel, NewDType>,
+            {
+                $add_valiter_trait::$add_valiter_fn(self, iter)
+            }
+
+            pub fn $add_iter_fn<NewLabel, NewDType, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<<Self as $add_iter_trait<NewLabel, NewDType>>::OutputFields>
+            where
+                Iter: Iterator<Item = NewDType>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = NewDType>,
+                Self: $add_iter_trait<NewLabel, NewDType>,
+            {
+                $add_iter_trait::$add_iter_fn(self, iter)
+            }
+
+            pub fn $add_cloned_valiter_fn<'a, NewLabel, NewDType, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<<Self as $add_cloned_valiter_trait<NewLabel, NewDType>>::OutputFields>
+            where
+                Iter: Iterator<Item = Value<&'a NewDType>>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = Value<&'a NewDType>>,
+                Self: $add_cloned_valiter_trait<NewLabel, NewDType>,
+                NewDType: 'a,
+            {
+                $add_cloned_valiter_trait::$add_cloned_valiter_fn(self, iter)
+            }
+
+            pub fn $add_cloned_iter_fn<'a, NewLabel, NewDType, IntoIter, Iter>(
+                self,
+                iter: IntoIter,
+            ) -> DataStore<<Self as $add_cloned_iter_trait<NewLabel, NewDType>>::OutputFields>
+            where
+                Iter: Iterator<Item = &'a NewDType>,
+                IntoIter: IntoIterator<IntoIter = Iter, Item = &'a NewDType>,
+                Self: $add_cloned_iter_trait<NewLabel, NewDType>,
+                NewDType: 'a,
+            {
+                $add_cloned_iter_trait::$add_cloned_iter_fn(self, iter)
+            }
+
+            pub fn $add_empty_fn<NewLabel, NewDType>(
+                self,
+            ) -> DataStore<<Self as $add_empty_trait<NewLabel, NewDType>>::OutputFields>
+            where
+                Self: $add_empty_trait<NewLabel, NewDType>,
+            {
+                $add_empty_trait::$add_empty_fn(self)
+            }
+        }
+    };
+}
+
+make_add_field![
+    PushFrontField push_front_field;
+    PushFrontFromValueIter push_front_from_value_iter;
+    PushFrontFromIter push_front_from_iter;
+    PushFrontClonedFromValueIter push_front_cloned_from_value_iter;
+    PushFrontClonedFromIter push_front_cloned_from_iter;
+    PushFrontEmpty push_front_empty;
+    PushFront push_front PushedFrontField
+];
+
+make_add_field![
+    PushBackField push_back_field;
+    PushBackFromValueIter push_back_from_value_iter;
+    PushBackFromIter push_back_from_iter;
+    PushBackClonedFromValueIter push_back_cloned_from_value_iter;
+    PushBackClonedFromIter push_back_cloned_from_iter;
+    PushBackEmpty push_back_empty;
+    PushBack push_back PushedBackField
+];
+
+impl<Label, Fields> SelectFieldByLabel<Label> for DataStore<Fields>
+where
+    Fields: AssocStorage,
+    Fields::Storage: LookupElemByLabel<Label>,
+    ElemOf<Fields::Storage, Label>: Typed,
+    ElemOf<Fields::Storage, Label>: Valued<Value = DataRef<TypeOfElemOf<Fields::Storage, Label>>>,
+    DataRef<TypeOfElemOf<Fields::Storage, Label>>: DataIndex,
+    TypeOfElemOf<Fields::Storage, Label>: Debug,
+{
+    type Output = DataRef<<<Fields::Storage as LookupElemByLabel<Label>>::Elem as Typed>::DType>;
+
+    fn select_field(&self) -> Self::Output {
+        DataRef::clone(LookupElemByLabel::<Label>::elem(&self.data).value_ref())
+    }
+}
+impl<Fields> FieldSelect for DataStore<Fields> where Fields: AssocStorage {}
+
+pub trait AssocFrameLookup {
+    type Output;
+}
+impl AssocFrameLookup for Nil {
+    type Output = Nil;
+}
+impl<Label, Value, Tail> AssocFrameLookup for LVCons<Label, Value, Tail>
+where
+    Tail: AssocFrameLookup,
+{
+    type Output = FrameLookupCons<Label, UTerm, Label, <Tail as AssocFrameLookup>::Output>;
+}
+
+impl<Fields> DataStore<Fields>
+where
+    Fields: AssocStorage + AssocFrameLookup,
+{
+    pub fn into_view(self) -> <Self as IntoView>::Output
+    where
+        Self: IntoView,
+    {
+        IntoView::into_view(self)
+    }
+}
+pub trait IntoView {
+    type Output;
+    fn into_view(self) -> Self::Output;
+}
+impl<Fields> IntoView for DataStore<Fields>
+where
+    Fields: AssocStorage + AssocFrameLookup,
+{
+    type Output = DataView<<Fields as AssocFrameLookup>::Output, ViewFrameCons<UTerm, Fields, Nil>>;
+
+    fn into_view(self) -> Self::Output {
+        DataView::new(ViewFrameCons {
+            head: DataFrame::from(self).into(),
+            tail: Nil,
+        })
     }
 }
 
-/// Trait for adding a vector of data (of valid types) to a `DataStore`.
-pub trait AddDataVec<T, DTypes>
-    where T: DataType<DTypes>,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T>
-{
-    /// Add a vector of data values to the specified field.
-    fn add_data_vec<I: Into<FieldIdent>, V: Into<Value<T>>>(
-        &mut self, ident: I, data: Vec<V>
-    )
-        -> Result<()>;
-}
+#[cfg(test)]
+mod tests {
 
-impl<DTypes, T> AddDataVec<T, DTypes>
-    for DataStore<DTypes>
-    where T: 'static + DataType<DTypes> + Default + Clone,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T> + DTypeSelector<DTypes, T>
-{
-    fn add_data_vec<I: Into<FieldIdent>, V: Into<Value<T>>>(
-        &mut self, ident: I, mut data: Vec<V>
-    )
-        -> Result<()>
+    use std::fmt::Debug;
+    use std::path::Path;
+    use typenum::U0;
+
+    use csv_sniffer::metadata::Metadata;
+
+    use super::{DataStore, NRows};
+    use cons::*;
+    use field::Value;
+    use select::FieldSelect;
+    use source::csv::{CsvReader, CsvSource, IntoCsvSrcSpec};
+
+    fn load_csv_file<Spec>(filename: &str, spec: Spec) -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
+    where
+        Spec: IntoCsvSrcSpec,
+        <Spec as IntoCsvSrcSpec>::CsvSrcSpec: Debug,
     {
-        self.add_field_from_iter::<T, _, V>(TFieldIdent::new(ident.into()), data.drain(..))
-    }
-}
+        let data_filepath = Path::new(file!()) // start as this file
+            .parent()
+            .unwrap() // navigate up to src directory
+            .parent()
+            .unwrap() // navigate up to root directory
+            .join("tests") // navigate into integration tests directory
+            .join("data") // navigate into data directory
+            .join(filename); // navigate to target file
 
-/// Trait for adding data to a data structure (e.g. `DataStore`) from an iterator.
-pub trait AddDataFromIter<T, DTypes>
-    where T: DataType<DTypes>,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T>
-{
-    /// Add data to `self` with provided field identifier from an iterator over items of type
-    /// `Value<T>`.
-    fn add_data_from_iter<I, Iter, V>(&mut self, ident: I, iter: Iter)
-        -> Result<()>
-        where I: Into<FieldIdent>, V: Into<Value<T>>, Iter: Iterator<Item=V>;
-}
-
-impl<DTypes, T> AddDataFromIter<T, DTypes>
-    for DataStore<DTypes>
-    where T: 'static + DataType<DTypes> + Default + Clone,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T> + DTypeSelector<DTypes, T>
-{
-    fn add_data_from_iter<I, Iter, V>(&mut self, ident: I, iter: Iter)
-        -> Result<()>
-        where I: Into<FieldIdent>,
-              V: Into<Value<T>>,
-              Iter: Iterator<Item=V>,
-    {
-        self.add_field_from_iter::<T, _, V>(TFieldIdent::new(ident.into()), iter)
-    }
-}
-
-/// Trait for cloning data into a data structure (e.g. `DataStore`) from an iterator.
-pub trait AddClonedDataFromIter<'a, T, DTypes>
-    where T: 'a + DataType<DTypes>,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T>
-{
-    /// Add data to `self` with provided field identifier from an iterator over items of type
-    /// `Value<&T>`, cloning the values.
-    fn add_cloned_data_from_iter<I, Iter, V>(&mut self, ident: I, iter: Iter)
-        -> Result<()>
-        where I: Into<FieldIdent>,
-              V: Into<Value<&'a T>>,
-              Iter: Iterator<Item=V>;
-}
-
-impl<'a, DTypes, T> AddClonedDataFromIter<'a, T, DTypes>
-    for DataStore<DTypes>
-    where T: 'static + DataType<DTypes> + Default + Clone,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T> + DTypeSelector<DTypes, T>
-{
-    fn add_cloned_data_from_iter<I, Iter, V>(&mut self, ident: I, iter: Iter)
-        -> Result<()>
-        where I: Into<FieldIdent>, V: Into<Value<&'a T>>, Iter: Iterator<Item=V>,
-    {
-        self.add_data_from_iter(
-            ident,
-            iter.map(|datum| datum.into().map(|val| val.clone()))
+        let source = CsvSource::new(data_filepath.into()).unwrap();
+        (
+            CsvReader::new(&source, spec).unwrap(),
+            source.metadata().clone(),
         )
     }
-}
 
-/// Trait for adding a vector of data (of valid types) to a data structure, which is consumed and
-/// returned in the process.
-pub trait WithDataVec<T, DTypes>
-    where T: DataType<DTypes>,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T>
-{
-    /// Consume the data structure, add the `data` to a new field `ident`, and return the new data
-    /// structure.
-    fn with_data_vec<I: Into<FieldIdent>, V: Into<Value<T>>>(self, ident: I, data: Vec<V>)
-        -> Result<Self>
-        where Self: Sized;
-}
-impl<T, U, DTypes> WithDataVec<T, DTypes> for U
-    where T: DataType<DTypes>,
-          U: AddDataVec<T, DTypes>,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T>
-{
-    fn with_data_vec<I: Into<FieldIdent>, V: Into<Value<T>>>(mut self, ident: I,
-        data: Vec<V>) -> Result<Self>
-    {
-        self.add_data_vec(ident, data)?;
-        Ok(self)
-    }
-}
-impl<DTypes> DataStore<DTypes>
-    where DTypes: DTypeList,
-{
-    /// Consume the `DataStore`, add the `data` to a new field `ident`, and return the new
-    /// `DataStore`.
-    pub fn with_data_vec<T: DataType<DTypes>, I: Into<FieldIdent>, V: Into<Value<T>>>(
-        self,
-        ident: I,
-        data: Vec<V>
-    )
-        -> Result<Self>
-        where Self: WithDataVec<T, DTypes>,
-              DTypes::Storage: TypeSelector<DTypes, T>
-    {
-        WithDataVec::<T, DTypes>::with_data_vec(self, ident, data)
-    }
-}
+    namespace![
+        pub namespace gdp {
+            field CountryName: String;
+            field CountryCode: String;
+            field Year1983: f64;
+        }
+    ];
 
-/// Trait for adding data (of valid types) from an iterator to a data structure, which is consumed
-/// and returned in the process.
-pub trait WithDataFromIter<T, DTypes>
-    where T: DataType<DTypes>,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T>
-{
-    /// Consume the data structure, add the data from `iter` to a new field `ident`, and return the
-    /// new data structure.
-    fn with_data_from_iter<I, Iter, V>(self, ident: I, iter: Iter) -> Result<Self>
-        where I: Into<FieldIdent>,
-              V: Into<Value<T>>,
-              Iter: Iterator<Item=V>,
-              Self: Sized;
-}
-impl<T, U, DTypes> WithDataFromIter<T, DTypes> for U
-    where T: DataType<DTypes>,
-          U: AddDataFromIter<T, DTypes>,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T>
-{
-    fn with_data_from_iter<I, Iter, V>(mut self, ident: I, iter: Iter) -> Result<Self>
-        where I: Into<FieldIdent>,
-              V: Into<Value<T>>,
-              Iter: Iterator<Item=V>,
-    {
-        self.add_data_from_iter(ident, iter)?;
-        Ok(self)
-    }
-}
+    #[test]
+    fn storage_create() {
+        let ds = DataStore::<Nil>::empty();
 
-/// Trait for cloning data (of valid types) from an iterator into a data structure, which is
-/// consumed and returned in the process.
-pub trait WithClonedDataFromIter<'a, T, DTypes>
-    where T: 'a + DataType<DTypes>,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T>,
-{
-    /// Consume the data structure, clone the data from `iter` into a new field `ident`, and return
-    /// the new data structure.
-    fn with_cloned_data_from_iter<I, Iter, V>(self, ident: I, iter: Iter)
-        -> Result<Self>
-        where I: Into<FieldIdent>, V: Into<Value<&'a T>>,
-              Iter: Iterator<Item=V>,
-              Self: Sized;
-}
-impl<'a, DTypes, T> WithClonedDataFromIter<'a, T, DTypes>
-    for DataStore<DTypes>
-    where T: 'static + DataType<DTypes> + Default,
-          DTypes: DTypeList,
-          DTypes::Storage: TypeSelector<DTypes, T>,
-          DataStore<DTypes>: AddClonedDataFromIter<'a, T, DTypes>
-{
-    fn with_cloned_data_from_iter<I, Iter, V>(mut self, ident: I, iter: Iter)
-        -> Result<Self>
-        where I: Into<FieldIdent>,
-              V: Into<Value<&'a T>>,
-              Iter: Iterator<Item=V>,
-    {
-        self.add_cloned_data_from_iter(ident, iter)?;
-        Ok(self)
-    }
-}
+        type TestNamespace = U0;
+        first_label![Test, TestNamespace, u64];
 
-/// Trait for data structures that can be converted into a new [DataStore](struct.DataStore.html).
-pub trait IntoDataStore<DTypes: DTypeList> {
-    /// Convert this data structure into a [DataStore](struct.DataStore.html) under a field named
-    /// `ident`.
-    fn into_datastore<I: Into<FieldIdent>>(self, ident: I) -> Result<DataStore<DTypes>>;
+        let data = vec![
+            Value::Exists(4u64),
+            Value::Exists(1),
+            Value::Na,
+            Value::Exists(3),
+            Value::Exists(7),
+            Value::Exists(8),
+            Value::Na,
+        ];
+        let expected_nrows = data.len();
 
-    /// Convert this data structure into a [DataStore](struct.DataStore.html) under a field named
-    /// `ident`.
-    ///
-    /// Shorthand for [into_datastore](struct.DataStore.html#into_datastore).
-    fn into_ds<I: Into<FieldIdent>>(self, ident: I) -> Result<DataStore<DTypes>> where Self: Sized {
-        self.into_datastore(ident)
-    }
+        let ds = ds.push_back_from_iter::<Test, _, _, _>(data);
+        println!("{:?}", ds);
+        assert_eq!(ds.nrows(), expected_nrows);
+        assert_eq!(ds.field::<Test>().len(), expected_nrows);
 
-    /// Convert this data structure into a [DataView](../view/struct.DataView.html) under a field
-    /// named `ident`.
-    fn into_dataview<I: Into<FieldIdent>>(self, ident: I) -> Result<DataView<DTypes>>
-        where Self: Sized
-    {
-        self.into_datastore(ident).map(DataView::from)
-    }
+        let gdp_spec = spec![
+            fieldname gdp::CountryName = "Country Name";
+            fieldname gdp::CountryCode = "Country Code";
+            fieldname gdp::Year1983 = "1983";
+        ];
 
-    /// Convert this data structure into a [DataView](../view/struct.DataView.html) under a field
-    /// named `ident`.
-    ///
-    /// Shorthand for [into_dataview](struct.DataStore.html#into_dataview).
-    fn into_dv<I: Into<FieldIdent>>(self, ident: I) -> Result<DataView<DTypes>> where Self: Sized {
-        self.into_dataview(ident)
+        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
+        let ds = csv_rdr.read().unwrap();
+        const EXPECTED_GDP_NROWS: usize = 264;
+        assert_eq!(ds.nrows(), EXPECTED_GDP_NROWS);
+        assert_eq!(ds.field::<gdp::CountryName>().len(), EXPECTED_GDP_NROWS);
     }
 }
