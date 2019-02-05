@@ -63,4 +63,5 @@ pub mod view_stats;
 #[cfg(feature = "experimental")]
 pub mod experimental;
 
-// #[cfg(test)] pub(crate) mod test_gen_data;
+#[cfg(test)]
+pub mod test_gen_data;
