@@ -5,7 +5,6 @@ and viewing.
 
 #![allow(missing_docs)]
 #![deny(bare_trait_objects, unconditional_recursion)]
-#![recursion_limit = "256"]
 
 extern crate bit_vec;
 extern crate csv;
