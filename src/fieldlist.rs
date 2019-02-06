@@ -50,7 +50,7 @@ macro_rules! spec {
             <$field_label as $crate::label::Typed>::DType,
             _,
         >::new(
-            FieldDesignator:Idx($idx),
+            FieldDesignator::Idx($idx),
             spec![$($rest)*]
         )
     }};
