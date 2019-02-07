@@ -1,3 +1,8 @@
+/*!
+Implementation of arithmetic operations (`Add`, `Sub`, `Mul`, `Div`) between two fields. Also
+provides traits for these operations which return a `Result` if the fields are of different lengths,
+instead of ignoring the extra data in the longer field.
+*/
 use std::fmt::Debug;
 use std::ops::{Add, Div, Mul, Sub};
 
@@ -7,27 +12,43 @@ use field::FieldData;
 use frame::Framed;
 use store::DataRef;
 
+/// A trait for an add operation between two fields that returns an error if the fields are of
+/// different lengths (instead of ignoring the extra data in the longer field).
 pub trait LengthCheckedAdd<RHS> {
+    /// Output of the arithmetic operation.
     type Output;
 
+    /// Add this field to `rhs`, returning an error if the fields are of different lengths.
     fn add_checked(self, rhs: RHS) -> error::Result<Self::Output>;
 }
 
+/// A trait for a subtract operation between two fields that returns an error if the fields are of
+/// different lengths (instead of ignoring the extra data in the longer field).
 pub trait LengthCheckedSub<RHS> {
+    /// Output of the arithmetic operation.
     type Output;
 
+    /// Subtract `rhs` from this field returning an error if the fields are of different lengths.
     fn sub_checked(self, rhs: RHS) -> error::Result<Self::Output>;
 }
 
+/// A trait for a multiply operation between two fields that returns an error if the fields are of
+/// different lengths (instead of ignoring the extra data in the longer field).
 pub trait LengthCheckedMul<RHS> {
+    /// Output of the arithmetic operation.
     type Output;
 
+    /// Multiply this field by `rhs`, returning an error if the fields are of different lengths.
     fn mul_checked(self, rhs: RHS) -> error::Result<Self::Output>;
 }
 
+/// A trait for a division operation between two fields that returns an error if the fields are of
+/// different lengths (instead of ignoring the extra data in the longer field).
 pub trait LengthCheckedDiv<RHS> {
+    /// Output of the arithmetic operation.
     type Output;
 
+    /// Divide this field by `rhs`, returning an error if the fields are of different lengths.
     fn div_checked(self, rhs: RHS) -> error::Result<Self::Output>;
 }
 

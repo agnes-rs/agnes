@@ -1,9 +1,9 @@
 /*!
-Dataframe library for Rust. Provides data structs and utilities for data aggregation, manipulation,
-and viewing.
+Data management library for Rust. Provides data structs and utilities for data aggregation,
+manipulation, and viewing.
 */
 
-#![allow(missing_docs)]
+#![warn(missing_docs)]
 #![deny(bare_trait_objects, unconditional_recursion)]
 
 extern crate bit_vec;
@@ -34,7 +34,7 @@ pub mod ops;
 #[macro_use]
 pub mod cons;
 #[macro_use]
-pub mod features;
+pub mod partial;
 #[macro_use]
 pub mod label;
 #[macro_use]

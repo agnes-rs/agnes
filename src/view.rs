@@ -29,11 +29,11 @@ use error;
 use frame::{DataFrame, Framed};
 
 use cons::*;
-use features::{DeriveCapabilities, Func, FuncDefault, Implemented, IsImplemented, PartialMap};
 use field::Value;
 use fieldlist::FieldPayloadCons;
 use join::*;
 use label::*;
+use partial::{DeriveCapabilities, Func, FuncDefault, Implemented, IsImplemented, PartialMap};
 use select::{FieldSelect, SelectFieldByLabel};
 use store::{AssocStorage, NRows};
 
@@ -396,7 +396,7 @@ where
     }
 }
 
-/// Function (implementing [Func](../features/trait.Func.html)) that adds cells to
+/// Function (implementing [Func](../partial/trait.Func.html)) that adds cells to
 /// `prettytable::row::Row`.
 pub struct AddCellToRowFn {
     rows: Vec<pt::row::Row>,

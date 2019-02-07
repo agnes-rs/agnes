@@ -33,6 +33,8 @@ pub trait DataIndex: Debug {
         DataIterator::new(self)
     }
 
+    /// Returns an iterator over the values in this field, as permuted by `pemutation`.
+    /// `permutation` is a slice of indices into this `DataIndex`.
     fn permute<'a, 'b>(
         &'a self,
         permutation: &'b [usize],
@@ -79,6 +81,7 @@ pub trait DataIndexMut: DataIndex {
     where
         Self::DType: Default;
 
+    /// Returns a draining iterator of the vaules in this `DataIndexMut`.
     fn drain(&mut self) -> DrainIterator<Self::DType>
     where
         Self: Sized,
@@ -110,6 +113,9 @@ where
             phantom: PhantomData,
         }
     }
+
+    /// Create a new `DataIterator` from a type that implements `DataIndex`, permuted using the
+    /// slice of indices `permutation`.
     pub fn with_permutation(
         data: &'a dyn DataIndex<DType = T>,
         permutation: &'b [usize],
@@ -129,6 +135,9 @@ where
             phantom: PhantomData,
         })
     }
+
+    /// Returns an iterator applying function `F` to the stored values (where they exist) to this
+    /// `DataIterator`. Equivalent to `iter.map(|x: Value<&'a T>| x.map(f))`.
     pub fn map_values<B, F>(self, f: F) -> ValueMap<'a, T, Self, F>
     where
         Self: Iterator<Item = Value<&'a T>>,
@@ -167,6 +176,9 @@ where
     }
 }
 
+/// Mapping iterator applying function `F` to the data in a data structure that implement DataIndex.
+/// `T` is the data type held within this data structure, and `I` is the base iterator that is being
+/// mapped over.
 #[derive(Clone)]
 pub struct ValueMap<'a, T, I, F> {
     iter: I,
@@ -228,6 +240,8 @@ where
     }
 }
 
+/// A structure containing information about the permutation status of a field. `I` represents the
+/// underlying permutation implementation type (such as `Vec<usize>` or &[usize]).
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Permutation<I> {
     perm: Option<I>,
@@ -239,7 +253,8 @@ impl<I> Default for Permutation<I> {
 }
 
 impl Permutation<Vec<usize>> {
-    pub(crate) fn update(&mut self, new_permutation: &[usize]) {
+    /// Update this permutation with new values from `new_permutation`.
+    pub fn update(&mut self, new_permutation: &[usize]) {
         // check if we already have a permutation
         self.perm = match self.perm {
             Some(ref prev_perm) => {
@@ -269,17 +284,23 @@ macro_rules! impl_permutation_len {
                     None => requested
                 }
             }
+            /// Returns the length of this permutation, if it exists. `None` means that no
+            /// permutation exists (the full field in its original order can be used).
             pub fn len(&self) -> Option<usize>
             {
                 self.perm.as_ref().map(|perm| perm.len())
             }
+            /// Returns whether or not a permutation actually exists.
             pub fn is_permuted(&self) -> bool { self.perm.is_some() }
         }
     )*}
 }
 impl_permutation_len![&[usize] Vec<usize>];
 
+/// Trait providing function to compute and return the sorted permutation order. This sort is stable
+/// (preserves original order of equal elements).
 pub trait SortOrder {
+    /// Returns the stable sorted permutation order as `Vec<usize>`
     fn sort_order(&self) -> Vec<usize>;
 }
 
@@ -300,7 +321,11 @@ where
     }
 }
 
+/// Trait providing function to compute and return the sorted permutation order. This sort is
+/// unstable (does not preserve original order of equal elements, but may be faster than the stable
+/// version).
 pub trait SortOrderUnstable {
+    /// Returns the unstable sorted permutation order (`Vec<usize>`).
     fn sort_order_unstable(&self) -> Vec<usize>;
 }
 
@@ -321,7 +346,10 @@ where
     }
 }
 
+/// Trait providing function to compute and return the sorted permutation order using a comparator.
+/// This sort is stable (preserves original order of equal elements).
 pub trait SortOrderComparator<F> {
+    /// Returns the stable sorted permutation order (`Vec<usize>`) using the specified comparator.
     fn sort_order_by(&self, compare: F) -> Vec<usize>;
 }
 
@@ -342,7 +370,11 @@ where
     }
 }
 
+/// Trait providing function to compute and return the sorted permutation order. This sort is
+/// unstable (does not preserve original order of equal elements, but may be faster than the stable
+/// version).
 pub trait SortOrderUnstableComparator<F> {
+    /// Returns the unstable sorted permutation order (`Vec<usize>`) using the specified comparator.
     fn sort_order_unstable_by(&self, compare: F) -> Vec<usize>;
 }
 
@@ -363,7 +395,8 @@ where
     }
 }
 
-pub fn sort_float(left: &f64, right: &f64) -> Ordering {
+/// Helper sorting method for floating-point (f32) values
+pub fn sort_f32(left: &f32, right: &f32) -> Ordering {
     left.partial_cmp(&right).unwrap_or_else(|| {
         if left.is_nan() && !right.is_nan() {
             Ordering::Less
@@ -373,16 +406,40 @@ pub fn sort_float(left: &f64, right: &f64) -> Ordering {
         }
     })
 }
-pub fn sort_float_values(left: Value<&f64>, right: Value<&f64>) -> Ordering {
+/// Helper sorting method for floating-point (Value<&f32>) values.
+pub fn sort_f32_values(left: Value<&f32>, right: Value<&f32>) -> Ordering {
     match (left, right) {
         (Value::Na, Value::Na) => Ordering::Equal,
         (Value::Na, Value::Exists(_)) => Ordering::Less,
         (Value::Exists(_), Value::Na) => Ordering::Greater,
-        (Value::Exists(ref left), Value::Exists(ref right)) => sort_float(left, right),
+        (Value::Exists(ref left), Value::Exists(ref right)) => sort_f32(left, right),
     }
 }
 
+/// Helper sorting method for floating-point (f64) values
+pub fn sort_f64(left: &f64, right: &f64) -> Ordering {
+    left.partial_cmp(&right).unwrap_or_else(|| {
+        if left.is_nan() && !right.is_nan() {
+            Ordering::Less
+        } else {
+            // since partial_cmp only fails for NAN, then !self.is_nan() && other.is_nan()
+            Ordering::Greater
+        }
+    })
+}
+/// Helper sorting method for floating-point (Value<&f64>) values.
+pub fn sort_f64_values(left: Value<&f64>, right: Value<&f64>) -> Ordering {
+    match (left, right) {
+        (Value::Na, Value::Na) => Ordering::Equal,
+        (Value::Na, Value::Exists(_)) => Ordering::Less,
+        (Value::Exists(_), Value::Na) => Ordering::Greater,
+        (Value::Exists(ref left), Value::Exists(ref right)) => sort_f64(left, right),
+    }
+}
+
+//// Trait providing method to provide an index permutation of values that match a predicate.
 pub trait FilterPerm<P> {
+    /// Returns the permutation indices of this field which match the specified `predicate`.
     fn filter_perm(&self, predicate: P) -> Vec<usize>;
 }
 
@@ -413,17 +470,17 @@ mod tests {
         assert_eq!(sorted_order, vec![3, 0, 2, 1, 4]);
 
         let field_data: FieldData<f64> = FieldData::from_vec(vec![2.0, 5.4, 3.1, 1.1, 8.2]);
-        let sorted_order = field_data.sort_order_by(sort_float_values);
+        let sorted_order = field_data.sort_order_by(sort_f64_values);
         assert_eq!(sorted_order, vec![3, 0, 2, 1, 4]);
 
         let field_data: FieldData<f64> =
             FieldData::from_vec(vec![2.0, ::std::f64::NAN, 3.1, 1.1, 8.2]);
-        let sorted_order = field_data.sort_order_by(sort_float_values);
+        let sorted_order = field_data.sort_order_by(sort_f64_values);
         assert_eq!(sorted_order, vec![1, 3, 0, 2, 4]);
 
         let field_data: FieldData<f64> =
             FieldData::from_vec(vec![2.0, ::std::f64::NAN, 3.1, ::std::f64::INFINITY, 8.2]);
-        let sorted_order = field_data.sort_order_by(sort_float_values);
+        let sorted_order = field_data.sort_order_by(sort_f64_values);
         assert_eq!(sorted_order, vec![1, 0, 2, 4, 3]);
     }
 
@@ -446,7 +503,7 @@ mod tests {
             Value::Exists(1.1),
             Value::Exists(8.2930),
         ]);
-        let sorted_order = field_data.sort_order_by(sort_float_values);
+        let sorted_order = field_data.sort_order_by(sort_f64_values);
         assert_eq!(sorted_order, vec![2, 3, 0, 1, 4]);
 
         let field_data = FieldData::from_field_vec(vec![
@@ -456,7 +513,7 @@ mod tests {
             Value::Exists(1.1),
             Value::Exists(8.2930),
         ]);
-        let sorted_order = field_data.sort_order_by(sort_float_values);
+        let sorted_order = field_data.sort_order_by(sort_f64_values);
         assert_eq!(sorted_order, vec![2, 1, 3, 0, 4]);
 
         let field_data = FieldData::from_field_vec(vec![
@@ -466,7 +523,7 @@ mod tests {
             Value::Exists(::std::f64::INFINITY),
             Value::Exists(8.2930),
         ]);
-        let sorted_order = field_data.sort_order_by(sort_float_values);
+        let sorted_order = field_data.sort_order_by(sort_f64_values);
         assert_eq!(sorted_order, vec![2, 1, 0, 4, 3]);
     }
 

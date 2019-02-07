@@ -1,3 +1,7 @@
+/*!
+Basic heterogeneous list ([cons-list](https://en.wikipedia.org/wiki/Cons#Lists)) implementation.
+*/
+
 use std::ops::Add;
 
 use typenum::{Add1, UTerm, Unsigned, B1};
@@ -14,13 +18,15 @@ pub struct Cons<H, T> {
     pub tail: T,
 }
 
-/// Helper function to construct a [Cons](struct.Cons.html) list.
+/// Utility function to construct a [Cons](struct.Cons.html) list.
 pub fn cons<H, T>(head: H, tail: T) -> Cons<H, T> {
     Cons { head, tail }
 }
 
 /// Trait for adding a new element to the front of a [heterogeneous list](struct.Cons.html).
 pub trait PushFront<H> {
+    /// The resulting cons-list type after pushing the specified `H` element to the front of the
+    /// existing list.
     type Output;
 
     /// Add an element to the front of this heterogeneous list.
@@ -44,8 +50,10 @@ impl<NewH> PushFront<NewH> for Nil {
 
 /// Trait for adding a new element to the end of a [heterogeneous list](struct.Cons.html).
 pub trait PushBack<U> {
-    /// New data type that for the list after appending an element.
+    /// The resulting cons-list type after pushing the specified `H` element to the front of the
+    /// existing list.
     type Output;
+
     /// Add an element to the end of this heterogeneous list.
     fn push_back(self, elem: U) -> Self::Output;
 }
@@ -67,7 +75,8 @@ where
 
 /// Trait for adding a list to the end of a [heterogeneous list](struct.Cons.html).
 pub trait Append<List> {
-    /// New data type that for the list after appending a list.
+    /// The resulting cons-list type after adding the element of the target list to the end of the
+    /// existing list.
     type Appended;
     /// Add a list to the end of this heterogeneous list.
     fn append(self, list: List) -> Self::Appended;
@@ -99,12 +108,17 @@ where
 //     |order: &[usize]| {} /* base-case closure */
 // ]
 
+/// Trait providing length (either compile-time or runtime) details of a list.
 pub trait Len {
+    /// `typenum`-based list length.
     type Len: Unsigned;
 
+    /// Returns `true` if length is 0, and `false` otherwise.
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Returns the length of this list.
     fn len(&self) -> usize {
         Self::Len::to_usize()
     }

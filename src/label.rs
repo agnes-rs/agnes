@@ -1,3 +1,6 @@
+/*!
+Traits, structs, and type aliases for handling labels and associated logic.
+*/
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::ops::{Add, BitAnd, BitOr, Not, Sub};
@@ -13,29 +16,45 @@ use typenum::{
 use cons::{Cons, Nil};
 use store::DataRef;
 
+/// Trait to provide associated types (namespace and backing natural) for a field identifier.
+///
+/// All identifiers in `agnes` exist in a specific namespace (typically just a marker struct which
+/// represents that namespace). Within the namespace, identifiers are backed by a type-level natural
+/// number (using the `typenum` crate for type-level numbers).
+pub trait Identifier {
+    /// The [Ident](struct.Ident.html) struct (which should always be
+    /// Ident<Self::Namespace, Self::Natural) for this identifier.
+    type Ident: Identifier; // = Ident<Self::Namespace, Self::Natural>;
+    /// The namespace for this identifier.
+    type Namespace;
+    /// The `typenum`-based backing natural number corresponding to this identifier.
+    type Natural;
+}
+
+/// A label, which is simply an [Identifier](trait.Identifier.html) along with an associated
+/// `const` name and type description.
 pub trait Label: Identifier {
+    /// The label name.
     const NAME: &'static str;
+    /// The type description for the data referred to by this label.
     const TYPE: &'static str;
 }
 
-/// A label for a value in an `LVCons` within a specific namespace `NS`. Backed by a type-level
-/// natural number `N`.
+/// An basic identifier struct for an identifier within the namespace `NS`, backed by the type-level
+/// natural number `Nat`.
 #[derive(Debug, Clone)]
 pub struct Ident<Ns, Nat> {
     _marker: PhantomData<(Ns, Nat)>,
 }
 
-pub trait Identifier {
-    type Ident: Identifier; // = Ident<Self::Namespace, Self::Natural>;
-    type Namespace;
-    type Natural;
-}
 impl<Ns, Nat> Identifier for Ident<Ns, Nat> {
     type Ident = Self;
     type Namespace = Ns;
     type Natural = Nat;
 }
+/// Helpful type alias to refer to the namespace in which an identifier exists.
 pub type NsOf<T> = <T as Identifier>::Namespace;
+/// Helpful type alias to refer to the backing natural number for an identifier.
 pub type NatOf<T> = <T as Identifier>::Natural;
 
 impl Identifier for UTerm {
@@ -49,8 +68,11 @@ impl<U, B> Identifier for UInt<U, B> {
     type Natural = Self;
 }
 
+/// Trait to access name and type description for a label.
 pub trait LabelName {
+    /// Returns the label name.
     fn name() -> &'static str;
+    /// Returns a string specified the type of this data referred to by this label.
     fn str_type() -> &'static str;
 }
 impl<T> LabelName for T
@@ -69,10 +91,13 @@ where
 /// but doesn't use `IsEqual`'s `is_equal` method (since no results of this equality check are
 /// intended to be instantiated).
 pub trait IdentEq<Other> {
+    /// Whether or not these identifiers are equal.
     type Eq: Bit;
 }
 
+/// Type alias for the 'true' bit.
 pub type True = B1;
+/// Type alias for the 'false' bit.
 pub type False = B0;
 
 /// Fallback to IsEqual
@@ -95,7 +120,7 @@ where
     type Eq = And<<TNs as IsEqual<UNs>>::Output, <TNat as IsEqual<UNat>>::Output>;
 }
 
-/// Common namespace for local-only lookups (e.g. looking up the frame number in a view from a
+/// Common namespace for local-only lookups (e.g. looking up the frame index in a view from a
 /// field label)
 pub struct LocalNamespace;
 impl IsEqual<LocalNamespace> for LocalNamespace {
@@ -105,7 +130,9 @@ impl IsEqual<LocalNamespace> for LocalNamespace {
     }
 }
 
+/// Trait for determining whether or not the `Self` and `U` labels refer to the same field.
 pub trait LabelEq<U> {
+    /// Whether or not the two labels refer to the same field.
     type Eq;
 }
 impl<T, U> LabelEq<U> for T
@@ -117,9 +144,11 @@ where
     type Eq = <T::Ident as IdentEq<U::Ident>>::Eq;
 }
 
+/// Container for a value of type `V` labeled with `L`.
 #[derive(Debug, Clone)]
 pub struct Labeled<L, V> {
     _label: PhantomData<L>,
+    /// The contained value corresponding to this label.
     pub value: V,
 }
 impl<L, V> From<V> for Labeled<L, V> {
@@ -131,6 +160,8 @@ impl<L, V> From<V> for Labeled<L, V> {
     }
 }
 
+/// Container for storing the underlying data type `D` (of a field, for example) for a value of
+/// type `V`.
 #[derive(Debug, Clone)]
 pub struct TypedValue<D, V> {
     _dtype: PhantomData<D>,
@@ -145,7 +176,9 @@ impl<D, V> From<V> for TypedValue<D, V> {
     }
 }
 
+/// Trait for associating an underlying data type with a type.
 pub trait Typed {
+    /// Associated data type with this type.
     type DType;
 }
 impl<D, V> Typed for TypedValue<D, V> {
@@ -155,6 +188,7 @@ impl<L, D, V> Typed for Labeled<L, TypedValue<D, V>> {
     type DType = D;
 }
 
+/// Type alias for the associated data type.
 pub type TypeOf<T> = <T as Typed>::DType;
 
 impl<T> Typed for ::field::FieldData<T> {
@@ -170,7 +204,7 @@ where
     type DType = T::DType;
 }
 
-/// Marker trait for an object that can be held in a Label<...> or TypedValue<...> container.
+/// Marker trait for an object that can be held in a Labeled<...> or TypedValue<...> container.
 pub trait SelfValued {}
 
 macro_rules! impl_selfvalued {
@@ -188,10 +222,16 @@ impl<T> SelfValued for ::field::FieldData<T> {}
 impl<T> SelfValued for ::frame::Framed<T> {}
 impl<T> SelfValued for DataRef<T> {}
 
+/// Trait for extracting the an associated value of a value-holding container (e.g.
+/// [TypedValue](struct.TypedValue.html), [Labeled](struct.Labeled.html)).
 pub trait Valued {
+    /// The associated value.
     type Value;
+    /// Read-only reference to the value.
     fn value_ref(&self) -> &Self::Value;
+    /// Mutable reference to the value.
     fn value_mut(&mut self) -> &mut Self::Value;
+    /// Take ownership of the value.
     fn value(self) -> Self::Value;
 }
 impl<T> Valued for T
@@ -240,10 +280,13 @@ where
     }
 }
 
-/// Alias for retrieving the Value of a Valued object
+/// Type alias for retrieving the Value of a [Valued](trait.Valued.html) object.
 pub type ValueOf<T> = <T as Valued>::Value;
 
+/// Trait for finding the associated marker (non-instantiated type) for a container
+/// (e.g. [Labeled](struct.Labeled.html)).
 pub trait Marked {
+    /// Associated marker.
     type Marker;
 }
 impl<L, M> Marked for Labeled<L, PhantomData<M>> {
@@ -252,20 +295,25 @@ impl<L, M> Marked for Labeled<L, PhantomData<M>> {
 impl<L, D, M> Marked for Labeled<L, TypedValue<D, PhantomData<M>>> {
     type Marker = M;
 }
+
+/// Type alias for retrieving the marker of a [Marked](trait.Marked.html) object.
 pub type MarkerOf<T> = <T as Marked>::Marker;
 
 /// Label-value cons-list
 pub type LVCons<L, V, T> = Cons<Labeled<L, V>, T>;
 /// Label-only cons-list
 pub type LCons<L, T> = LVCons<L, (), T>;
+/// Type alias for a label-only cons-list.
 pub type LabelCons<L, T> = LCons<L, T>;
 /// Label-marker cons-list
 pub type LMCons<L, M, T> = LVCons<L, PhantomData<M>, T>;
 /// Label-DType-value cons-list
 pub type LDVCons<L, D, V, T> = LVCons<L, TypedValue<D, V>, T>;
 
-/// `LabelEq`-based membership test
+/// `LabelEq`-based membership test for cons-lists. Specifies whether `E` is a member (based on
+/// labels) of Self.
 pub trait Member<E> {
+    /// [True](type.True.html) or [False](type.False.html).
     type IsMember: Bit;
 }
 
@@ -304,6 +352,7 @@ where
 /// Marker trait for ensuring that the labels of a cons-list constitute a set (no label cardinality
 /// greater than 1).
 pub trait IsLabelSet {
+    /// [True](type.True.html) or [False](type.False.html).
     type IsSet;
 }
 // Empty set
@@ -321,9 +370,11 @@ where
     type IsSet = And<<<T as Member<L>>::IsMember as Not>::Output, <T as IsLabelSet>::IsSet>;
 }
 
-/// Lookup into a `Cons`-list by `typenum` natural number.
+/// Look up an element from a cons-list by `typenum` natural number.
 pub trait LookupElemByNat<N> {
+    /// Type of looked-up element.
     type Elem;
+    /// Look up the element from this cons-list.
     fn elem(&self) -> &Self::Elem;
 }
 
@@ -365,8 +416,11 @@ where
     }
 }
 
+/// Lookup a type-level natural number backing label `L`.
 pub trait LookupNatByLabel<L> {
+    /// The backing type-level natural number for `L`.
     type Nat: Unsigned;
+    /// A run-time accessor for `Nat`.
     fn nat(&self) -> usize {
         Self::Nat::to_usize()
     }
@@ -380,7 +434,12 @@ where
         <LVCons<L, V, T> as LookupNatByLabelMatch<TargetL, <TargetL as LabelEq<L>>::Eq>>::Nat;
 }
 
+/// Helper lookup trait for [LookupNatByLabel](trait.LookupNatByLabel.html). Used by
+/// `LookupNatByLabel` for computing the backing type-level natural number for label `TargetL`.
+///
+/// `B` specifies whether or not `TargetL` matches the head value of `Self`.
 pub trait LookupNatByLabelMatch<TargetL, B> {
+    /// Backing type-level natural number for `TargetL`.
     type Nat: Unsigned;
 }
 impl<TargetL, L, V, T> LookupNatByLabelMatch<TargetL, True> for LVCons<L, V, T> {
@@ -395,8 +454,11 @@ where
     type Nat = Add1<<T as LookupNatByLabel<TargetL>>::Nat>;
 }
 
+/// Look up an element from a cons-list by label `L`.
 pub trait LookupElemByLabel<L> {
+    /// Type of lookup-up element.
     type Elem;
+    /// Look up the element from this cons-list.
     fn elem(&self) -> &Self::Elem;
 }
 impl<L, T> LookupElemByLabel<L> for T
@@ -409,10 +471,17 @@ where
         LookupElemByNat::<_>::elem(self)
     }
 }
+
+/// Type alias for an element (as looked up by `Label`) from cons-list `T`.
 pub type ElemOf<T, Label> = <T as LookupElemByLabel<Label>>::Elem;
 
+/// Sepcialization of [LookupElemByLabel](trait.LookupElemByLabel.html) where the looked-up element
+/// implements [Valued](trait.Valued.html).
 pub trait LookupValuedElemByLabel<L>: LookupElemByLabel<L> {
+    /// Type of looked-up element.
     type Elem: Valued;
+
+    /// Look up the element from this cons-list.
     fn elem(&self) -> &<Self as LookupValuedElemByLabel<L>>::Elem;
 }
 impl<T, L> LookupValuedElemByLabel<L> for T
@@ -425,10 +494,18 @@ where
         <Self as LookupElemByLabel<L>>::elem(self)
     }
 }
+
+/// Type alias for an element implementing [Valued](trait.Valued.html) (as looked up by `Label`)
+/// from cons-list `T`.
 pub type ValuedElemOf<T, Label> = <T as LookupValuedElemByLabel<Label>>::Elem;
+/// Type alias for the associated `Value` of an element implementing [Valued](trait.Valued.html)
+/// (as looked up by `Label`) from cons-list `T`.
 pub type ValueOfElemOf<T, Label> = <<T as LookupValuedElemByLabel<Label>>::Elem as Valued>::Value;
 
+/// Sepcialization of [LookupElemByLabel](trait.LookupElemByLabel.html) where the looked-up element
+/// implements [Marked](trait.Marked.html).
 pub trait LookupMarkedElemByLabel<L>: LookupElemByLabel<L> {
+    /// Marker type of looked-up element.
     type Elem: Marked;
 }
 impl<T, L> LookupMarkedElemByLabel<L> for T
@@ -438,10 +515,17 @@ where
 {
     type Elem = <Self as LookupElemByLabel<L>>::Elem;
 }
+/// Type alias for an element implementing [Marked](trait.Marked.html) (as looked up by `Label`)
+/// from cons-list `T`.
 pub type MarkedElemOf<T, Label> = <T as LookupMarkedElemByLabel<Label>>::Elem;
+/// Type alias for the associated `Marker` of an element implementing [Marked](trait.Marked.html)
+/// (as looked up by `Label`) from cons-list `T`.
 pub type MarkerOfElemOf<T, Label> = <<T as LookupMarkedElemByLabel<Label>>::Elem as Marked>::Marker;
 
+/// Sepcialization of [LookupElemByLabel](trait.LookupElemByLabel.html) where the looked-up element
+/// implements [Typed](trait.Typed.html).
 pub trait LookupTypedElemByLabel<L>: LookupElemByLabel<L> {
+    /// Associated data type of looked-up element.
     type Elem: Typed;
 }
 impl<T, L> LookupTypedElemByLabel<L> for T
@@ -451,7 +535,11 @@ where
 {
     type Elem = <Self as LookupElemByLabel<L>>::Elem;
 }
+/// Type alias for an element implementing [Typed](trait.Typed.html) (as looked up by `Label`)
+/// from cons-list `T`.
 pub type TypedElemOf<T, Label> = <T as LookupTypedElemByLabel<Label>>::Elem;
+/// Type alias for the associated `DType` of an element implementing [Typed](trait.Typed.html)
+/// (as looked up by `Label`) from cons-list `T`.
 pub type TypeOfElemOf<T, Label> = <<T as LookupTypedElemByLabel<Label>>::Elem as Typed>::DType;
 
 /// Trait to find the subset of cons-list `Self` which are labeled with labels in `LabelList`.
@@ -459,6 +547,7 @@ pub type TypeOfElemOf<T, Label> = <<T as LookupTypedElemByLabel<Label>>::Elem as
 /// Any labels in `LabelList` not found in `Self` will be ignored (see `HasLabels` for a trait
 /// that requires all members of `LabelList` to be found).
 pub trait LabelSubset<LabelList> {
+    /// Subset of `Self` that are labeled with labels in `LabelList`.
     type Output;
 }
 
@@ -484,6 +573,7 @@ where
 /// `IsMember` specifies whether or not the label of the head value of `Self` is a member of
 /// `LabelList`.
 pub trait LabelSubsetPred<LabelList, IsMember> {
+    /// Subset of `Self` that are labeled with labels in `LabelList`.
     type Output;
 }
 
@@ -511,14 +601,18 @@ macro_rules! subset_apply {
         $trait_name_pred:tt $fn_name_pred:tt
     ) => {
 
-        /// Trait for calling function $req_fn of trait $req_trait for all values of a cons-list
+        /// Trait for calling function `$req_fn` of trait `$req_trait` for all values of a cons-list
         /// which match a specified `LabelList`.
         ///
         /// Any labels in `LabelList` not found in `Self` will be ignored (see `HasLabels` for a
         /// trait that requires all members of `LabelList` to be found).
         pub trait $trait_name<LabelList> {
+            /// Output of applying `$req_fn` to values in this cons-list which match labels in
+            /// `LabelList`.
             type Output;
 
+            /// Apply `$req_fn` to value in the head of this cons-list if label of head matches
+            /// labels of `LabelList`.
             fn $fn_name(&self) -> Self::Output;
         }
 
@@ -548,13 +642,15 @@ macro_rules! subset_apply {
         }
 
         /// Helper trait. Used by `$trait_name` for computing the subset of `Self` cons-list which
-        /// contains the labels in `LabelList`, and applying a trait function to that subset.
+        /// contains the labels in `LabelList`, and applying `$req_fn` to that subset.
         ///
         /// `IsMember` specifies whether or not the label of the head value of `Self` is a member of
         /// `LabelList`.
         pub trait $trait_name_pred<LabelList, IsMember> {
+            /// Output of applying `$req_fn` to values in this cons-list if `IsMember` is `True`.
             type Output;
 
+            /// Apply `$req_fn` to value in the head of this cons-list if `IsMember` is `True`.
             fn $fn_name_pred(&self) -> Self::Output;
         }
 
@@ -595,7 +691,10 @@ subset_apply![
     SubsetClonePred subset_clone_pred
 ];
 
+/// Generates a [LabelCons](type.LabelCons.html)-list with the labels associated with this
+/// cons-list.
 pub trait AssocLabels {
+    /// [LabelCons](type.LabelCons.html)-list of labels associated with the `Self` cons-list.
     type Labels;
 }
 impl<Label, Value, Tail> AssocLabels for LVCons<Label, Value, Tail>
@@ -609,7 +708,10 @@ impl AssocLabels for Nil {
 }
 
 //TODO: figure out how to have this return an array
+/// Trait for generating a collection (`VecDeque`) of string labels for the labels associated with
+/// the `Self` cons-list.
 pub trait StrLabels {
+    /// Returns the labels (as strings) for the labels associated with `Self`.
     fn labels<'a>() -> VecDeque<&'a str>;
 }
 impl StrLabels for Nil {
@@ -629,7 +731,10 @@ where
     }
 }
 
+/// Trait for generating a collection (`VecDeque`) of string descriptions for the types associated
+/// with the `Self` cons-list.
 pub trait StrTypes {
+    /// Returns the string descriptions of the types associated with `Self`.
     fn str_types<'a>() -> VecDeque<&'a str>;
 }
 impl StrTypes for Nil {

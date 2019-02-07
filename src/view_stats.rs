@@ -6,32 +6,13 @@ use std::fmt;
 
 use prettytable as pt;
 
-// use apply::stats::{MinFn, MaxFn, SumFn, MeanFn, StdevFn};
 use access::DataIndex;
 use cons::Len;
-use features::*;
 use label::{StrLabels, StrTypes};
+use partial::*;
 use stats::*;
 use store::NRows;
 use view::{AssocDataIndexCons, AssocDataIndexConsOf, DataView};
-
-// /// Function (implementing [Func](../features/trait.Func.html)) that wraps
-// /// another `Func` and calls `to_string()` on its output.
-// pub struct StringifyFn<F> {
-//     inner: F,
-// }
-// impl<DType, F> Func<DType> for StringifyFn<F>
-// where F: Func<DType>,
-//       F::Output: DataIndex,
-//       <F::Output as DataIndex>::DType: ToString
-// {
-//     type Output = FieldData<String>;
-//     fn call<DI>(&mut self, data: &DI) -> Self::Output
-//     where DI: DataIndex<DType=DType>
-//     {
-//         self.inner.call(data).iter().map(|val| val.to_string()).collect()
-//     }
-// }
 
 /// Structure containing general statistics of a `DataView`.
 #[derive(Debug, Clone)]
@@ -232,18 +213,7 @@ where
     AssocDataIndexConsOf<Labels, Frames>: DeriveCapabilities<SumFn>,
     AssocDataIndexConsOf<Labels, Frames>: DeriveCapabilities<MeanFn>,
     AssocDataIndexConsOf<Labels, Frames>: DeriveCapabilities<StDevFn>,
-    // DeriveCapabilitiesOf<Labels, Frames, MinFn>: PartialMap<MinFn, Output=String>,
     Labels: Len + StrLabels + StrTypes,
-    // MinFn: FuncPartial<DTypes>, <MinFn as FuncPartial<DTypes>>::Output: ToString,
-    // MaxFn: FuncPartial<DTypes>, <MaxFn as FuncPartial<DTypes>>::Output: ToString,
-    // SumFn: FuncPartial<DTypes>, <SumFn as FuncPartial<DTypes>>::Output: ToString,
-    // MeanFn: FuncPartial<DTypes>, <MeanFn as FuncPartial<DTypes>>::Output: ToString,
-    // StdevFn: FuncPartial<DTypes>, <StdevFn as FuncPartial<DTypes>>::Output: ToString,
-    // DTypes::Storage: MapPartial<DTypes, StringifyFn<MinFn>>,
-    // DTypes::Storage: MapPartial<DTypes, StringifyFn<MaxFn>>,
-    // DTypes::Storage: MapPartial<DTypes, StringifyFn<SumFn>>,
-    // DTypes::Storage: MapPartial<DTypes, StringifyFn<MeanFn>>,
-    // DTypes::Storage: MapPartial<DTypes, StringifyFn<StdevFn>>,
 {
     /// Compute and return general statistics for this `DataView`.
     pub fn view_stats(&self) -> ViewStats {
