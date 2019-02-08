@@ -774,10 +774,12 @@ where
 macro_rules! namespace {
     (@fields() -> ($($out:tt)*)) => {
         declare_fields![Table; $($out)*];
+        /// [FieldCons](../fieldlist/type.FieldCons.html) cons-list of fields in this table.
         pub type Fields = Fields![$($out)*];
     };
     (@fields(,) -> ($($out:tt)*)) => {
         declare_fields![Table; $($out)*];
+        /// [FieldCons](../fieldlist/type.FieldCons.html) cons-list of fields in this table.
         pub type Fields = Fields![$($out)*];
     };
 
@@ -811,6 +813,9 @@ macro_rules! namespace {
     (@construct($vis:vis $tbl_name:ident)($nat:ty)($($body:tt)*)) => {
         $vis mod $tbl_name {
             #![allow(dead_code)]
+            /*!
+                Type aliases defining what is contained within table $tbl_name.
+            */
 
             /// Type-level backing natural number for this table. This type connects all tables
             /// within a namespace together.
@@ -860,6 +865,7 @@ macro_rules! namespace {
 #[macro_export]
 macro_rules! nat_label {
     ($label:ident, $tbl:ty, $nat:ty, $dtype:ty, $name:expr) => {
+        /// Unit struct representing the field $label.
         #[derive(Debug, Clone)]
         pub struct $label;
 
