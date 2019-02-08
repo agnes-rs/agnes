@@ -4,10 +4,27 @@ use store::DataStore;
 use view::ViewMerge;
 
 namespace![
-    pub namespace emp_table {
-        field EmpId: u64;
-        field DeptId: u64;
-        field EmpName: String;
+    pub table emp_table {
+        EmpId: u64,
+        DeptId: u64,
+        EmpName: String
+    }
+    pub table extra_emp {
+        SalaryOffset: i64,
+        DidTraining: bool,
+        VacationHrs: f32,
+    }
+    pub table full_emp_table {
+        EmpId: u64,
+        DeptId: u64,
+        EmpName: String,
+        SalaryOffset: i64,
+        DidTraining: bool,
+        VacationHrs: f32,
+    }
+    pub table dept_table {
+        DeptId: u64,
+        DeptName: String,
     }
 ];
 
@@ -48,31 +65,12 @@ pub fn sample_emp_table() -> emp_table::Store {
     sample_emp_table![]
 }
 
-namespace![
-    pub namespace extra_emp: emp_table {
-        field SalaryOffset: i64;
-        field DidTraining: bool;
-        field VacationHrs: f32;
-    }
-];
-
 pub fn sample_emp_table_extra() -> extra_emp::Store {
     DataStore::<Nil>::empty()
         .push_back_cloned_from_iter(&[-5i64, 4, 12, -33, 10, 0, -1])
         .push_back_cloned_from_iter(&[false, false, true, true, true, false, true])
         .push_back_cloned_from_iter(&[47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5])
 }
-
-namespace![
-    pub namespace full_emp_table: extra_emp {
-        field EmpId: u64;
-        field DeptId: u64;
-        field EmpName: String;
-        field SalaryOffset: i64;
-        field DidTraining: bool;
-        field VacationHrs: f32;
-    }
-];
 
 pub fn sample_emp_table_full() -> full_emp_table::Store {
     DataStore::<Nil>::empty()
@@ -87,13 +85,6 @@ pub fn sample_emp_table_full() -> full_emp_table::Store {
         .push_back_cloned_from_iter(&[false, false, true, true, true, false, true])
         .push_back_cloned_from_iter(&[47.3, 54.1, 98.3, 12.2, -1.2, 5.4, 22.5])
 }
-
-namespace![
-    pub namespace dept_table: full_emp_table {
-        field DeptId: u64;
-        field DeptName: String;
-    }
-];
 
 pub fn sample_dept_table() -> dept_table::Store {
     dept_table(

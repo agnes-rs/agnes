@@ -6,10 +6,10 @@ extern crate typenum;
 mod common;
 
 namespace![
-    pub namespace gdp {
-        field CountryName: String;
-        field CountryCode: String;
-        field Year1983: f64;
+    pub table gdp {
+        CountryName: String,
+        CountryCode: String,
+        Year1983: f64,
     }
 ];
 

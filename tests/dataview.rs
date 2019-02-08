@@ -7,10 +7,19 @@ extern crate serde_json;
 mod common;
 
 namespace![
-    pub namespace gdp {
-        field CountryName: String;
-        field CountryCode: String;
-        field Year1983: f64;
+    pub table gdp {
+        CountryName: String,
+        CountryCode: String,
+        Year1983: f64,
+    }
+    pub table life {
+        CountryName: String,
+        CountryCode: String,
+        Year1983: f64,
+    }
+    pub table renamed {
+        Gdp1983: f64,
+        Life1983: f64,
     }
 ];
 
@@ -33,16 +42,13 @@ fn subview() {
 }
 
 namespace![
-    pub namespace sample {
-        field State: String;
-        field Value1: u64;
-        field Value2: f64;
+    pub table sample {
+        State: String,
+        Value1: u64,
+        Value2: f64,
     }
-];
-
-namespace![
-    pub namespace sample2 {
-        field ST: String;
+    pub table sample2 {
+        ST: String,
     }
 ];
 
@@ -78,21 +84,6 @@ fn rename() {
          }"
     );
 }
-
-namespace![
-    pub namespace life: gdp {
-        field CountryName: String;
-        field CountryCode: String;
-        field Year1983: f64;
-    }
-];
-
-namespace![
-    pub namespace renamed: life {
-        field Gdp1983: f64;
-        field Life1983: f64;
-    }
-];
 
 #[test]
 fn merge() {

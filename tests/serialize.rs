@@ -8,10 +8,10 @@ extern crate csv_sniffer;
 mod common;
 
 namespace![
-    pub namespace sample {
-        field State: String;
-        field Value1: u64;
-        field Value2: f64;
+    pub table sample {
+        State: String,
+        Value1: u64,
+        Value2: f64,
     }
 ];
 

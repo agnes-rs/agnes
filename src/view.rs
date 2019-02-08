@@ -987,10 +987,10 @@ mod tests {
     }
 
     namespace![
-        pub namespace gdp {
-            field CountryName: String;
-            field CountryCode: String;
-            field Year1983: f64;
+        pub table gdp {
+            CountryName: String,
+            CountryCode: String,
+            Year1983: f64,
         }
     ];
 
@@ -1071,12 +1071,14 @@ mod tests {
             }
         };
     }
-
+    #[cfg(feature = "test-utils")]
     namespace![
-        pub namespace emp_table2: emp_table {
-            field EmpId: u64;
-            field DeptId: u64;
-            field EmpName: String;
+        @continue(typenum::Add1<::test_utils::emp_table::Table>)
+
+        pub table emp_table2 {
+            EmpId: u64,
+            DeptId: u64,
+            EmpName: String,
         }
     ];
 
@@ -1106,12 +1108,14 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "test-utils")]
     namespace![
-        pub namespace emp_table3: emp_table2
-        {
-            field EmployeeId: u64;
-            field DepartmentId: u64;
-            field EmployeeName: String;
+        @continue(typenum::Add1<::view::tests::emp_table2::Table>)
+
+        pub table emp_table3 {
+            EmployeeId: u64,
+            DepartmentId: u64,
+            EmployeeName: String,
         }
     ];
 
@@ -1145,12 +1149,14 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "test-utils")]
     namespace![
-        pub namespace emp_table4: emp_table3
-        {
-            field EmplId: u64 = "Employee Id";
-            field DeptId: u64 = "Department Id";
-            field EmpName: String = "Employee Name";
+        @continue(typenum::Add1<::view::tests::emp_table3::Table>)
+
+        pub table emp_table4 {
+            EmplId: u64 = {"Employee Id"},
+            DeptId: u64 = {"Department Id"},
+            EmpName: String = {"Employee Name"},
         }
     ];
 

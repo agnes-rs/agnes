@@ -660,8 +660,9 @@ mod tests {
     }
 
     namespace![
-        namespace dept_rename: dept_table {
-            field RDeptId: u64;
+        @continue(typenum::Add1<::test_utils::dept_table::Table>)
+        table dept_rename {
+            RDeptId: u64
         }
     ];
 

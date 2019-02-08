@@ -16,17 +16,17 @@ use typenum::{
 use cons::{Cons, Nil};
 use store::DataRef;
 
-/// Trait to provide associated types (namespace and backing natural) for a field identifier.
+/// Trait to provide associated types (table and backing natural) for a field identifier.
 ///
-/// All identifiers in `agnes` exist in a specific namespace (typically just a marker struct which
-/// represents that namespace). Within the namespace, identifiers are backed by a type-level natural
-/// number (using the `typenum` crate for type-level numbers).
+/// All identifiers in `agnes` exist in a specific table (a marker struct which represents that
+/// table). Within the table, identifiers are backed by a type-level natural number (using the
+/// `typenum` crate for type-level numbers).
 pub trait Identifier {
     /// The [Ident](struct.Ident.html) struct (which should always be
-    /// Ident<Self::Namespace, Self::Natural) for this identifier.
-    type Ident: Identifier; // = Ident<Self::Namespace, Self::Natural>;
-    /// The namespace for this identifier.
-    type Namespace;
+    /// Ident<Self::Table, Self::Natural) for this identifier.
+    type Ident: Identifier; // = Ident<Self::Table, Self::Natural>;
+    /// The table for this identifier.
+    type Table;
     /// The `typenum`-based backing natural number corresponding to this identifier.
     type Natural;
 }
@@ -40,31 +40,31 @@ pub trait Label: Identifier {
     const TYPE: &'static str;
 }
 
-/// An basic identifier struct for an identifier within the namespace `NS`, backed by the type-level
+/// An basic identifier struct for an identifier within the table `Tbl`, backed by the type-level
 /// natural number `Nat`.
 #[derive(Debug, Clone)]
-pub struct Ident<Ns, Nat> {
-    _marker: PhantomData<(Ns, Nat)>,
+pub struct Ident<Tbl, Nat> {
+    _marker: PhantomData<(Tbl, Nat)>,
 }
 
-impl<Ns, Nat> Identifier for Ident<Ns, Nat> {
+impl<Tbl, Nat> Identifier for Ident<Tbl, Nat> {
     type Ident = Self;
-    type Namespace = Ns;
+    type Table = Tbl;
     type Natural = Nat;
 }
-/// Helpful type alias to refer to the namespace in which an identifier exists.
-pub type NsOf<T> = <T as Identifier>::Namespace;
+/// Helpful type alias to refer to the table in which an identifier exists.
+pub type TblOf<T> = <T as Identifier>::Table;
 /// Helpful type alias to refer to the backing natural number for an identifier.
 pub type NatOf<T> = <T as Identifier>::Natural;
 
 impl Identifier for UTerm {
-    type Ident = Ident<Self::Namespace, Self::Natural>;
-    type Namespace = LocalNamespace;
+    type Ident = Ident<Self::Table, Self::Natural>;
+    type Table = Local;
     type Natural = Self;
 }
 impl<U, B> Identifier for UInt<U, B> {
-    type Ident = Ident<Self::Namespace, Self::Natural>;
-    type Namespace = LocalNamespace;
+    type Ident = Ident<Self::Table, Self::Natural>;
+    type Table = Local;
     type Natural = Self;
 }
 
@@ -108,24 +108,24 @@ where
     type Eq = <T as IsEqual<U>>::Output;
 }
 
-/// Type-level equality implementation for `Ident`s. Result will be `True` if both namespace and
+/// Type-level equality implementation for `Ident`s. Result will be `True` if both table and
 /// the type-level natural number backing this label match.
-impl<TNs, TNat, UNs, UNat> IdentEq<Ident<UNs, UNat>> for Ident<TNs, TNat>
+impl<TTable, TNat, UTbl, UNat> IdentEq<Ident<UTbl, UNat>> for Ident<TTable, TNat>
 where
-    TNs: IsEqual<UNs>,
+    TTable: IsEqual<UTbl>,
     TNat: IsEqual<UNat>,
-    <TNs as IsEqual<UNs>>::Output: BitAnd<<TNat as IsEqual<UNat>>::Output>,
-    <<TNs as IsEqual<UNs>>::Output as BitAnd<<TNat as IsEqual<UNat>>::Output>>::Output: Bit,
+    <TTable as IsEqual<UTbl>>::Output: BitAnd<<TNat as IsEqual<UNat>>::Output>,
+    <<TTable as IsEqual<UTbl>>::Output as BitAnd<<TNat as IsEqual<UNat>>::Output>>::Output: Bit,
 {
-    type Eq = And<<TNs as IsEqual<UNs>>::Output, <TNat as IsEqual<UNat>>::Output>;
+    type Eq = And<<TTable as IsEqual<UTbl>>::Output, <TNat as IsEqual<UNat>>::Output>;
 }
 
-/// Common namespace for local-only lookups (e.g. looking up the frame index in a view from a
-/// field label)
-pub struct LocalNamespace;
-impl IsEqual<LocalNamespace> for LocalNamespace {
+/// Common dummy table for 'local' lookups -- lookups that are not related to the concept of tables
+/// (in particular, used for looking up the frame index in a view from a field label)
+pub struct Local;
+impl IsEqual<Local> for Local {
     type Output = True;
-    fn is_equal(self, _rhs: LocalNamespace) -> True {
+    fn is_equal(self, _rhs: Local) -> True {
         B1
     }
 }
@@ -754,15 +754,35 @@ where
     }
 }
 
+/// Declares a set of data tables that all occupy the same namespace (i.e. can be merged or
+/// joined together). This macro should be used at the beginning of any `agnes`-using code, to
+/// declare the various source and constructed table field labels.
+///
+/// # Example
+/// namespace![
+///     pub table employee {
+///         EmpId: u64,
+///         DeptId: u64,
+///         EmpName: String,
+///     }
+///     pub table department {
+///         DeptId: u64,
+///         DeptName: String,
+///     }
+/// ]
 #[macro_export]
 macro_rules! namespace {
     (@fields() -> ($($out:tt)*)) => {
-        declare_fields![Namespace; $($out)*];
+        declare_fields![Table; $($out)*];
+        pub type Fields = Fields![$($out)*];
+    };
+    (@fields(,) -> ($($out:tt)*)) => {
+        declare_fields![Table; $($out)*];
         pub type Fields = Fields![$($out)*];
     };
 
     (@fields
-        (field $field_name:ident: $field_ty:ident = $str_name:expr; $($rest:tt)*)
+        (,$field_name:ident: $field_ty:ident = {$str_name:expr} $($rest:tt)*)
         ->
         ($($out:tt)*)
     ) => {
@@ -773,7 +793,7 @@ macro_rules! namespace {
         ];
     };
     (@fields
-        (field $field_name:ident: $field_ty:ident; $($rest:tt)*)
+        (,$field_name:ident: $field_ty:ident $($rest:tt)*)
         ->
         ($($out:tt)*)
     ) => {
@@ -785,51 +805,67 @@ macro_rules! namespace {
     };
 
     (@body($($body:tt)*)) => {
-        namespace![@fields($($body)*) -> ()];
+        namespace![@fields(,$($body)*) -> ()];
     };
 
-    ($vis:vis namespace $ns_name:ident: $prev_ns:ident {
-        $($body:tt)*
-    }) => {
-        $vis mod $ns_name
-        {
+    (@construct($vis:vis $tbl_name:ident)($nat:ty)($($body:tt)*)) => {
+        $vis mod $tbl_name {
             #![allow(dead_code)]
-            use super::$prev_ns;
-            pub type Namespace = typenum::Add1<$prev_ns::Namespace>;
+
+            /// Type-level backing natural number for this table. This type connects all tables
+            /// within a namespace together.
+            pub type Table = $nat;
+
+            /// Type alias for a [DataStore](../store/struct.DataStore.html) composed of the fields
+            /// referenced in this table definition.
             pub type Store = $crate::store::DataStore<Fields>;
+            /// Extra type alias for `Store`.
             pub type DataStore = Store;
+            /// Type alias for a [DataView](../view/struct.DataView.html) composed of the fields
+            /// referenced in this table definition.
             pub type View = <Store as $crate::store::IntoView>::Output;
+            /// Extra type alias for `View`.
             pub type DataView = View;
 
             namespace![@body($($body)*)];
         }
     };
-    ($vis:vis namespace $ns_name:ident {
-        $($body:tt)*
-    }) => {
-        $vis mod $ns_name
-        {
-            #![allow(dead_code)]
-            pub type Namespace = typenum::U0;
-            pub type Store = $crate::store::DataStore<Fields>;
-            pub type DataStore = Store;
-            pub type View = <Store as $crate::store::IntoView>::Output;
-            pub type DataView = View;
 
-            namespace![@body($($body)*)];
+    // end case
+    (@continue($prev_tbl:ty)) => {};
+
+    // non-initial case
+    (@continue($prev_tbl:ty)
+        $vis:vis table $tbl_name:ident {
+            $($body:tt)*
         }
+        $($rest:tt)*
+    ) => {
+        namespace![@construct($vis $tbl_name)($prev_tbl)($($body)*)];
+        namespace![@continue(typenum::Add1<$prev_tbl>) $($rest)*];
     };
+
+    // entry point
+    (
+        $vis:vis table $tbl_name:ident {
+            $($body:tt)*
+        }
+        $($rest:tt)*
+    ) => {
+        namespace![@construct($vis $tbl_name)(typenum::U0)($($body)*)];
+        namespace![@continue(typenum::Add1<typenum::U0>) $($rest)*];
+    }
 }
 
 #[macro_export]
 macro_rules! nat_label {
-    ($label:ident, $ns:ty, $nat:ty, $dtype:ty, $name:expr) => {
+    ($label:ident, $tbl:ty, $nat:ty, $dtype:ty, $name:expr) => {
         #[derive(Debug, Clone)]
         pub struct $label;
 
         impl $crate::label::Identifier for $label {
-            type Ident = $crate::label::Ident<$ns, $nat>;
-            type Namespace = $ns;
+            type Ident = $crate::label::Ident<$tbl, $nat>;
+            type Table = $tbl;
             type Natural = $nat;
         }
         impl $crate::label::Label for $label {
@@ -844,11 +880,11 @@ macro_rules! nat_label {
 
 #[macro_export]
 macro_rules! first_label {
-    ($label:ident, $ns:ty, $dtype:ty) => {
-        first_label![$label, $ns, $dtype, stringify![$label]];
+    ($label:ident, $tbl:ty, $dtype:ty) => {
+        first_label![$label, $tbl, $dtype, stringify![$label]];
     };
-    ($label:ident, $ns:ty, $dtype:ty, $name:expr) => {
-        nat_label![$label, $ns, typenum::consts::U0, $dtype, $name];
+    ($label:ident, $tbl:ty, $dtype:ty, $name:expr) => {
+        nat_label![$label, $tbl, typenum::consts::U0, $dtype, $name];
     };
 }
 
@@ -860,7 +896,7 @@ macro_rules! next_label {
     ($label:ident, $prev:ident, $dtype:ty, $name:expr) => {
         nat_label![
             $label,
-            $crate::label::NsOf<$prev>,
+            $crate::label::TblOf<$prev>,
             typenum::Add1<$crate::label::NatOf<$prev>>,
             $dtype,
             $name
@@ -893,11 +929,11 @@ macro_rules! Labels {
 macro_rules! declare_fields
 {
     // end case
-    (@step($ns:ty)($prev_label:ident)()) => {};
+    (@step($tbl:ty)($prev_label:ident)()) => {};
 
     // non-initial label
     (@step
-        ($ns:ty)
+        ($tbl:ty)
         ($prev_label:ident)
         ($label:ident: $dtype:ident = $name:expr, $($rest:tt)*)
     )
@@ -905,42 +941,42 @@ macro_rules! declare_fields
     {
         next_label![$label, $prev_label, $dtype, $name];
         declare_fields![@step
-            ($ns)
+            ($tbl)
             ($label)
             ($($rest)*)
         ];
     };
     // handle non-trailing comma
-    (@step($ns:ty)($prev_label:ident)($label:ident: $dtype:ident = $name:expr))
+    (@step($tbl:ty)($prev_label:ident)($label:ident: $dtype:ident = $name:expr))
         =>
     {
-        declare_fields![@step($ns)($prev_label)($label: $dtype,)]
+        declare_fields![@step($tbl)($prev_label)($label: $dtype,)]
     };
 
     // initial label
     (@start
-        ($ns:ty)
+        ($tbl:ty)
         ($label:ident: $dtype:ident = $name:expr, $($rest:tt)*)
     )
         =>
     {
-        first_label![$label, $ns, $dtype, $name];
+        first_label![$label, $tbl, $dtype, $name];
         declare_fields![@step
-            ($ns)
+            ($tbl)
             ($label)
             ($($rest)*)
         ];
     };
     // handle non-trailing comma
-    (@start($ns:ty)($label:ident: $dtype:ident = $name:expr))
+    (@start($tbl:ty)($label:ident: $dtype:ident = $name:expr))
         =>
     {
-        declare_fields![@step($ns)($label: $dtype = $name,)]
+        declare_fields![@step($tbl)($label: $dtype = $name,)]
     };
 
     // entry point
-    ($ns:ty; $($fields:tt)*) => {
-        declare_fields![@start($ns)($($fields)*)];
+    ($tbl:ty; $($fields:tt)*) => {
+        declare_fields![@start($tbl)($($fields)*)];
     };
 }
 
@@ -982,7 +1018,7 @@ mod tests {
         Bit,
     };
 
-    pub type SampleNamespace = U0;
+    pub type SampleTable = U0;
     first_label![ImALabel, U0, u64];
     next_label![ImAnotherLabel, ImALabel, u64];
 
@@ -994,8 +1030,8 @@ mod tests {
         assert!(!<ImALabel as LabelEq<ImAnotherLabel>>::Eq::to_bool());
     }
 
-    pub type NumberNamespace = Add1<SampleNamespace>;
-    first_label![F0, NumberNamespace, u64];
+    pub type NumberTable = Add1<SampleTable>;
+    first_label![F0, NumberTable, u64];
     next_label![F1, F0, f64];
     next_label![F2, F1, i64];
     next_label![F3, F2, String];

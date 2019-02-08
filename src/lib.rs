@@ -3,7 +3,7 @@ Data management library for Rust. Provides data structs and utilities for data a
 manipulation, and viewing.
 */
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
 #![deny(bare_trait_objects, unconditional_recursion)]
 
 extern crate bit_vec;

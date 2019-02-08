@@ -26,31 +26,22 @@ where
 }
 
 namespace![
-    pub namespace gdp {
-        field CountryName: String;
-        field CountryCode: String;
-        field Year1983: f64;
+    pub table gdp {
+        CountryName: String,
+        CountryCode: String,
+        Year1983: f64,
     }
-];
-
-namespace![
-    pub namespace gdp_metadata: gdp {
-        field CountryCode: String;
-        field Region: String;
+    pub table gdp_metadata {
+        CountryCode: String,
+        Region: String,
     }
-];
-
-namespace![
-    pub namespace life: gdp_metadata {
-        field CountryCode: String;
-        field Year1983: f64;
+    pub table life {
+        CountryCode: String,
+        Year1983: f64,
     }
-];
-
-namespace![
-    pub namespace gdp_life: life {
-        field Gdp1983: f64;
-        field Life1983: f64;
+    pub table gdp_life {
+        Gdp1983: f64,
+        Life1983: f64,
     }
 ];
 

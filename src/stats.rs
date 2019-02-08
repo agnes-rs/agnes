@@ -201,8 +201,8 @@ mod tests {
     use store::DataStore;
 
     namespace![
-        pub namespace foo {
-            field Foo: f64;
+        pub table foo {
+            Foo: f64
         }
     ];
 
