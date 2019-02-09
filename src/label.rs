@@ -754,6 +754,7 @@ where
     }
 }
 
+//TODO: finish this example
 /// Declares a set of data tables that all occupy the same namespace (i.e. can be merged or
 /// joined together). This macro should be used at the beginning of any `agnes`-using code, to
 /// declare the various source and constructed table field labels.
