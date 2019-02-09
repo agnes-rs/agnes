@@ -213,8 +213,8 @@ impl<T> FieldData<T> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    /// Get the value at the given index. Return `None` if `index` is out of bounds, or a `Value`
-    /// Object with the value (or indicator that value is missing).
+    /// Get the value at the given index. Returns `None` if `index` is out of bounds, or a
+    /// [Value](enum.Value.html) enum.
     pub fn get(&self, index: usize) -> Option<Value<&T>> {
         if index >= self.data.len() {
             None
@@ -224,6 +224,8 @@ impl<T> FieldData<T> {
             Some(Value::Na)
         }
     }
+    /// Take the value at the given index. Returns `None` if `index` is out of bounds, or a
+    /// [Value](enum.Value.html) enum. Replaces the taken value with `Value::Na`.
     pub fn take(&mut self, index: usize) -> Option<Value<T>>
     where
         T: Default,
