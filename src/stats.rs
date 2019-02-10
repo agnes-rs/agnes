@@ -1,3 +1,6 @@
+/*!
+Useful statistics-calculating traits for fields with numeric data.
+*/
 use std::ops::{Add, Mul};
 
 use num_traits::{AsPrimitive, Zero};
@@ -5,8 +8,11 @@ use num_traits::{AsPrimitive, Zero};
 use access::DataIndex;
 use field::*;
 
+/// A trait for counting NA and existing values in a field.
 pub trait NaCount {
+    /// Returns the number of NA (missing) values in this field.
     fn num_na(&self) -> usize;
+    /// Returns the number of existing (non-missing) values in this field.
     fn num_exists(&self) -> usize;
 }
 
@@ -28,8 +34,11 @@ where
     }
 }
 
+/// A trait for computing the sum of values in a field.
 pub trait Sum {
+    /// The data type of the sum result.
     type Output;
+    /// Returns the sum of values in this field. Treats missing values as `0`.
     fn sum(&self) -> Self::Output;
 }
 
@@ -51,7 +60,10 @@ where
     }
 }
 
+/// A trait for calculating the arithmetic mean of a field.
 pub trait Mean {
+    /// Compute the arithmetic mean of a field. Ignores missing values in the computation. If all
+    /// values missing, returns `0.0`.
     fn mean(&self) -> f64;
 }
 
@@ -71,9 +83,12 @@ where
     }
 }
 
+/// A trait for calculating the sum of squares of values in this field.
 pub trait SumSq {
+    /// The data type of the sum result.
     type Output;
 
+    /// Calculate the sum of squares of values in this field. Treats missing values as `0`.
     fn sum_sq(&self) -> Self::Output;
 }
 
@@ -96,12 +111,21 @@ where
     }
 }
 
+/// A trait for computing the variance and standard deviation of values in a field.
 pub trait Variance {
+    /// Computes sample variance of this field. Ignores missing values in this computation. If all
+    /// values are missing, returns `0.0`.
     fn var(&self) -> f64;
+    /// Computes population variance of this field. Ignores missing values in this computation. If
+    /// all values are missing, returns `0.0`.
     fn varp(&self) -> f64;
+    /// Computes sample standard deviation of this field. Ignores missing values in this
+    /// computation. If all values are missing, returns `0.0`.
     fn stdev(&self) -> f64 {
         self.var().sqrt()
     }
+    /// Computes population standard deviation of this field. Ignores missing values in this
+    /// computation. If all values are missing, returns `0.0`.
     fn stdevp(&self) -> f64 {
         self.varp().sqrt()
     }
@@ -136,14 +160,18 @@ where
     }
 }
 
-pub trait Bounds {
+/// A trait for computing the upper and lower extrema values for a field.
+pub trait Extrema {
+    /// The data type of the upper and lower values.
     type Output;
 
+    /// The minimum value in this field. Returns `None` if no values exist in this field.
     fn min(&self) -> Option<&Self::Output>;
+    /// The maximum value in this field. Returns `None` if no values exist in this field.
     fn max(&self) -> Option<&Self::Output>;
 }
 
-impl<DI> Bounds for DI
+impl<DI> Extrema for DI
 where
     DI: DataIndex,
     DI::DType: PartialOrd,

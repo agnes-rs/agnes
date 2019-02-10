@@ -28,6 +28,8 @@ pub struct ViewStats {
     stdevs: Vec<String>,
 }
 
+/// Partially-implemented function (implementing [Func](../partial/trait.Func.html) and
+/// [FuncDefault](../partial/trait.FuncDefault.html)) for computing the minimum value in a field.
 #[derive(Debug)]
 pub struct MinFn {
     values: Vec<String>,
@@ -44,6 +46,8 @@ impl FuncDefault for MinFn {
     }
 }
 
+/// Partially-implemented function (implementing [Func](../partial/trait.Func.html) and
+/// [FuncDefault](../partial/trait.FuncDefault.html)) for computing the maximum value in a field.
 #[derive(Debug)]
 pub struct MaxFn {
     values: Vec<String>,
@@ -60,6 +64,8 @@ impl FuncDefault for MaxFn {
     }
 }
 
+/// Partially-implemented function (implementing [Func](../partial/trait.Func.html) and
+/// [FuncDefault](../partial/trait.FuncDefault.html)) for computing the sum of values in a field.
 #[derive(Debug)]
 pub struct SumFn {
     values: Vec<String>,
@@ -76,6 +82,9 @@ impl FuncDefault for SumFn {
     }
 }
 
+/// Partially-implemented function (implementing [Func](../partial/trait.Func.html) and
+/// [FuncDefault](../partial/trait.FuncDefault.html)) for computing the arithmetic mean of values
+/// in a field.
 #[derive(Debug)]
 pub struct MeanFn {
     values: Vec<String>,
@@ -92,6 +101,9 @@ impl FuncDefault for MeanFn {
     }
 }
 
+/// Partially-implemented function (implementing [Func](../partial/trait.Func.html) and
+/// [FuncDefault](../partial/trait.FuncDefault.html)) for computing the standard deviation of values
+/// in a field.
 #[derive(Debug)]
 pub struct StDevFn {
     values: Vec<String>,
