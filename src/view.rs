@@ -980,9 +980,13 @@ impl<Labels, Frames> DataView<Labels, Frames> {
         <Labels as FieldList<LabelList, Frames>>::field_list(&self.frames)
     }
 
-    // TODO: need to add a bit more description are to what 'unique' means in this context
-    /// Computes the unique values of fields in labeled with labels in `LabelList`. Returns the
-    /// indices of exemplar rows, one index for each unique value.
+    /// Computes the set of unique composite values among the fields in this `DataView` associated
+    /// with labels in `LabelList`. Returns the indices of exemplar rows, one index for each unique
+    /// value. Taken as a set, the values of the `LabelList`-labeled fields at the indices returned
+    /// by this method represent all the possible combinations of values of these fields that exist
+    /// in this `DataView`.
+    ///
+    /// Fields referenced by `LabelList` must implement `Hash`.
     pub fn unique_indices<LabelList>(&self) -> Vec<usize>
     where
         Labels: FieldList<LabelList, Frames>,
@@ -1002,9 +1006,13 @@ impl<Labels, Frames> DataView<Labels, Frames> {
         indices
     }
 
-    // TODO: need to add a bit more description are to what 'unique' means in this context
-    /// Computes the unique values of fields in labeled with labels in `LabelList`. Returns a new
-    /// `DataView` with those specific sets of values.
+    /// Computes the set of unique composite values among the fields in this `DataView` associated
+    /// with labels in `LabelList`. Returns a new `DataView` with those specific sets of values. The
+    /// returned `DataView` contains the values of the `LabelList`-labeled fields that represent
+    /// all the possible combinations of values of these fields that exist in the original
+    /// `DataView`.
+    ///
+    /// Fields referenced by `LabelList` must implement `Hash`.
     pub fn unique_values<LabelList>(
         &self,
     ) -> DataView<
