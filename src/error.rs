@@ -44,8 +44,11 @@ pub enum AgnesError {
         /// length of underlying data structure
         len: usize,
     },
+    /// Length mismatch error
     LengthMismatch {
+        /// Expected length
         expected: usize,
+        /// Observed length
         actual: usize,
     },
     /// Incompatible types error
