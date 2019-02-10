@@ -46,11 +46,18 @@ impl CsvSource {
     }
 }
 
+/// Type alias for [Cons](../cons/struct.Cons.html)-list specifying label, data type, and source
+/// index information of a CSV data source.
 pub type CsvSrcSpecCons<Label, DType, Tail> = FieldPayloadCons<Label, DType, usize, Tail>;
 
+/// A trait for converting an object into a [CsvSrcSpecCons](../type.CsvSrcSpecCons.html).
 pub trait IntoCsvSrcSpec {
+    /// Resultant `CsvSrcSpecCons` object.
     type CsvSrcSpec;
 
+    /// Convert this into a `CsvSrcSpecCons` cons-list. `headers` is a map of column header names
+    /// to column indices. `num_fields` is the number of columns in the CSV file (for checking for
+    /// indexing errors).
     fn into_csv_src_spec(
         self,
         headers: &HashMap<String, usize>,
@@ -101,8 +108,13 @@ where
     }
 }
 
+/// A trait for building a [DataStore](../store/struct.DataStore.html) from a
+/// [CsvSrcSpecCons](type.CsvSrcSpecCons.html).
 pub trait BuildDStore {
+    /// `Fields` type parameter of the resultant `DataStore`.
     type OutputFields: AssocStorage;
+
+    /// Builds a `DataStore` from the source spec (`self`) and a CSV source `src`.
     fn build(&mut self, src: &CsvSource) -> Result<DataStore<Self::OutputFields>>;
 }
 impl BuildDStore for Nil {
@@ -111,7 +123,7 @@ impl BuildDStore for Nil {
         Ok(DataStore::<Nil>::empty())
     }
 }
-impl<Label, DType, Tail> BuildDStore for FieldPayloadCons<Label, DType, usize, Tail>
+impl<Label, DType, Tail> BuildDStore for CsvSrcSpecCons<Label, DType, Tail>
 where
     Tail: BuildDStore,
     DataStore<<Tail as BuildDStore>::OutputFields>: PushFrontFromValueIter<Label, DType>,
@@ -160,6 +172,7 @@ where
     }
 }
 
+/// Object for reading CSV sources.
 #[derive(Debug)]
 pub struct CsvReader<CsvSpec> {
     src: CsvSource,

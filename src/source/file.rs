@@ -1,3 +1,5 @@
+//! Types and implementations for reading files, both locally and over HTTP.
+
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem;
