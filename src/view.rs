@@ -46,7 +46,7 @@ pub type ViewFrameCons<FrameIndex, FrameFields, Tail> =
 /// Cons-list of field labels along with the details necessary to look up that label in a
 /// `DataView`'s `ViewFrameCons` cons-list of `DataFrame`s. The `FrameIndex` specifies the index
 /// of the `DataFrame` containing the field labeled `Label` in the `ViewFrameCons`, and the
-/// `FrameLabel` specifies the potentially-different (since `DataView` supposrt renaming fields)
+/// `FrameLabel` specifies the potentially-different (since `DataView` supports renaming fields)
 /// `Label` within that `DataFrame`.
 pub type FrameLookupCons<Label, FrameIndex, FrameLabel, Tail> =
     LMCons<Label, FrameDetailMarkers<FrameIndex, FrameLabel>, Tail>;
@@ -63,11 +63,19 @@ pub struct DataView<Labels, Frames> {
     pub(crate) frames: Frames,
 }
 
+/// Marker struct with the details of where to find a field's data. The `FrameIndex` specifies
+/// the index of the [DataFrame](../frame/struct.DataFrame.html) in a
+/// [DataView](struct.DataView.html)'s `Frames` cons-list. The `FrameLabel` denotes the label of
+/// the field within that frame.
 pub struct FrameDetailMarkers<FrameIndex, FrameLabel> {
     _marker: PhantomData<(FrameIndex, FrameLabel)>,
 }
+/// A trait for providing the associated `FrameIndex` and `FrameLabel` types for a
+/// [FrameDetailMarkers](struct.FrameDetailMarkers.html) struct.
 pub trait FrameDetails {
+    /// The associated frame index.
     type FrameIndex: Identifier;
+    /// The associated `Label` within the frame.
     type FrameLabel: Label;
 }
 impl<FrameIndex, FrameLabel> FrameDetails for FrameDetailMarkers<FrameIndex, FrameLabel>
@@ -93,6 +101,7 @@ where
 }
 
 impl<Labels, Frames> DataView<Labels, Frames> {
+    /// Creates a new `DataView` with `frames`.
     pub fn new(frames: Frames) -> DataView<Labels, Frames> {
         DataView {
             _labels: PhantomData,
@@ -111,7 +120,9 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     }
 }
 
+/// A trait for deriving the [LabelCons](../type.LabelCons.html) of field indices of a type.
 pub trait FrameIndexList {
+    /// The associated `LabelCons` for this type.
     type LabelList;
 }
 
@@ -131,7 +142,9 @@ impl<Labels, Frames> DataView<Labels, Frames>
 where
     Frames: Clone,
 {
-    /// Generate a new subview of this DataView. LabelList is an LabelCons.
+    /// Generate a new subview of this `DataView`. LabelList is a
+    /// [LabelCons](../label/type.LabelCons.html) list of labels, which can be generated using the
+    /// [Labels](../label/macro.Labels.html) macro.
     pub fn v<LabelList>(
         &self,
     ) -> DataView<
@@ -147,6 +160,7 @@ where
             frames: self.frames.subset_clone(),
         }
     }
+    /// Generate a new subview of this `DataView`. Equivalent to [v](struct.DataView.html#ethod.v).
     pub fn subview<LabelList>(
         &self,
     ) -> DataView<
@@ -234,7 +248,11 @@ where
     }
 }
 
+/// A trait for finding the associated frame details (implementing
+/// [FrameDetails](trait.FrameDetails.html) -- frame index and label within that frame) for
+/// for specific label within this type.
 pub trait FindFrameDetails<Label>: LookupMarkedElemByLabel<Label> {
+    /// The associated frame details for this type.
     type FrameDetails: FrameDetails;
 }
 impl<Labels, Label> FindFrameDetails<Label> for Labels
@@ -244,12 +262,20 @@ where
 {
     type FrameDetails = MarkerOfElemOf<Labels, Label>;
 }
+/// Type alias for the [FrameDetails](trait.FrameDetails.html)-implementing struct associated with
+/// the label `Label` in the label lookup list `Labels`.
 pub type FrameDetailsOf<Labels, Label> = <Labels as FindFrameDetails<Label>>::FrameDetails;
+/// Type alias for the `FrameIndex` of [FrameDetails](trait.FrameDetails.html)-implementing struct
+/// associated with the label `Label` in the label lookup list `Labels`.
 pub type FrameIndexOf<Labels, Label> =
     <<Labels as FindFrameDetails<Label>>::FrameDetails as FrameDetails>::FrameIndex;
+/// Type alias for the `FrameLLabel` of [FrameDetails](trait.FrameDetails.html)-implementing struct
+/// associated with the label `Label` in the label lookup list `Labels`.
 pub type FrameLabelOf<Labels, Label> =
     <<Labels as FindFrameDetails<Label>>::FrameDetails as FrameDetails>::FrameLabel;
 
+/// Marker trait for being able to find a frame of label `Label` within label lookup list `Labels`
+/// in this type
 pub trait FindFrame<Labels, Label>: LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>
 where
     Labels: FindFrameDetails<Label>,
@@ -261,28 +287,58 @@ where
     Frames: LookupValuedElemByLabel<FrameIndexOf<Labels, Label>>,
 {
 }
+
+/// Type alias for the cons-list element within `Frames` associated with a `FrameIndex`.
 pub type FrameElemByFrameIndexOf<Frames, FrameIndex> =
     <Frames as LookupValuedElemByLabel<FrameIndex>>::Elem;
+/// Type alias for the [DataFrame](../frame/struct.DataFrame.html) within `Frames` associated with
+/// a `FrameIndex`.
 pub type FrameByFrameIndexOf<Frames, FrameIndex> =
     <FrameElemByFrameIndexOf<Frames, FrameIndex> as Valued>::Value;
+/// Type alias for the cons-list element within `Frames` associated with label `Label` in the label
+/// lookup list `Labels`.
 pub type FrameElemOf<Frames, Labels, Label> =
     FrameElemByFrameIndexOf<Frames, FrameIndexOf<Labels, Label>>;
+/// Type alias for the [DataFrame](../frame/struct.DataFrame.html) within `Frames` associated
+/// with the label `Label` in the label lookup list `Labels`.
 pub type FrameOf<Frames, Labels, Label> = <FrameElemOf<Frames, Labels, Label> as Valued>::Value;
 
+/// Type alias for the field (implementing [DataIndex](../access/trait.DataIndex.html)) within the
+/// frames list `Frames` associated with the `FrameIndex` and `FrameLabel`.
 pub type FieldFromFrameDetailsOf<Frames, FrameIndex, FrameLabel> =
     <FrameByFrameIndexOf<Frames, FrameIndex> as SelectFieldByLabel<FrameLabel>>::Output;
+
+/// Type alias for the data type of the field (implementing
+/// [DataIndex](../access/trait.DataIndex.html)) within the frames list `Frames` associated with
+/// the `FrameIndex` and `FrameLabel`.
 pub type FieldTypeFromFrameDetailsOf<Frames, FrameIndex, FrameLabel> =
     <FieldFromFrameDetailsOf<Frames, FrameIndex, FrameLabel> as DataIndex>::DType;
 
+/// Type alias for the field (implementing [DataIndex](../access/trait.DataIndex.html)) within the
+/// frames list `Frames` associated with the label `Label` in the label lookup list `Labels`.
 pub type FieldOf<Frames, Labels, Label> =
     <FrameOf<Frames, Labels, Label> as SelectFieldByLabel<FrameLabelOf<Labels, Label>>>::Output;
+/// Type alias for the data type of the field (implementing
+/// [DataIndex](../access/trait.DataIndex.html)) within the frames list `Frames` associated with
+/// the label `Label` in the label lookup list `Labels`.
 pub type FieldTypeOf<Frames, Labels, Label> = <FieldOf<Frames, Labels, Label> as DataIndex>::DType;
 
+/// Type alias for the field (implementing [DataIndex](../access/trait.DataIndex.html)) within
+/// the [DataView](struct.DataView.html) `View` associated with label `Label`.
 pub type VFieldOf<View, Label> = <View as SelectFieldByLabel<Label>>::Output;
+/// Type alias for the datta type of the field (implementing
+/// [DataIndex](../access/trait.DataIndex.html)) within the [DataView](struct.DataView.html) `View`
+/// associated with label `Label`.
 pub type VFieldTypeOf<View, Label> = <VFieldOf<View, Label> as DataIndex>::DType;
 
+/// Trait for selecting a field (implementing [DataIndex](../access/trait.DataIndex.html))
+/// associated with the label `Label` from the label lookup list `Labels` from a type.
 pub trait SelectFieldFromLabels<Labels, Label> {
+    /// Selected field type.
     type Output: DataIndex;
+
+    /// Returns an accessor (implementing [DataIndex](../access/trait.DataIndex.html)) for the
+    /// selected field.
     fn select_field(&self) -> Self::Output;
 }
 impl<Labels, Frames, Label> SelectFieldFromLabels<Labels, Label> for Frames
@@ -316,10 +372,15 @@ where
 
 impl<Labels, Frames> FieldSelect for DataView<Labels, Frames> {}
 
+/// Type alias for the cons-list of fields implementing [DataIndex](../access/trait.DataIndex.html).
 pub type DataIndexCons<Label, DType, DI, Tail> = FieldPayloadCons<Label, DType, DI, Tail>;
 
+/// Trait for finding the associated [DataIndexCons](type.DataIndexCons.html) (cons-list of fields)
+/// in a type given labels in a labels list.
 pub trait AssocDataIndexCons<Labels> {
+    /// Type of associated data index cons-list.
     type Output;
+    /// Returns the associated `DataIndexCons`.
     fn assoc_data(&self) -> Self::Output;
 }
 impl<Frames> AssocDataIndexCons<Nil> for Frames {
@@ -364,6 +425,8 @@ where
     }
 }
 
+/// Type alias for finding the [DataIndexCons](type.DataIndexCons.html) within the frames `Frames`
+/// associated with labels `Labels`.
 pub type AssocDataIndexConsOf<Labels, Frames> = <Frames as AssocDataIndexCons<Labels>>::Output;
 
 const MAX_DISP_ROWS: usize = 1000;
@@ -434,6 +497,7 @@ macro_rules! impl_addcell_is_impl {
 impl_addcell_is_impl![String f64 f32 u64 u32 i64 i32 bool];
 
 impl<Labels, Frames> DataView<Labels, Frames> {
+    /// Construct a new `DataView` with the label `CurrLabel` relabeled with the label `NewLabel`.
     pub fn relabel<CurrLabel, NewLabel>(
         self,
     ) -> DataView<<Labels as Relabel<CurrLabel, NewLabel>>::Output, Frames>
@@ -447,7 +511,9 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     }
 }
 
+/// Trait for relabeling the label `TargetLabel` with `NewLabel`.
 pub trait Relabel<TargetLabel, NewLabel> {
+    /// The output type after relabeling `TargetLabel` to `NewLabel`.
     type Output;
 }
 
@@ -465,7 +531,11 @@ where
     >>::Output;
 }
 
+/// Helper trait for relabeling. Used by [Relabel](trait.Relabel.html). `TargetLabel` is the label
+/// to change, `NewLabel` is the desired label to change to, and `Match` is whether or not
+/// `TargetLabel` matches the head label in this type.
 pub trait RelabelMatch<TargetLabel, NewLabel, Match> {
+    /// The output type after relabeling `TargetLabel` to `NewLabel`.
     type Output;
 }
 // TargetLabel == Label, replace with NewLabel
@@ -490,8 +560,17 @@ where
     >;
 }
 
+/// Trait for merging the data from two [DataView](struct.DataView.html)s into one new `DataView`.
+/// The two `DataView`s should have the same number of rows, and the resultant `DataView` is one
+/// with all the fields of both of the two original `DataView`s.
+///
+/// This trait does not consume the source `DataView`s: the resultant `DataView` should contain
+/// new references to the original field data.
 pub trait ViewMerge<Other> {
+    /// Resultant `DataView` type.
     type Output;
+    /// Merge this `DataView` with another `DataView`. Can fail if, for example, the `DataView`s
+    /// do not have the same number of rows.
     fn merge(&self, right: &Other) -> error::Result<Self::Output>;
 }
 impl<Labels, Frames, RLabels, RFrames> ViewMerge<DataView<RLabels, RFrames>>
@@ -557,7 +636,9 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     }
 }
 
+/// Trait for updating the permutation of all data storage in a type.
 pub trait UpdatePermutation {
+    /// Update the permutation with the providing indices.
     fn update_permutation(&mut self, _order: &[usize]) {}
 }
 impl UpdatePermutation for Nil {}
@@ -577,14 +658,13 @@ impl<Labels, Frames> DataView<Labels, Frames>
 where
     Frames: UpdatePermutation,
 {
-    /// Sorts this `DataView` by the provided label. Returns the permutation (list of indices in
-    /// sorted order) of values in field identified by `ident`.
+    /// Sorts this `DataView` by the provided label. This sort is stable -- it preserves the
+    /// original order of equal elements. Returns the permutation (list of indices in
+    /// sorted order) of values in field identified by `Label`.
     ///
     /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
     /// values at the beginning of the order (considered to be of 'lesser' value than existing
     /// values).
-    ///
-    /// Fails if the field is not found in this `DataView`.
     pub fn sort_by_label<Label>(&mut self) -> Vec<usize>
     where
         Self: SelectFieldByLabel<Label>,
@@ -597,6 +677,13 @@ where
         sorted
     }
 
+    /// Sorts this `DataView` by the provided label. This sort is unstable -- it does not
+    /// necessarily preserve the original order of equal elements, but may be faster. Returns the
+    /// permutation (list of indices in sorted order) of values in field identified by `Label`.
+    ///
+    /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
+    /// values at the beginning of the order (considered to be of 'lesser' value than existing
+    /// values).
     pub fn sort_unstable_by_label<Label>(&mut self) -> Vec<usize>
     where
         Self: SelectFieldByLabel<Label>,
@@ -609,6 +696,13 @@ where
         sorted
     }
 
+    /// Sorts this `DataView` by the provided label using a specific comparator. This sort is
+    /// stable -- it preserves the original order of equal elements. Returns the permutation (list
+    /// of indices in sorted order) of values in field identified by `Label`.
+    ///
+    /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
+    /// values at the beginning of the order (considered to be of 'lesser' value than existing
+    /// values).
     pub fn sort_by_label_comparator<Label, F>(&mut self, compare: F) -> Vec<usize>
     where
         Self: SelectFieldByLabel<Label>,
@@ -621,6 +715,14 @@ where
         sorted
     }
 
+    /// Sorts this `DataView` by the provided label using a specific comparator. This sort is
+    /// unstable -- it does not necessarily preserve the original order of equal elements, but may
+    /// be faster. Returns the permutation (list of indices in sorted order) of values in field
+    /// identified by `Label`.
+    ///
+    /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
+    /// values at the beginning of the order (considered to be of 'lesser' value than existing
+    /// values).
     pub fn sort_unstable_by_label_comparator<Label, F>(&mut self, compare: F) -> Vec<usize>
     where
         Self: SelectFieldByLabel<Label>,
@@ -633,6 +735,12 @@ where
         sorted
     }
 
+    /// Filters this `DataView` by `predicate` (a function mapping from `Value<&T>` to `bool` where
+    /// `T` is the type of the field with label `Label`). Mutates this `DataView` so only those
+    /// rows where values within the field with label `Label` matching `prediate` remain.
+    ///
+    /// Returns the indices of the values that matched `predicate` in the oringal `DataView` (before
+    /// filtering).
     pub fn filter<Label, P>(&mut self, predicate: P) -> Vec<usize>
     where
         Self: SelectFieldByLabel<Label>,
@@ -644,9 +752,15 @@ where
     }
 }
 
+/// Trait for finding a cons-list of fields (implementing
+/// [DataIndex](../access/trait.DataIndex.html)) from frames list `Frames` using the `LabelList`
+/// list of labels. `LabelList` should consist of labels that exist within `Self` (this trait is
+/// implemented by label lookup lists).
 pub trait FieldList<LabelList, Frames> {
+    /// Resultant cons-list of fields.
     type Output;
 
+    /// Returns the cons-list of fields from the frames list `frames`.
     fn field_list(frames: &Frames) -> Self::Output;
 }
 
@@ -672,9 +786,13 @@ where
     }
 }
 
+/// Helper trait for ([FieldList](trait.FieldList.html)). `IsMember` is whether or not the head of
+/// `Self` is a member of the list `LabelList`.
 pub trait FieldListPred<LabelList, Frames, IsMember> {
+    /// The output field list.
     type Output;
 
+    /// Returns the cons-list of fields from `frames`.
     fn field_list_pred(frames: &Frames) -> Self::Output;
 }
 
@@ -712,6 +830,7 @@ where
     }
 }
 
+/// A struct representing a single record across the fields in the field list `Fields`.
 #[derive(Debug, Clone)]
 pub struct Record<'a, Fields> {
     // a field cons-list (returned from FieldList trait method)
@@ -728,7 +847,10 @@ impl<'a, Fields> Record<'a, Fields> {
     }
 }
 
+/// Trait for computing the hash of a single index (record) within a list of data fields.
 pub trait HashIndex {
+    /// Compute the hash of the values within this list of data fields with the index `idx`,
+    /// updating the hash state.
     fn hash_index<H>(&self, idx: usize, state: &mut H)
     where
         H: Hasher;
@@ -781,7 +903,9 @@ where
     }
 }
 
+/// Trait for computing equality of a single index (record) within a list of data fields.
 pub trait PartialEqIndex {
+    /// Returns equality of the values within this list of data fields with the index `idx`.
     fn eq_index(&self, other: &Self, idx: usize) -> bool;
 }
 
@@ -847,6 +971,8 @@ where
 }
 
 impl<Labels, Frames> DataView<Labels, Frames> {
+    /// Returns a cons-list of fields (implementing [DataIndex](../access/trait.DataIndex.html))
+    /// that match the labels in `LabelList`.
     pub fn field_list<LabelList>(&self) -> <Labels as FieldList<LabelList, Frames>>::Output
     where
         Labels: FieldList<LabelList, Frames>,
@@ -854,6 +980,9 @@ impl<Labels, Frames> DataView<Labels, Frames> {
         <Labels as FieldList<LabelList, Frames>>::field_list(&self.frames)
     }
 
+    // TODO: need to add a bit more description are to what 'unique' means in this context
+    /// Computes the unique values of fields in labeled with labels in `LabelList`. Returns the
+    /// indices of exemplar rows, one index for each unique value.
     pub fn unique_indices<LabelList>(&self) -> Vec<usize>
     where
         Labels: FieldList<LabelList, Frames>,
@@ -873,6 +1002,9 @@ impl<Labels, Frames> DataView<Labels, Frames> {
         indices
     }
 
+    // TODO: need to add a bit more description are to what 'unique' means in this context
+    /// Computes the unique values of fields in labeled with labels in `LabelList`. Returns a new
+    /// `DataView` with those specific sets of values.
     pub fn unique_values<LabelList>(
         &self,
     ) -> DataView<
@@ -911,8 +1043,11 @@ where
     }
 }
 
+/// Trait for serializing a single field in a view. Used for serializing a
+/// [DataView](struct.DataView.html).
 #[cfg(feature = "serialize")]
 pub trait SerializeViewField<Frames> {
+    /// Serialize this single field using data from `frames`, and adding to map `SerializeMap`.
     fn serialize_view_field<M>(frames: &Frames, map: M) -> Result<M::Ok, M::Error>
     where
         M: SerializeMap;

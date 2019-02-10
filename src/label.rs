@@ -911,6 +911,10 @@ macro_rules! next_label {
     };
 }
 
+/// Create a [LabelCons](type.LabelCons.html) cons-list based on a list of provided labels.
+///
+/// # Example
+/// `let subdv3 = dv.v::<Labels![emp_table::EmpId, dept_table::DeptId, emp_table::EmpName]>();`
 #[macro_export]
 macro_rules! Labels {
     (@labels()) => { $crate::cons::Nil };
