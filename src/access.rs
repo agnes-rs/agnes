@@ -437,7 +437,7 @@ pub fn sort_f64_values(left: Value<&f64>, right: Value<&f64>) -> Ordering {
     }
 }
 
-//// Trait providing method to provide an index permutation of values that match a predicate.
+/// Trait providing method to provide an index permutation of values that match a predicate.
 pub trait FilterPerm<P> {
     /// Returns the permutation indices of this field which match the specified `predicate`.
     fn filter_perm(&self, predicate: P) -> Vec<usize>;
