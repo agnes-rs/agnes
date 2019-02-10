@@ -33,12 +33,14 @@ where
     Fields: AssocStorage,
     DataStore<Fields>: NRows,
 {
+    /// Returns length (number of rows) in this `DataFrame`.
     pub fn len(&self) -> usize {
         match self.permutation.len() {
             Some(len) => len,
             None => self.store.nrows(),
         }
     }
+    /// Returns whether or not this `DataFrame` is empty.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -73,17 +75,6 @@ where
         Rc::make_mut(&mut self.permutation).update(new_permutation);
     }
 }
-
-pub trait FrameFields {
-    type FrameFields;
-}
-impl<Fields> FrameFields for DataFrame<Fields>
-where
-    Fields: AssocStorage,
-{
-    type FrameFields = Fields;
-}
-pub type FrameFieldsOf<T> = <T as FrameFields>::FrameFields;
 
 impl<Fields> From<DataStore<Fields>> for DataFrame<Fields>
 where
