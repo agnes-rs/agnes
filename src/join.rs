@@ -1,3 +1,10 @@
+/*!
+Traits, methods and types to handle joining or merging two
+[DataView](../view/struct.DataView.html)s. Joining `DataView`s involves finding the rows in each
+`DataView` which satisfy a specific join predicate (much like a `JOIN` in a SQL database). Merging
+refers to combining fields of two `DataView` objects with the same number of rows into a single
+`DataView`.
+*/
 use std::cmp::Ordering;
 use std::marker::PhantomData;
 use std::ops::Add;
@@ -11,7 +18,9 @@ use select::*;
 use store::{AssocStorage, DataStore, IntoView, PushBackClonedFromValueIter};
 use view::*;
 
+/// A trait for applying a frame index offset `O`.
 pub trait Offset<O> {
+    /// Result after applying offset `O`.
     type Output;
 }
 impl<O, U> Offset<O> for U
@@ -21,7 +30,10 @@ where
     type Output = <U as Add<O>>::Output;
 }
 
+/// Trait for updating the frame index of a [FrameLookupCons](../view/type.FrameLookupCons.html)
+/// by a specified [Offset](trait.Offset.html).
 pub trait UpdateFrameIndexMarker<FrameIndexOffset> {
+    /// `FrameLookupCons` after updating frame index by `FrameIndexOffset`.
     type Output;
 }
 impl<FrameIndexOffset> UpdateFrameIndexMarker<FrameIndexOffset> for Nil {
@@ -42,9 +54,13 @@ where
     >;
 }
 
+/// Trait for updating the frame index of a [ViewFrameCons](../view/type.ViewFrameCons.html)
+/// by a specified [Offset](trait.Offset.html).
 pub trait UpdateFrameIndex<FrameIndexOffset> {
+    /// `ViewFrameCons` after updating frame index by `FrameIndexOffset`.
     type Output;
 
+    /// Update `ViewFrameCons` with frame index offset.
     fn update_frame_label(self) -> Self::Output;
 }
 impl<FrameIndexOffset> UpdateFrameIndex<FrameIndexOffset> for Nil {
@@ -76,10 +92,16 @@ where
     }
 }
 
+/// Trait for merging another [DataView](../view/struct.DataView.html) with `self`. `RLabels` and
+/// `RFrames` are the type parameters of the `DataView` being merged onto `self`.
 pub trait Merge<RLabels, RFrames> {
+    /// Resulting `Labels` type parameter of merged `DataView` object.
     type OutLabels;
+    /// Resulting `Frames` type parameterof merged `DataView` object.
     type OutFrames;
 
+    /// Merge this object with `right`, producing a new `DataView` with `OutLabels` and `OutFrames`
+    /// type parameters.
     fn merge(
         &self,
         right: &DataView<RLabels, RFrames>,
@@ -115,21 +137,31 @@ where
     }
 }
 
+/// Marker struct describing a join. `LLabel` is the label of the left-hand side, `RLabel` is the
+/// label of the right-hand side, and `Predicate` represents the type of join predicate (equal join,
+/// greater-than join, less-than join, etc.).
 pub struct Join<LLabel, RLabel, Predicate> {
     _marker: PhantomData<(LLabel, RLabel, Predicate)>,
 }
 
-// Predicates
+/// A trait for describing the course of action in a sort-merge join. This trait differentiates
+/// the actions that are taken during a sort-merge join based on the implementing type.
 pub trait Predicate {
+    /// Returns `true` if predicate is an 'equality' predicate (`==`, `<=`, `=>`)
     fn is_equality_pred() -> bool;
+    /// Returns `true` if predicate is a 'greater than' predicate (`>=`, `>`)
     fn is_greater_than_pred() -> bool;
+    /// Returns `true` if predciate is a 'less than' predicate (`<=`, `<`)
     fn is_less_than_pred() -> bool;
-    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredResults
+    /// Applies this predicate to the two values and returns the desired action.
+    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredAction
     where
         T: PartialEq + Ord;
+    /// Advances indices appropriately as required for this predicate type.
     fn advance(left_idx: &mut usize, right_idx: &mut usize, left_end: usize, right_end: usize);
 }
 
+/// Predicate for equality joins (left == right).
 pub struct Equal;
 impl Predicate for Equal {
     fn is_equality_pred() -> bool {
@@ -141,17 +173,17 @@ impl Predicate for Equal {
     fn is_less_than_pred() -> bool {
         false
     }
-    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredResults
+    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredAction
     where
         T: PartialEq + Ord,
     {
         match left.cmp(&right) {
-            Ordering::Less => PredResults::Advance {
+            Ordering::Less => PredAction::Advance {
                 left: true,
                 right: false,
             },
-            Ordering::Equal => PredResults::Add,
-            Ordering::Greater => PredResults::Advance {
+            Ordering::Equal => PredAction::Add,
+            Ordering::Greater => PredAction::Advance {
                 left: false,
                 right: true,
             },
@@ -163,6 +195,7 @@ impl Predicate for Equal {
     }
 }
 
+/// Predicate for less-than joins (left < right).
 pub struct LessThan;
 impl Predicate for LessThan {
     fn is_equality_pred() -> bool {
@@ -174,13 +207,13 @@ impl Predicate for LessThan {
     fn is_less_than_pred() -> bool {
         true
     }
-    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredResults
+    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredAction
     where
         T: PartialEq + Ord,
     {
         match left.cmp(&right) {
-            Ordering::Less => PredResults::Add,
-            _ => PredResults::Advance {
+            Ordering::Less => PredAction::Add,
+            _ => PredAction::Advance {
                 left: false,
                 right: true,
             },
@@ -191,6 +224,7 @@ impl Predicate for LessThan {
     }
 }
 
+/// Predicate for less-than-equal joins (left <= right).
 pub struct LessThanEqual;
 impl Predicate for LessThanEqual {
     fn is_equality_pred() -> bool {
@@ -202,16 +236,16 @@ impl Predicate for LessThanEqual {
     fn is_less_than_pred() -> bool {
         true
     }
-    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredResults
+    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredAction
     where
         T: PartialEq + Ord,
     {
         match left.cmp(&right) {
-            Ordering::Greater => PredResults::Advance {
+            Ordering::Greater => PredAction::Advance {
                 left: false,
                 right: true,
             },
-            _ => PredResults::Add,
+            _ => PredAction::Add,
         }
     }
     fn advance(left_idx: &mut usize, _right_idx: &mut usize, left_end: usize, _right_end: usize) {
@@ -219,6 +253,7 @@ impl Predicate for LessThanEqual {
     }
 }
 
+/// Predicate for greater-than joins (left > right).
 pub struct GreaterThan;
 impl Predicate for GreaterThan {
     fn is_equality_pred() -> bool {
@@ -230,13 +265,13 @@ impl Predicate for GreaterThan {
     fn is_less_than_pred() -> bool {
         false
     }
-    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredResults
+    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredAction
     where
         T: PartialEq + Ord,
     {
         match left.cmp(&right) {
-            Ordering::Greater => PredResults::Add,
-            _ => PredResults::Advance {
+            Ordering::Greater => PredAction::Add,
+            _ => PredAction::Advance {
                 left: true,
                 right: false,
             },
@@ -247,6 +282,7 @@ impl Predicate for GreaterThan {
     }
 }
 
+/// Predicate for greater-than-equal joins (left >= right).
 pub struct GreaterThanEqual;
 impl Predicate for GreaterThanEqual {
     fn is_equality_pred() -> bool {
@@ -258,16 +294,16 @@ impl Predicate for GreaterThanEqual {
     fn is_less_than_pred() -> bool {
         false
     }
-    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredResults
+    fn apply<T>(left: Value<&T>, right: Value<&T>) -> PredAction
     where
         T: PartialEq + Ord,
     {
         match left.cmp(&right) {
-            Ordering::Less => PredResults::Advance {
+            Ordering::Less => PredAction::Advance {
                 left: true,
                 right: false,
             },
-            _ => PredResults::Add,
+            _ => PredAction::Add,
         }
     }
     fn advance(_left_idx: &mut usize, right_idx: &mut usize, _left_end: usize, right_end: usize) {
@@ -275,15 +311,28 @@ impl Predicate for GreaterThanEqual {
     }
 }
 
+/// The action to take in the sort-merge join algorithm as a result of the selected predicate.
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum PredResults {
+pub enum PredAction {
+    /// Predicate matches, add current indices to join result.
     Add,
-    Advance { left: bool, right: bool },
+    /// Advance indices (either left, right, or both).
+    Advance {
+        /// Advance left index.
+        left: bool,
+        /// Advance right index.
+        right: bool,
+    },
 }
 
+/// A trait for merging a [DataView](../view/struct.DataView.html) with the current object using
+/// specified `Join`. `RLabels` and `RFrames` are the `Labels` and `Frames` type parameters for the
+/// `DataView` to merge.
 pub trait SortMergeJoin<RLabels, RFrames, Join> {
+    /// Resultant data structure after join.
     type Output;
 
+    /// Join this object with a `DataView`, using the join details specified with `Join`.
     fn join(&self, right: &DataView<RLabels, RFrames>) -> Self::Output;
 }
 impl<LLabels, LFrames, RLabels, RFrames, LLabel, RLabel, Pred>
@@ -355,7 +404,7 @@ where
         let right_val = rval(right_idx);
         let pred_results = Pred::apply(left_val, right_val);
         match pred_results {
-            PredResults::Add => {
+            PredAction::Add => {
                 // figure out subsets
                 let mut left_subset = vec![left_idx];
                 let mut right_subset = vec![right_idx];
@@ -406,7 +455,7 @@ where
                 // advance as needed
                 Pred::advance(&mut left_idx, &mut right_idx, left_eq_end, right_eq_end);
             }
-            PredResults::Advance { left, right } => {
+            PredAction::Advance { left, right } => {
                 if left {
                     left_idx += 1;
                 }
@@ -419,9 +468,14 @@ where
     (left_merge_indices, right_merge_indices)
 }
 
+/// A trait for augmenting type `Store` (a [DataStore](../store/struct.DataStore.html)) with
+/// fields from this [ViewFrameCons](../view/type.ViewFrameCons.html) as labeled by `Labels`.
 pub trait JoinIntoStore<Labels, Store> {
+    /// The output type after augmenting `Store`.
     type Output;
 
+    /// Augments `store` with data from `self` (as specified with `Labels`), using the provided
+    /// permutation indices.
     fn join_into_store(&self, store: Store, permutation: &[usize]) -> Result<Self::Output>;
 }
 impl<Frames, Store> JoinIntoStore<Nil, Store> for Frames {
