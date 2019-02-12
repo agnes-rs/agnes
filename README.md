@@ -1,7 +1,7 @@
 # Agnes
 
 [![Build Status](https://travis-ci.org/jblondin/agnes.svg?branch=master)](https://travis-ci.org/jblondin/agnes)
-[![Documentation](https://docs.rs/agnes/badge.svg)](https://docs.rs/agnes)
+[![Documentation](https://docs.rs/agnes/badge.svg)](https://docs.rs/agnes) [![Join the chat at https://gitter.im/agnes_rs/community](https://badges.gitter.im/agnes_rs/community.svg)](https://gitter.im/agnes_rs/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 Agnes is a data wrangling crate for Rust. It is intended to provide utilities for data loading, aggregation, annotation, and visualization.
 
