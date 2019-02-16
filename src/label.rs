@@ -848,7 +848,7 @@ macro_rules! namespace {
         $($rest:tt)*
     ) => {
         namespace![@construct($vis $tbl_name)($prev_tbl)($($body)*)];
-        namespace![@continue(typenum::Add1<$prev_tbl>) $($rest)*];
+        namespace![@continue($crate::typenum::Add1<$prev_tbl>) $($rest)*];
     };
 
     // entry point
@@ -858,8 +858,8 @@ macro_rules! namespace {
         }
         $($rest:tt)*
     ) => {
-        namespace![@construct($vis $tbl_name)(typenum::U0)($($body)*)];
-        namespace![@continue(typenum::Add1<typenum::U0>) $($rest)*];
+        namespace![@construct($vis $tbl_name)($crate::typenum::U0)($($body)*)];
+        namespace![@continue($crate::typenum::Add1<$crate::typenum::U0>) $($rest)*];
     }
 }
 
@@ -891,7 +891,7 @@ macro_rules! first_label {
         first_label![$label, $tbl, $dtype, stringify![$label]];
     };
     ($label:ident, $tbl:ty, $dtype:ty, $name:expr) => {
-        nat_label![$label, $tbl, typenum::consts::U0, $dtype, $name];
+        nat_label![$label, $tbl, $crate::typenum::consts::U0, $dtype, $name];
     };
 }
 
@@ -904,7 +904,7 @@ macro_rules! next_label {
         nat_label![
             $label,
             $crate::label::TblOf<$prev>,
-            typenum::Add1<$crate::label::NatOf<$prev>>,
+            $crate::typenum::Add1<$crate::label::NatOf<$prev>>,
             $dtype,
             $name
         ];

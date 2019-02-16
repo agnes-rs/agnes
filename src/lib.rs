@@ -22,7 +22,8 @@ extern crate tokio_io;
 extern crate prettytable;
 extern crate csv_sniffer;
 extern crate tempfile;
-extern crate typenum;
+// re-export typenum (since it's used in exported macros)
+pub extern crate typenum;
 
 #[cfg(test)]
 extern crate rand;
