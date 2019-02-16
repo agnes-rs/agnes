@@ -14,8 +14,8 @@ use field::Value;
 use fieldlist::{FieldDesignator, FieldPayloadCons, FieldSpec, SpecCons};
 use label::{TypedValue, Valued};
 use source::decode::decode;
-use source::file::{FileLocator, LocalFileReader};
-use store::{AssocStorage, DataStore, PushFrontFromValueIter};
+use source::file::{FileLocator, LocalFileReader, Uri};
+use store::{AssocFrameLookup, AssocStorage, DataStore, IntoView, PushFrontFromValueIter};
 
 /// CSV Data source. Contains location of data file, and computes CSV metadata. Can be turned into
 /// `CsvReader` object.
@@ -226,4 +226,36 @@ where
     {
         self.csv_src_spec.build(&self.src)
     }
+}
+
+/// Utility function for loading a CSV file from a [FileLocator](../file/enum.FileLocator.html).
+///
+/// Fails if unable to find or read file at location specified.
+pub fn load_csv<L: Into<FileLocator>, Spec>(
+    loc: L,
+    spec: Spec,
+) -> Result<<DataStore<<Spec::CsvSrcSpec as BuildDStore>::OutputFields> as IntoView>::Output>
+where
+    Spec: IntoCsvSrcSpec,
+    Spec::CsvSrcSpec: BuildDStore + Debug,
+    <Spec::CsvSrcSpec as BuildDStore>::OutputFields: AssocFrameLookup,
+{
+    let source = CsvSource::new(loc)?;
+    let mut csv_reader = CsvReader::new(&source, spec)?;
+    Ok(csv_reader.read()?.into_view())
+}
+
+/// Utility function for loading a CSV file from a URI string.
+///
+/// Fails if unable to parse `uri`, or if unable to find or read file at the location specified.
+pub fn load_csv_from_uri<Spec>(
+    uri: &str,
+    spec: Spec,
+) -> Result<<DataStore<<Spec::CsvSrcSpec as BuildDStore>::OutputFields> as IntoView>::Output>
+where
+    Spec: IntoCsvSrcSpec,
+    Spec::CsvSrcSpec: BuildDStore + Debug,
+    <Spec::CsvSrcSpec as BuildDStore>::OutputFields: AssocFrameLookup,
+{
+    load_csv(Uri::from_uri(uri.parse::<hyper::Uri>()?)?, spec)
 }

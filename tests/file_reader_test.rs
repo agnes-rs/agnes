@@ -8,7 +8,7 @@ extern crate tokio_io;
 use std::io::Read;
 use std::path::Path;
 
-use agnes::source::file::{FileLocator, FileReader};
+use agnes::source::file::{FileLocator, FileReader, Uri};
 
 #[test]
 fn load_test_sync() {
@@ -18,7 +18,7 @@ fn load_test_sync() {
                                1cf9c8b531e11b9bc16f56b88be4c615dc103eb1/sample1.csv"
             .parse()
             .unwrap();
-        let mut reader = FileReader::new(&FileLocator::Https(uri)).unwrap();
+        let mut reader = FileReader::new(&FileLocator::Web(Uri::from_uri(uri).unwrap())).unwrap();
 
         let mut buf = String::new();
         reader.read_to_string(&mut buf).unwrap();

@@ -165,8 +165,10 @@ impl Error for AgnesError {
 /// Error that stems from some sort of network-related exception.
 #[derive(Debug)]
 pub enum NetError {
-    /// Unsupported URI scheme (http, ftp, ssh, etc.)
-    UnsupportedUriScheme(Option<String>),
+    /// Invalid URI
+    Uri(hyper::http::uri::InvalidUri),
+    /// Unsupported Scheme
+    UnsupportedScheme(Option<hyper::http::uri::Scheme>),
     /// Secure layer error.
     Tls(native_tls::Error),
     /// HTTP error.
@@ -177,11 +179,11 @@ pub enum NetError {
 impl fmt::Display for NetError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            NetError::UnsupportedUriScheme(ref t) => write!(
-                f,
-                "Unsupported scheme: {}",
-                t.clone().unwrap_or_else(|| "none".to_string())
-            ),
+            NetError::Uri(ref err) => write!(f, "Invalid URI error: {}", err),
+            NetError::UnsupportedScheme(ref scheme) => match scheme {
+                Some(scheme) => write!(f, "Unsupported scheme: {}", scheme),
+                None => write!(f, "Missing scheme"),
+            },
             NetError::Tls(ref err) => write!(f, "TLS error: {}", err),
             NetError::Http(ref err) => write!(f, "HTTP error: {}", err),
             NetError::LocalFile => write!(f, "unable to access local file over HTTP"),
@@ -191,10 +193,8 @@ impl fmt::Display for NetError {
 impl Error for NetError {
     fn description(&self) -> &str {
         match *self {
-            NetError::UnsupportedUriScheme(ref scheme) => match *scheme {
-                Some(ref s) => &s[..],
-                None => "none",
-            },
+            NetError::Uri(ref err) => err.description(),
+            NetError::UnsupportedScheme(_) => "unsupported / missing scheme",
             NetError::Tls(ref err) => err.description(),
             NetError::Http(ref err) => err.description(),
             NetError::LocalFile => "unable to read local file over HTTP",
@@ -203,7 +203,8 @@ impl Error for NetError {
 
     fn cause(&self) -> Option<&dyn Error> {
         match *self {
-            NetError::UnsupportedUriScheme(_) => None,
+            NetError::Uri(ref err) => Some(err),
+            NetError::UnsupportedScheme(_) => None,
             NetError::Tls(ref err) => Some(err),
             NetError::Http(ref err) => Some(err),
             NetError::LocalFile => None,
@@ -329,6 +330,17 @@ impl From<hyper::Error> for NetError {
 }
 impl From<hyper::Error> for AgnesError {
     fn from(err: hyper::Error) -> AgnesError {
+        AgnesError::Net(err.into())
+    }
+}
+
+impl From<hyper::http::uri::InvalidUri> for NetError {
+    fn from(err: hyper::http::uri::InvalidUri) -> NetError {
+        NetError::Uri(err)
+    }
+}
+impl From<hyper::http::uri::InvalidUri> for AgnesError {
+    fn from(err: hyper::http::uri::InvalidUri) -> AgnesError {
         AgnesError::Net(err.into())
     }
 }

@@ -16,13 +16,44 @@ use tokio_core::reactor::Core;
 
 use error::*;
 
+/// A wrapper around hyper's Uri struct, enforcing a HTTP or HTTPs scheme.
+#[derive(Debug, Clone)]
+pub struct Uri {
+    uri: hyper::Uri,
+    scheme: UriScheme,
+}
+
+#[derive(Debug, Clone)]
+enum UriScheme {
+    Http,
+    Https,
+}
+
+impl Uri {
+    /// Wrap a `hyper::Uri` with a local `Uri` struct. Fails if scheme is not specified or not
+    /// HTTP / HTTPS.
+    pub fn from_uri(orig: hyper::Uri) -> Result<Uri> {
+        if orig.scheme_part() == Some(&hyper::http::uri::Scheme::HTTP) {
+            Ok(Uri {
+                uri: orig,
+                scheme: UriScheme::Http,
+            })
+        } else if orig.scheme_part() == Some(&hyper::http::uri::Scheme::HTTPS) {
+            Ok(Uri {
+                uri: orig,
+                scheme: UriScheme::Https,
+            })
+        } else {
+            Err(NetError::UnsupportedScheme(orig.scheme_part().cloned()).into())
+        }
+    }
+}
+
 /// Identifiers / paths to find file locations.
 #[derive(Debug, Clone)]
 pub enum FileLocator {
     /// A web-based location (URI)
-    Http(hyper::Uri),
-    /// A secured web-based location (URI)
-    Https(hyper::Uri),
+    Web(Uri),
     /// A local file
     File(PathBuf),
 }
@@ -42,9 +73,9 @@ impl From<PathBuf> for FileLocator {
         FileLocator::File(orig)
     }
 }
-impl From<hyper::Uri> for FileLocator {
-    fn from(orig: hyper::Uri) -> FileLocator {
-        FileLocator::Http(orig)
+impl From<Uri> for FileLocator {
+    fn from(orig: Uri) -> FileLocator {
+        FileLocator::Web(orig)
     }
 }
 
@@ -66,7 +97,7 @@ impl LocalFileReader {
                 let file = File::open(path)?;
                 Ok(LocalFileReader { file })
             }
-            FileLocator::Http(_) | FileLocator::Https(_) => {
+            FileLocator::Web(_) => {
                 // download file up to nbytes and save it to temp directory
                 const BUF_SIZE: usize = 1 << 13; // 8 * 1024
                 let mut buffer = vec![0; BUF_SIZE];
@@ -119,7 +150,10 @@ impl HttpFileReader {
     pub fn new(loc: &FileLocator) -> Result<HttpFileReader> {
         match *loc {
             FileLocator::File(_) => Err(NetError::LocalFile.into()),
-            FileLocator::Http(ref uri) => {
+            FileLocator::Web(Uri {
+                ref uri,
+                scheme: UriScheme::Http,
+            }) => {
                 // establish event loop
                 let mut core = Core::new()?;
                 // configure a HTTP client to retrieve the file
@@ -131,10 +165,13 @@ impl HttpFileReader {
                     response_state: State::Awaiting(resp),
                 })
             }
-            FileLocator::Https(ref uri) => {
+            FileLocator::Web(Uri {
+                ref uri,
+                scheme: UriScheme::Https,
+            }) => {
                 // establish event loop
                 let mut core = Core::new()?;
-                // configure a HTTP client to retrieve the file
+                // configure a HTTPS client to retrieve the file
                 let client = Client::builder().build::<_, hyper::Body>(HttpsConnector::new(4)?);
                 // set up a future to retrieve the file.
                 let resp = client.get(uri.clone());
@@ -250,9 +287,7 @@ impl FileReader {
     pub fn new(loc: &FileLocator) -> Result<FileReader> {
         match *loc {
             FileLocator::File(_) => Ok(FileReader::Local(LocalFileReader::new(loc)?)),
-            FileLocator::Http(_) | FileLocator::Https(_) => {
-                Ok(FileReader::Http(Box::new(HttpFileReader::new(loc)?)))
-            }
+            FileLocator::Web(_) => Ok(FileReader::Http(Box::new(HttpFileReader::new(loc)?))),
         }
     }
 }
