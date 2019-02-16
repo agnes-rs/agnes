@@ -29,11 +29,12 @@ pub struct CsvSource {
 
 impl CsvSource {
     /// Create a new `CsvSource` object with provided file location. This constructor will analyze
-    /// (sniff) the file to detect its metadata (delimiter, quote character, field types, etc.)
+    /// (sniff) the file to detect its metadata (delimiter, quote character, preamble, etc.)
     ///
     /// # Error
     /// Fails if unable to open the file at the provided location, or if CSV analysis fails.
-    pub fn new(loc: FileLocator) -> Result<CsvSource> {
+    pub fn new<L: Into<FileLocator>>(loc: L) -> Result<CsvSource> {
+        let loc = loc.into();
         //TODO: make sample size configurable?
         let mut file_reader = LocalFileReader::new(&loc)?;
         let metadata = Sniffer::new().sniff_reader(&mut file_reader)?;

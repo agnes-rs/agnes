@@ -1122,7 +1122,7 @@ mod tests {
             .join("data") // navigate into data directory
             .join(filename); // navigate to target file
 
-        let source = CsvSource::new(data_filepath.into()).unwrap();
+        let source = CsvSource::new(data_filepath).unwrap();
         (
             CsvReader::new(&source, spec).unwrap(),
             source.metadata().clone(),
