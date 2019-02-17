@@ -3,3 +3,4 @@
 Cargo.lock
 /src/experimental/
 /exp_examples/
+**/.~lock*
