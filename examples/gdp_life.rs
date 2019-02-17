@@ -1,46 +1,23 @@
 #[macro_use]
 extern crate agnes;
-extern crate csv_sniffer;
-
-use std::fmt::Debug;
-use std::path::Path;
 
 use agnes::field::Value;
 use agnes::join::{Equal, Join};
-use agnes::source::csv::{CsvReader, CsvSource, IntoCsvSrcSpec};
-
-fn load_csv_file<Spec>(filename: &str, spec: Spec) -> CsvReader<Spec::CsvSrcSpec>
-where
-    Spec: IntoCsvSrcSpec,
-    <Spec as IntoCsvSrcSpec>::CsvSrcSpec: Debug,
-{
-    let data_filepath = Path::new(file!()) // start as this file
-        .parent()
-        .unwrap() // navigate up to examples directory
-        .join("data") // navigate into data directory
-        .join(filename); // navigate to target file
-
-    let source = CsvSource::new(data_filepath).unwrap();
-    CsvReader::new(&source, spec).unwrap()
-}
+use agnes::source::csv::load_csv_from_uri;
 
 namespace![
-    pub table gdp {
+    table gdp {
         CountryName: String,
         CountryCode: String,
-        Year1983: f64,
+        Gdp2015: f64,
     }
-    pub table gdp_metadata {
+    table gdp_metadata {
         CountryCode: String,
         Region: String,
     }
     pub table life {
         CountryCode: String,
-        Year1983: f64,
-    }
-    pub table gdp_life {
-        Gdp1983: f64,
-        Life1983: f64,
+        Life2015: f64,
     }
 ];
 
@@ -48,53 +25,41 @@ fn main() {
     let gdp_spec = spec![
         fieldname gdp::CountryName = "Country Name";
         fieldname gdp::CountryCode = "Country Code";
-        fieldname gdp::Year1983 = "1983";
+        fieldname gdp::Gdp2015 = "2015";
     ];
 
-    let mut csv_rdr = load_csv_file("gdp/API_NY.GDP.MKTP.CD_DS2_en_csv_v2.csv", gdp_spec);
-    let dv_gdp = csv_rdr.read().unwrap().into_view().v::<Labels![
-        gdp::CountryName,
-        gdp::CountryCode,
-        gdp::Year1983
-    ]>();
+    // load the GDP CSV file from a URI
+    let gdp_view =
+        load_csv_from_uri("https://wee.codes/data/gdp.csv", gdp_spec).expect("CSV loading failed.");
 
     let gdp_metadata_spec = spec![
         fieldindex gdp_metadata::CountryCode = 0usize;
         fieldname gdp_metadata::Region = "Region";
     ];
 
-    let mut csv_rdr = load_csv_file(
-        "gdp/Metadata_Country_API_NY.GDP.MKTP.CD_DS2_en_csv_v2.csv",
-        gdp_metadata_spec,
-    );
-    let mut dv_gdp_metadata = csv_rdr
-        .read()
-        .unwrap()
-        .into_view()
-        .v::<Labels![gdp_metadata::CountryCode, gdp_metadata::Region]>();
+    // load the metadata CSV file from a URI
+    let mut gdp_metadata_view =
+        load_csv_from_uri("https://wee.codes/data/gdp_metadata.csv", gdp_metadata_spec)
+            .expect("CSV loading failed.");
 
-    dv_gdp_metadata.filter::<gdp_metadata::Region, _>(|val: Value<&String>| val.exists());
+    gdp_metadata_view.filter::<gdp_metadata::Region, _>(|val: Value<&String>| val.exists());
 
-    let dv_gdp_joined = dv_gdp
-        .join::<Join<gdp::CountryCode, gdp_metadata::CountryCode, Equal>, _, _>(&dv_gdp_metadata);
+    let gdp_country_view = gdp_view
+        .join::<Join<gdp::CountryCode, gdp_metadata::CountryCode, Equal>, _, _>(&gdp_metadata_view);
 
     let life_spec = spec![
         fieldname life::CountryCode = "Country Code";
-        fieldname life::Year1983 = "1983";
+        fieldname life::Life2015 = "2015";
     ];
-    let mut csv_rdr = load_csv_file("life/API_SP.DYN.LE00.IN_DS2_en_csv_v2.csv", life_spec);
-    let dv_life = csv_rdr
-        .read()
-        .unwrap()
-        .into_view()
-        .v::<Labels![life::CountryCode, life::Year1983]>();
 
-    let dv_gdp_joined = dv_gdp_joined.relabel::<gdp::Year1983, gdp_life::Gdp1983>();
-    let dv_life = dv_life.relabel::<life::Year1983, gdp_life::Life1983>();
+    let life_view = load_csv_from_uri("https://wee.codes/data/life.csv", life_spec)
+        .expect("CSV loading failed.");
 
-    let dv = dv_gdp_joined
-        .join::<Join<gdp::CountryCode, life::CountryCode, Equal>, _, _>(&dv_life)
-        .v::<Labels![gdp::CountryName, gdp_life::Gdp1983, gdp_life::Life1983]>();
+    let gdp_life_view =
+        gdp_country_view.join::<Join<gdp::CountryCode, life::CountryCode, Equal>, _, _>(&life_view);
 
-    println!("{}", dv);
+    let gdp_life_view =
+        gdp_life_view.v::<Labels![gdp::CountryName, gdp::Gdp2015, life::Life2015]>();
+
+    println!("{}", gdp_life_view);
 }
