@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use csv_sniffer::metadata::Metadata;
@@ -258,4 +259,20 @@ where
     <Spec::CsvSrcSpec as BuildDStore>::OutputFields: AssocFrameLookup,
 {
     load_csv(Uri::from_uri(uri.parse::<hyper::Uri>()?)?, spec)
+}
+
+/// Utility function for loading a CSV file from a local file path.
+///
+/// Fails if unable to find or read file at the location specified.
+pub fn load_csv_from_path<P, Spec>(
+    path: P,
+    spec: Spec,
+) -> Result<<DataStore<<Spec::CsvSrcSpec as BuildDStore>::OutputFields> as IntoView>::Output>
+where
+    P: Into<PathBuf>,
+    Spec: IntoCsvSrcSpec,
+    Spec::CsvSrcSpec: BuildDStore + Debug,
+    <Spec::CsvSrcSpec as BuildDStore>::OutputFields: AssocFrameLookup,
+{
+    load_csv(path.into(), spec)
 }
