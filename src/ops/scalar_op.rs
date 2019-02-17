@@ -170,6 +170,8 @@ impl_scalar_ops_nongeneric_prims![f64 f32 u64 u32 usize i64 i32 isize];
 mod tests {
     use access::DataIndex;
     use field::FieldData;
+    use frame::Framed;
+    use store::DataRef;
 
     macro_rules! test_op {
         ($data:expr, $op:tt, $term:expr, $expected:expr) => {{
@@ -178,6 +180,14 @@ mod tests {
             assert_eq![(&data          $op  $term.clone()  ).to_vec(), $expected];
             assert_eq![( data.clone()  $op &$term          ).to_vec(), $expected];
             assert_eq![( data.clone()  $op  $term.clone()  ).to_vec(), $expected];
+
+            let data: DataRef<_> = data.into();
+            assert_eq![(&data          $op &$term          ).to_vec(), $expected];
+            assert_eq![(&data          $op  $term.clone()  ).to_vec(), $expected];
+
+            let data: Framed<_> = data.into();
+            assert_eq![(&data          $op &$term          ).to_vec(), $expected];
+            assert_eq![(&data          $op  $term.clone()  ).to_vec(), $expected];
         }};
     }
     macro_rules! test_oprev {
@@ -187,6 +197,14 @@ mod tests {
             assert_eq![(&$term          $op data.clone()   ).to_vec(), $expected];
             assert_eq![( $term.clone()  $op &data          ).to_vec(), $expected];
             assert_eq![( $term.clone()  $op data.clone()   ).to_vec(), $expected];
+
+            let data: DataRef<_> = data.into();
+            assert_eq![(&$term          $op &data          ).to_vec(), $expected];
+            assert_eq![( $term.clone()  $op &data          ).to_vec(), $expected];
+
+            let data: Framed<_> = data.into();
+            assert_eq![(&$term          $op &data          ).to_vec(), $expected];
+            assert_eq![( $term.clone()  $op &data          ).to_vec(), $expected];
         }};
     }
     macro_rules! test_commutative {
