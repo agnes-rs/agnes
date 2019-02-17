@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate agnes;
 extern crate csv_sniffer;
-extern crate typenum;
 
 use std::fmt::Debug;
 use std::path::Path;
