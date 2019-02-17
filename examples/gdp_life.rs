@@ -52,6 +52,7 @@ fn main() {
         fieldname life::Life2015 = "2015";
     ];
 
+    // load the life expectancy file from a URI
     let life_view = load_csv_from_uri("https://wee.codes/data/life.csv", life_spec)
         .expect("CSV loading failed.");
 
