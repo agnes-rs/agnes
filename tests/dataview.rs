@@ -6,7 +6,7 @@ extern crate serde_json;
 
 mod common;
 
-namespace![
+tablespace![
     pub table gdp {
         CountryName: String,
         CountryCode: String,
@@ -41,7 +41,7 @@ fn subview() {
     assert_eq!(subdv.nfields(), 2);
 }
 
-namespace![
+tablespace![
     pub table sample {
         State: String,
         Value1: u64,

@@ -5,7 +5,7 @@ use agnes::field::Value;
 use agnes::join::{Equal, Join};
 use agnes::source::csv::load_csv_from_uri;
 
-namespace![
+tablespace![
     table gdp {
         CountryName: String,
         CountryCode: String,

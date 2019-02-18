@@ -5,7 +5,7 @@ extern crate typenum;
 
 mod common;
 
-namespace![
+tablespace![
     pub table gdp {
         CountryName: String,
         CountryCode: String,

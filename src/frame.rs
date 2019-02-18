@@ -216,7 +216,7 @@ mod tests {
         )
     }
 
-    namespace![
+    tablespace![
         pub table gdp {
             CountryName: String,
             CountryCode: String,

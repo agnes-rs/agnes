@@ -41,7 +41,7 @@ impl<Label, DType, Tail> SpecCons<Label, DType, Tail> {
 //TODO: finish this example
 /// Macro for creating a [SpecCons](type.SpecCons.html) cons-list to specify how to extract fields
 /// from a data source. Correlates labels (defined using the
-/// [namespace](../label/macro.namespace.html) macro) to field / column names or indices in a
+/// [tablespace](../label/macro.tablespace.html) macro) to field / column names or indices in a
 /// data source.
 ///
 /// # Examples

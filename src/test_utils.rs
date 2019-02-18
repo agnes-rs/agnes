@@ -6,7 +6,7 @@ use field::FieldData;
 use store::DataStore;
 use view::ViewMerge;
 
-namespace![
+tablespace![
     pub table emp_table {
         EmpId: u64,
         DeptId: u64,

@@ -7,7 +7,7 @@ extern crate csv_sniffer;
 
 mod common;
 
-namespace![
+tablespace![
     pub table sample {
         State: String,
         Value1: u64,

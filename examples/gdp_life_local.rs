@@ -23,7 +23,7 @@ where
     CsvReader::new(&source, spec).unwrap()
 }
 
-namespace![
+tablespace![
     pub table gdp {
         CountryName: String,
         CountryCode: String,

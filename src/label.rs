@@ -767,12 +767,12 @@ where
 }
 
 //TODO: finish this example
-/// Declares a set of data tables that all occupy the same namespace (i.e. can be merged or
+/// Declares a set of data tables that all occupy the same tablespace (i.e. can be merged or
 /// joined together). This macro should be used at the beginning of any `agnes`-using code, to
 /// declare the various source and constructed table field labels.
 ///
 /// # Example
-/// namespace![
+/// tablespace![
 ///     pub table employee {
 ///         EmpId: u64,
 ///         DeptId: u64,
@@ -784,7 +784,7 @@ where
 ///     }
 /// ]
 #[macro_export]
-macro_rules! namespace {
+macro_rules! tablespace {
     (@fields() -> ($($out:tt)*)) => {
         declare_fields![Table; $($out)*];
         /// [FieldCons](../fieldlist/type.FieldCons.html) cons-list of fields in this table.
@@ -801,7 +801,7 @@ macro_rules! namespace {
         ->
         ($($out:tt)*)
     ) => {
-        namespace![@fields
+        tablespace![@fields
             ($($rest)*)
             ->
             ($($out)* $field_name: $field_ty = $str_name,)
@@ -812,7 +812,7 @@ macro_rules! namespace {
         ->
         ($($out:tt)*)
     ) => {
-        namespace![@fields
+        tablespace![@fields
             ($($rest)*)
             ->
             ($($out)* $field_name: $field_ty = stringify![$field_name],)
@@ -820,7 +820,7 @@ macro_rules! namespace {
     };
 
     (@body($($body:tt)*)) => {
-        namespace![@fields(,$($body)*) -> ()];
+        tablespace![@fields(,$($body)*) -> ()];
     };
 
     (@construct($vis:vis $tbl_name:ident)($nat:ty)($($body:tt)*)) => {
@@ -831,7 +831,7 @@ macro_rules! namespace {
             */
 
             /// Type-level backing natural number for this table. This type connects all tables
-            /// within a namespace together.
+            /// within a tablespace together.
             pub type Table = $nat;
 
             /// Type alias for a [DataStore](../store/struct.DataStore.html) composed of the fields
@@ -845,7 +845,7 @@ macro_rules! namespace {
             /// Extra type alias for `View`.
             pub type DataView = View;
 
-            namespace![@body($($body)*)];
+            tablespace![@body($($body)*)];
         }
     };
 
@@ -859,8 +859,8 @@ macro_rules! namespace {
         }
         $($rest:tt)*
     ) => {
-        namespace![@construct($vis $tbl_name)($prev_tbl)($($body)*)];
-        namespace![@continue($crate::typenum::Add1<$prev_tbl>) $($rest)*];
+        tablespace![@construct($vis $tbl_name)($prev_tbl)($($body)*)];
+        tablespace![@continue($crate::typenum::Add1<$prev_tbl>) $($rest)*];
     };
 
     // entry point
@@ -870,8 +870,8 @@ macro_rules! namespace {
         }
         $($rest:tt)*
     ) => {
-        namespace![@construct($vis $tbl_name)($crate::typenum::U0)($($body)*)];
-        namespace![@continue($crate::typenum::Add1<$crate::typenum::U0>) $($rest)*];
+        tablespace![@construct($vis $tbl_name)($crate::typenum::U0)($($body)*)];
+        tablespace![@continue($crate::typenum::Add1<$crate::typenum::U0>) $($rest)*];
     }
 }
 

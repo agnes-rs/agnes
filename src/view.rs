@@ -569,8 +569,8 @@ where
 pub trait ViewMerge<Other> {
     /// Resultant `DataView` type.
     type Output;
-    /// Merge this `DataView` with another `DataView`. Can fail if, for example, the `DataView`s
-    /// do not have the same number of rows.
+    /// Merge this `DataView` with another `DataView`. Can fail if the `DataView`s do not have the
+    /// same number of rows.
     fn merge(&self, right: &Other) -> error::Result<Self::Output>;
 }
 impl<Labels, Frames, RLabels, RFrames> ViewMerge<DataView<RLabels, RFrames>>
@@ -1129,7 +1129,7 @@ mod tests {
         )
     }
 
-    namespace![
+    tablespace![
         pub table gdp {
             CountryName: String,
             CountryCode: String,
@@ -1215,7 +1215,7 @@ mod tests {
         };
     }
     #[cfg(feature = "test-utils")]
-    namespace![
+    tablespace![
         @continue(typenum::Add1<::test_utils::emp_table::Table>)
 
         pub table emp_table2 {
@@ -1233,7 +1233,7 @@ mod tests {
         // would NOT COMPILE due to field name collision (see compile-fail/merge_errors test)
         // let merge_result = dv1.merge(&sample_emp_table().into_view());
 
-        // if we use a sample employee table generated in another namespace, however:
+        // if we use a sample employee table generated in another tablespace, however:
         let ds2: emp_table2::Store = sample_emp_table![];
         let dv2 = ds2.into_view();
 
@@ -1252,7 +1252,7 @@ mod tests {
     }
 
     #[cfg(feature = "test-utils")]
-    namespace![
+    tablespace![
         @continue(typenum::Add1<::view::tests::emp_table2::Table>)
 
         pub table emp_table3 {
@@ -1293,7 +1293,7 @@ mod tests {
     }
 
     #[cfg(feature = "test-utils")]
-    namespace![
+    tablespace![
         @continue(typenum::Add1<::view::tests::emp_table3::Table>)
 
         pub table emp_table4 {

@@ -228,7 +228,7 @@ mod tests {
     use select::FieldSelect;
     use store::DataStore;
 
-    namespace![
+    tablespace![
         pub table foo {
             Foo: f64
         }

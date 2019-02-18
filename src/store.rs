@@ -731,7 +731,7 @@ mod tests {
         )
     }
 
-    namespace![
+    tablespace![
         pub table gdp {
             CountryName: String,
             CountryCode: String,
@@ -743,8 +743,8 @@ mod tests {
     fn storage_create() {
         let ds = DataStore::<Nil>::empty();
 
-        type TestNamespace = U0;
-        first_label![Test, TestNamespace, u64];
+        type TestTablespace = U0;
+        first_label![Test, TestTablespace, u64];
 
         let data = vec![
             Value::Exists(4u64),

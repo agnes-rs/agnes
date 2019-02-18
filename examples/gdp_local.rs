@@ -3,7 +3,7 @@ extern crate agnes;
 
 use agnes::source::csv::load_csv_from_path;
 
-namespace![
+tablespace![
     table gdp {
         CountryName: String,
         CountryCode: String,
