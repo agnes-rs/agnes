@@ -138,7 +138,7 @@ where
 
     /// Returns an iterator applying function `F` to the stored values (where they exist) to this
     /// `DataIterator`. Equivalent to `iter.map(|x: Value<&'a T>| x.map(f))`.
-    pub fn map_values<B, F>(self, f: F) -> ValueMap<'a, T, Self, F>
+    pub fn map_existing<B, F>(self, f: F) -> ValueMap<'a, T, Self, F>
     where
         Self: Iterator<Item = Value<&'a T>>,
         F: FnMut(&'a T) -> B,
@@ -538,7 +538,7 @@ mod tests {
         ]);
         let new_field_data = field_data
             .iter()
-            .map_values(|u| *u as i64)
+            .map_existing(|u| *u as i64)
             .collect::<FieldData<i64>>();
         assert_eq!(
             new_field_data.to_value_vec(),
