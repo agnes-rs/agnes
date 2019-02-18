@@ -160,6 +160,18 @@ impl<L, V> From<V> for Labeled<L, V> {
     }
 }
 
+/// Trait for labeling an arbitrary value (to construct a [Labeled](struct.Labeled.html)) object).
+pub trait IntoLabeled: Sized {
+    /// Label this object with label `Label`.
+    fn label<Label>(self) -> Labeled<Label, Self>;
+}
+
+impl<T> IntoLabeled for T {
+    fn label<Label>(self) -> Labeled<Label, T> {
+        Labeled::from(self)
+    }
+}
+
 /// Container for storing the underlying data type `D` (of a field, for example) for a value of
 /// type `V`.
 #[derive(Debug, Clone)]

@@ -674,6 +674,27 @@ where
     }
 }
 
+/// Type alias for a [DataStore](struct.DataStore.html) constructed with a single field.
+pub type SingleFieldStore<Label, T> =
+    DataStore<<DataStore<Nil> as PushFrontFromValueIter<Label, T>>::OutputFields>;
+
+impl<Label, I, T> IntoView for Labeled<Label, I>
+where
+    I: Iterator<Item = Value<T>>,
+    DataStore<Nil>: PushFrontFromValueIter<Label, T>,
+    <DataStore<Nil> as PushFrontFromValueIter<Label, T>>::OutputFields: AssocFrameLookup,
+{
+    type Labels = <SingleFieldStore<Label, T> as IntoView>::Labels;
+    type Frames = <SingleFieldStore<Label, T> as IntoView>::Frames;
+    type Output = <SingleFieldStore<Label, T> as IntoView>::Output;
+
+    fn into_view(self) -> Self::Output {
+        DataStore::<Nil>::empty()
+            .push_front_from_value_iter(self.value)
+            .into_view()
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
