@@ -10,10 +10,18 @@ autoexamples = true
 
 [features]
 default = ["serialize", "test-utils"]
+# serlization feature (on by default) -- provides data serialization functionality
 serialize = []
+# test utility feature (on by default) -- provides various test utilitys
 test-utils = []
+# compilation tests feature (off by default) -- uses compiletest_rs package to check for expected
+# compilation failures
 compiletests = []
+# experimental features (off by default) -- adds experimental features (undocumented, unttested)
 experimental = []
+# arithmetic operation features (off by default) -- adds arithmetic operation implementations
+# (scalar-field and field-field) for field data structures
+ops = []
 
 [[example]]
 name = "exp_gdp_life"

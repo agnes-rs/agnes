@@ -31,8 +31,6 @@ extern crate rand;
 extern crate serde_json;
 
 #[macro_use]
-pub mod ops;
-#[macro_use]
 pub mod cons;
 #[macro_use]
 pub mod partial;
@@ -53,6 +51,8 @@ pub mod access;
 pub mod error;
 pub mod frame;
 pub mod join;
+#[cfg(feature = "ops")]
+pub mod ops;
 pub mod select;
 pub mod source;
 pub mod stats;
