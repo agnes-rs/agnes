@@ -33,10 +33,6 @@ pub enum AgnesError {
     FieldNotFound(FieldIdent),
     /// Dimension mismatch
     DimensionMismatch(String),
-    /// Field collision(s) when merging
-    FieldCollision(Vec<FieldIdent>),
-    /// Type mismatch
-    TypeMismatch(String),
     /// Indexing error
     IndexError {
         /// out-of-bounds index
@@ -50,22 +46,6 @@ pub enum AgnesError {
         expected: usize,
         /// Observed length
         actual: usize,
-    },
-    /// Incompatible types error
-    IncompatibleTypes {
-        /// Expected / supported type
-        expected: String,
-        /// Type specified by caller
-        actual: String,
-    },
-    /// Invalid operation
-    InvalidOp(String),
-    /// Invalid type for an operation
-    InvalidType {
-        /// Type specified
-        ty: String,
-        /// Operation attempted
-        operation: String,
     },
 }
 
@@ -86,11 +66,6 @@ impl fmt::Display for AgnesError {
                 write!(f, "Missing source field: {}", ident.to_string())
             }
             AgnesError::DimensionMismatch(ref s) => write!(f, "Dimension mismatch: {}", s),
-            AgnesError::FieldCollision(ref s) => {
-                let fields = s.iter().map(|fi| fi.to_string()).collect::<Vec<_>>();
-                write!(f, "Field collision: {}", &fields[..].join(", "))
-            }
-            AgnesError::TypeMismatch(ref s) => write!(f, "Type collision: {}", s),
             AgnesError::IndexError { index, len } => write!(
                 f,
                 "Index error: index {} exceeds data length {}",
@@ -101,19 +76,6 @@ impl fmt::Display for AgnesError {
                 "Length mismatch: expected {} does not match actual {}",
                 expected, actual
             ),
-            AgnesError::IncompatibleTypes {
-                ref expected,
-                ref actual,
-            } => write!(
-                f,
-                "Incompatible types: expected {}, found {}",
-                expected, actual
-            ),
-            AgnesError::InvalidOp(ref s) => write!(f, "Invalid operation: {}", s),
-            AgnesError::InvalidType {
-                ref ty,
-                ref operation,
-            } => write!(f, "Invalid type {} for operation: {}", ty, operation),
         }
     }
 }
@@ -130,13 +92,8 @@ impl Error for AgnesError {
             AgnesError::Decode(ref s) => s,
             AgnesError::FieldNotFound(_) => "missing source field",
             AgnesError::DimensionMismatch(ref s) => s,
-            AgnesError::FieldCollision(_) => "field collision",
-            AgnesError::TypeMismatch(ref s) => s,
             AgnesError::IndexError { .. } => "indexing error",
             AgnesError::LengthMismatch { .. } => "length mismatch",
-            AgnesError::IncompatibleTypes { .. } => "incompatible types",
-            AgnesError::InvalidOp(ref s) => s,
-            AgnesError::InvalidType { .. } => "invalid type for operation",
         }
     }
 
@@ -151,13 +108,8 @@ impl Error for AgnesError {
             AgnesError::Decode(_) => None,
             AgnesError::FieldNotFound(_) => None,
             AgnesError::DimensionMismatch(_) => None,
-            AgnesError::FieldCollision(_) => None,
-            AgnesError::TypeMismatch(_) => None,
             AgnesError::IndexError { .. } => None,
             AgnesError::LengthMismatch { .. } => None,
-            AgnesError::IncompatibleTypes { .. } => None,
-            AgnesError::InvalidOp(_) => None,
-            AgnesError::InvalidType { .. } => None,
         }
     }
 }
