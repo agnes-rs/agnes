@@ -92,7 +92,7 @@ fn main() {
 ## Changes and Future Plans
 
 * [Future Work](FUTURE.md)
-* [Changelog](releases)
+* [Changelog](https://github.com/jblondin/agnes/releases)
 
 ## License
 
