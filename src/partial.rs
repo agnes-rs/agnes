@@ -1,11 +1,12 @@
 /*!
 Framework for partial function handling (where some functionality is implemented for some but not
-all of the data types of fields in a [DataView](../struct.DataView.html)). A specific piece of
-partially-implemented functionality consists of a [Func](trait.Func.html) implementation for all
-data types where the functionality exists, a [FuncDefault](trait.FuncDefault.html) implementation
-for data types where the functionality doesn't exist, and [IsImplemented](trait.IsImplemented.html)
-specification for all data types denoting whether to use the available `Func` or the fall-back
-`FuncDefault`.
+all of the data types of fields in a data structure).
+
+A specific piece of partially-implemented functionality consists of a [Func](trait.Func.html)
+implementation for all data types where the functionality exists, a
+[FuncDefault](trait.FuncDefault.html) implementation for data types where the functionality doesn't
+exist, and [IsImplemented](trait.IsImplemented.html) specification for all data types denoting
+whether to use the available `Func` or the fall-back `FuncDefault`.
 
 This module should be unnecessary once
 [trait specialization](https://github.com/rust-lang/rust/issues/31844) is finalized.

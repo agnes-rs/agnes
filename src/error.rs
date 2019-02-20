@@ -1,4 +1,4 @@
-//! General error struct for entire package, as well as helpful conversions.
+//! General error struct and helpful conversions.
 
 use std;
 use std::error::Error;

@@ -120,7 +120,7 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     }
 }
 
-/// A trait for deriving the [LabelCons](../type.LabelCons.html) of field indices of a type.
+/// A trait for deriving the [LabelCons](../label/type.LabelCons.html) of field indices of a type.
 pub trait FrameIndexList {
     /// The associated `LabelCons` for this type.
     type LabelList;
@@ -144,7 +144,7 @@ where
 {
     /// Generate a new subview of this `DataView`. LabelList is a
     /// [LabelCons](../label/type.LabelCons.html) list of labels, which can be generated using the
-    /// [Labels](../label/macro.Labels.html) macro.
+    /// [Labels](../macro.Labels.html) macro.
     pub fn v<LabelList>(
         &self,
     ) -> DataView<

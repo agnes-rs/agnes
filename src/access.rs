@@ -1,6 +1,8 @@
 /*!
-Traits for accessing data within agnes data structures. Includes `DataIndex` for index-based access
-and `DataIterator` for iterator access.
+Traits for accessing data within agnes data structures.
+
+The [DataIndex](trait.DataIndex.html) trait provides index-based access to a field's data as well
+as method which generates a [DataIterator](struct.DataIterator.html).
 */
 use std::cmp::Ordering;
 use std::fmt::Debug;

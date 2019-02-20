@@ -38,23 +38,45 @@ impl<Label, DType, Tail> SpecCons<Label, DType, Tail> {
     }
 }
 
-//TODO: finish this example
-/// Macro for creating a [SpecCons](type.SpecCons.html) cons-list to specify how to extract fields
-/// from a data source. Correlates labels (defined using the
-/// [tablespace](../label/macro.tablespace.html) macro) to field / column names or indices in a
-/// data source.
+/// Macro for creating a source specification structure used to specify how to
+/// extract fields from a data source. It correlates labels (defined using the
+/// [tablespace](macro.tablespace.html) macro) to field / column names or indices in a
+/// data source. This source specification structure is implemented as a
+//  [SpecCons](fieldlist/type.SpecCons.html) cons-list.
+///
+/// The `spec` macro syntax is a list of `fieldname` or `fieldindex` declarations that connect
+/// field labels to either column titles or column indices (starting from 0), respectively.
 ///
 /// # Examples
-/// let gdp_spec = spec![
-///     fieldname gdp::CountryName = "Country Name";
-///     fieldname gdp::CountryCode = "Country Code";
-///     fieldname gdp::Year1983 = "1983";
+///
+/// This example defines a source specification with three column names: the `CountryName` field
+/// label will take data from the column with the "Country Name" header, the `CountryCode` field
+/// label will take data from the 0th (first) column, and the `Gdp2015` field label will take
+/// data from the column with the "2015" label.
+///
+/// This example also shows the usage of the [tablespace](macro.tablespace.html) macro; see that
+/// macro's documentation for its syntax and an example.
+///
+/// ```
+/// # #[macro_use] extern crate agnes;
+///
+/// tablespace![
+///     table gdp {
+///         CountryName: String,
+///         CountryCode: String,
+///         Gdp2015: f64,
+///     }
 /// ];
 ///
-/// let gdp_metadata_spec = spec![
-///     fieldindex gdp_metadata::CountryCode = 0usize;
-///     fieldname gdp_metadata::Region = "Region";
-/// ];
+/// fn main() {
+///     let gdp_spec = spec![
+///         fieldname gdp::CountryName = "Country Name";
+///         fieldname gdp::CountryCode = 0usize;
+///         fieldname gdp::Gdp2015 = "2015";
+///     ];
+///     // ...
+/// }
+/// ```
 #[macro_export]
 macro_rules! spec {
     () => {{

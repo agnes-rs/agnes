@@ -136,6 +136,7 @@ where
     type Len = Add1<<Tail as Len>::Len>;
 }
 
+/// Utility macro to determine the length of a cons-list.
 #[macro_export]
 macro_rules! length {
     ($list:ty) => {

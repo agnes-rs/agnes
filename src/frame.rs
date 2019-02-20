@@ -1,6 +1,8 @@
 /*!
-Structs and implementation for Frame-level data structure. A `DataFrame` is a reference to an
-underlying data store, along with record-based filtering and sorting details.
+Structs and implementation for row-selecting data structure.
+
+A [DataFrame](struct.DataFrame.html) is a reference to an underlying
+[DataStore](../store/struct.DataStore.html) along with record-based filtering and sorting details.
 */
 
 #[cfg(feature = "serialize")]

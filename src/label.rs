@@ -1,5 +1,5 @@
 /*!
-Traits, structs, and type aliases for handling labels and associated logic.
+Traits, structs, and type aliases for handling cons-list element labels and associated logic.
 */
 use std::collections::VecDeque;
 use std::marker::PhantomData;
@@ -766,33 +766,54 @@ where
     }
 }
 
-//TODO: finish this example
 /// Declares a set of data tables that all occupy the same tablespace (i.e. can be merged or
 /// joined together). This macro should be used at the beginning of any `agnes`-using code, to
 /// declare the various source and constructed table field labels.
 ///
+/// Calls to this macro should include one or more `table` declarations, which have similar syntax
+/// to `struct` definitions: a comma-separated list of `name: type` pairs for each member of the
+/// table. Like a `struct` declaration, a `table` declaration can be preceded by a visibility
+/// modifier (e.g. `pub`).
+///
+/// This macro will declare a module for each table specified (with the appropriate visibility) and
+/// constructs label marker structs for each field specified within the table.
+///
 /// # Example
+///
+/// The following macro call declares two tables: `employee` and `department`. The `employee` table
+/// has three fields (two `u64` fields and one `String` field), and the `department` table has
+/// two fields (one `u64` field and one `String` field).
+///
+///
+/// ```
+/// # #[macro_use] extern crate agnes;
 /// tablespace![
 ///     pub table employee {
 ///         EmpId: u64,
 ///         DeptId: u64,
 ///         EmpName: String,
 ///     }
-///     pub table department {
+///     table department {
 ///         DeptId: u64,
 ///         DeptName: String,
 ///     }
-/// ]
+/// ];
+/// # fn main() {}
+/// ```
+/// As a result of calling this macro, two modules will be declared --`namespace` and `department`
+/// -- as well as the specified field labels within those modules. In this case, the `employee`
+/// table will have public visibility, while the `department` table will be private. After declaring
+/// these modules, you can refer to the labels as you would a normal type; e.g., `employee::EmpId`.
 #[macro_export]
 macro_rules! tablespace {
     (@fields() -> ($($out:tt)*)) => {
         declare_fields![Table; $($out)*];
-        /// [FieldCons](../fieldlist/type.FieldCons.html) cons-list of fields in this table.
+        /// `FieldCons` cons-list of fields in this table.
         pub type Fields = Fields![$($out)*];
     };
     (@fields(,) -> ($($out:tt)*)) => {
         declare_fields![Table; $($out)*];
-        /// [FieldCons](../fieldlist/type.FieldCons.html) cons-list of fields in this table.
+        /// `FieldCons` cons-list of fields in this table.
         pub type Fields = Fields![$($out)*];
     };
 
@@ -834,12 +855,12 @@ macro_rules! tablespace {
             /// within a tablespace together.
             pub type Table = $nat;
 
-            /// Type alias for a [DataStore](../store/struct.DataStore.html) composed of the fields
+            /// Type alias for a `DataStore` composed of the fields
             /// referenced in this table definition.
             pub type Store = $crate::store::DataStore<Fields>;
             /// Extra type alias for `Store`.
             pub type DataStore = Store;
-            /// Type alias for a [DataView](../view/struct.DataView.html) composed of the fields
+            /// Type alias for a `DataView` composed of the fields
             /// referenced in this table definition.
             pub type View = <Store as $crate::store::IntoView>::Output;
             /// Extra type alias for `View`.
@@ -875,6 +896,9 @@ macro_rules! tablespace {
     }
 }
 
+/// Macro for defining a single label and its backing natural. Used by
+/// [next_label](macro.next_label.html) and
+/// [first_label](macro.first_label.html) macros.
 #[macro_export]
 macro_rules! nat_label {
     ($label:ident, $tbl:ty, $nat:ty, $dtype:ty, $name:expr) => {
@@ -897,6 +921,8 @@ macro_rules! nat_label {
     };
 }
 
+/// Macro for handling creation of the first label in a table. Used by
+/// [declare_fields](macro.declare_fields.html).
 #[macro_export]
 macro_rules! first_label {
     ($label:ident, $tbl:ty, $dtype:ty) => {
@@ -907,6 +933,8 @@ macro_rules! first_label {
     };
 }
 
+/// Macro for handling creation of the subsequent (non-initial) labels in a table. Used by
+/// [declare_fields](macro.declare_fields.html).
 #[macro_export]
 macro_rules! next_label {
     ($label:ident, $prev:ident, $dtype:ty) => {
@@ -923,10 +951,13 @@ macro_rules! next_label {
     };
 }
 
-/// Create a [LabelCons](type.LabelCons.html) cons-list based on a list of provided labels.
+/// Create a [LabelCons](label/type.LabelCons.html) cons-list based on a list of provided labels.
+/// Used to specify a list of field labels to operate over.
 ///
 /// # Example
-/// `let subdv3 = dv.v::<Labels![emp_table::EmpId, dept_table::DeptId, emp_table::EmpName]>();`
+/// ```ignore
+/// let subdv = dv.v::<Labels![emp_table::EmpId, dept_table::DeptId, emp_table::EmpName]>();
+/// ```
 #[macro_export]
 macro_rules! Labels {
     (@labels()) => { $crate::cons::Nil };
@@ -948,6 +979,7 @@ macro_rules! Labels {
     }
 }
 
+/// Macro for declaring field labels. Used by [tablespace](macro.tablespace.html) macro.
 #[macro_export]
 macro_rules! declare_fields
 {
@@ -1003,6 +1035,8 @@ macro_rules! declare_fields
     };
 }
 
+/// Create a [FieldCons](fieldlist/type.FieldCons.html) cons-list based on a list of provided labels
+/// and data types. Used by [tablespace](macro.tablespace.html) macro.
 #[macro_export]
 macro_rules! Fields {
     (@fields()) => { $crate::cons::Nil };

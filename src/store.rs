@@ -1,6 +1,7 @@
 /*!
-Data storage struct and implementation. [DataStore](struct.DataStore.html) represents and stores the
-data from a single data source.
+Data storage struct and implementation.
+
+[DataStore](struct.DataStore.html) represents and stores the data from a single data source.
 */
 use std::fmt::Debug;
 use std::ops::Deref;

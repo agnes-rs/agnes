@@ -48,11 +48,11 @@ impl CsvSource {
     }
 }
 
-/// Type alias for [Cons](../cons/struct.Cons.html)-list specifying label, data type, and source
+/// Type alias for [Cons](../../cons/struct.Cons.html)-list specifying label, data type, and source
 /// index information of a CSV data source.
 pub type CsvSrcSpecCons<Label, DType, Tail> = FieldPayloadCons<Label, DType, usize, Tail>;
 
-/// A trait for converting an object into a [CsvSrcSpecCons](../type.CsvSrcSpecCons.html).
+/// A trait for converting an object into a [CsvSrcSpecCons](type.CsvSrcSpecCons.html).
 pub trait IntoCsvSrcSpec {
     /// Resultant `CsvSrcSpecCons` object.
     type CsvSrcSpec;
@@ -110,7 +110,7 @@ where
     }
 }
 
-/// A trait for building a [DataStore](../store/struct.DataStore.html) from a
+/// A trait for building a [DataStore](../../store/struct.DataStore.html) from a
 /// [CsvSrcSpecCons](type.CsvSrcSpecCons.html).
 pub trait BuildDStore {
     /// `Fields` type parameter of the resultant `DataStore`.

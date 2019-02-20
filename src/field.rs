@@ -1,6 +1,9 @@
 /*!
-Data structures and implementations for field information, both identifiers (`FieldIdent`) and
-field storage (`FieldData` and `Value`).
+Data structures and implementations for fields.FieldData
+
+Provides the [FieldData](struct.FieldData.html) struct for holding the data of a field and handling
+missing values, and the [Value](enum.Value.html) enum which provides the `Option`-like interface for
+interacting with individual values.
 */
 
 use std::cmp::Ordering;
@@ -76,6 +79,8 @@ impl<'a, T: Clone> Value<&'a T> {
     }
 }
 
+/// Small utility macro to construct a [Value](field/enum.Value.html) enum with a reference to
+/// an existing value. Typically only used for tests.
 #[macro_export]
 macro_rules! valref {
     ($value:expr) => {
@@ -196,7 +201,7 @@ where
 
 /// Data vector containing the data for a single field (column) of an agnes data store.
 ///
-/// To support NA types, a `FieldData` object is internally represented as a `Vec` of the
+/// To support NA / missing values, a `FieldData` object is internally represented as a `Vec` of the
 /// appropriate type, along with a bit mask to denote valid / missing values.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct FieldData<T> {
@@ -214,7 +219,7 @@ impl<T> FieldData<T> {
         self.len() == 0
     }
     /// Get the value at the given index. Returns `None` if `index` is out of bounds, or a
-    /// [Value](enum.Value.html) enum.
+    /// `Value` enum.
     pub fn get(&self, index: usize) -> Option<Value<&T>> {
         if index >= self.data.len() {
             None
@@ -416,7 +421,6 @@ where
         seq.end()
     }
 }
-
 /// Identifier for a field in the source.
 #[derive(Debug, Clone)]
 pub enum FieldIdent {

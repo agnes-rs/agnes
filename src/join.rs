@@ -1,9 +1,9 @@
 /*!
-Traits, methods and types to handle joining or merging two
-[DataView](../view/struct.DataView.html)s. Joining `DataView`s involves finding the rows in each
-`DataView` which satisfy a specific join predicate (much like a `JOIN` in a SQL database). Merging
-refers to combining fields of two `DataView` objects with the same number of rows into a single
-`DataView`.
+Traits and implementations to handle joining or merging two `DataView`s.
+
+Joining [DataView](../view/struct.DataView.html)s involves finding the rows in each `DataView` which
+satisfy a specific join predicate (much like a `JOIN` in a SQL database). Merging refers to
+combining fields of two `DataView` objects with the same number of rows into a single `DataView`.
 */
 use std::cmp::Ordering;
 use std::marker::PhantomData;

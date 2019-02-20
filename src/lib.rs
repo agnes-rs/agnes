@@ -8,35 +8,35 @@ to get started with `agnes`, click [here](https://wee.codes/agnes/guide.html).
 
 ## Primary Structures
 
-`agnes` is designed to work with labeled heterogeneously-typed tabular data -- a group of fields
-(columns) each with a label and (possibly-different) data type, where each field has the same number
+`agnes` works with heterogeneously-typed labeled tabular data -- a group of fields
+(columns) each with a label and distinct data type, where each field has the same number
 of rows.
 
 Labels in `agnes` are [unit-like](
 https://doc.rust-lang.org/book/ch05-01-defining-structs.html#unit-like-structs-without-any-fields)
-marker structs which only exist to uniquely identify, at the type level (i.e. compile time), a
-field. The [tablespace](label/macro.tablespace.html) macro exists to define these labels.
+marker structs which only exist to uniquely identify a field at the type level (i.e. compile time).
+The [tablespace](macro.tablespace.html) macro exists to define these labels.
 
 The primary data storage structure in `agnes` is the [DataStore](store/struct.DataStore.html), which
 is a list of [FieldData](field/struct.FieldData.html) objects which each contain the data for a
-single field. The `DataStore` is intended to be the single point of storage for data loaded into a
-program; furthermore, once data is added to a `DataStore` it is immutable.
+single field. A `DataStore` contains all of the data loaded from a single source into a program, and
+once data is added to a `DataStore` it is immutable.
 
 The primary data structure used by the end user of this library is the
 [DataView](view/struct.DataView.html), which references one or more
 [DataFrame](frame/struct.DataFrame.html) objects, each of which holds a reference and provides
-access to a single `DataStore`. The `DataView` struct can be considered to be a method of selecting
-fields (columns) across one or more data sources, with the `DataFrame` struct used to select the
-specific rows from those data sources (after, for example, a filtering or join operation).
+access to a single `DataStore`. The `DataView` struct provides a way  of selecting
+fields (columns) across one or more data sources, with the `DataFrame` struct providing a way to
+select specific rows from those data sources (after, for example, a filtering or join operation).
 
 The [FieldSelect](select/trait.FieldSelect.html) and
-[SelectFieldByLabel](select/trait.SelectFieldByLabel.html) traits provide methods to select a single
-field from a `DataView` to operate upon. They return a type that implements
-[DataIndex](access/trait.DataIndex.html), which provides accessor methods to the data of that field
-(an index-based method [get_datum](access/trait.DataIndex.html#method.get_datum) and an iterator
-provided by [iter](access/trait.DataIndex.html#method.iter)).
+[SelectFieldByLabel](select/trait.SelectFieldByLabel.html) traits provide methods to access a single
+field from a `DataView`. They return a type that implements
+[DataIndex](access/trait.DataIndex.html), which provides accessor methods to the data of that field:
+an index-based method [get_datum](access/trait.DataIndex.html#method.get_datum) and an iterator
+provided by [iter](access/trait.DataIndex.html#method.iter).
 
-## Design
+## Heterogenerous Lists
 
 `agnes` makes extensive use of heterogeneous [cons-lists](https://en.wikipedia.org/wiki/Cons#Lists)
 to provide data structures that can hold data of varying types (as long as the types are known to
@@ -51,7 +51,7 @@ source it references.
 
 The basic cons-list implementation can be found in the [cons](cons/index.html) module. Additional
 functionality for labeling cons-list elements and retrieving elements based on labels can be found
-in the [labels](labels/index.html) module.
+in the [label](label/index.html) module.
 
 */
 
