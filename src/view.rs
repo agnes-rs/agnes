@@ -599,6 +599,8 @@ where
 impl<Labels, Frames> DataView<Labels, Frames> {
     /// Merge this `DataView` with another `DataView` object, creating a new `DataView` with the
     /// same number of rows and all the fields from both source `DataView` objects.
+    ///
+    /// Fails if the two `DataView`s have different number of rows.
     pub fn merge<RLabels, RFrames>(
         &self,
         right: &DataView<RLabels, RFrames>,
