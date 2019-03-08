@@ -15,7 +15,7 @@ use access::DataIndex;
 use cons::*;
 use error;
 use field::{FieldData, Value};
-use fieldlist::{FieldCons, FieldPayloadCons, FieldSpec};
+use fieldlist::{FieldCons, FieldPayloadCons, FieldSchema};
 use frame::DataFrame;
 use label::*;
 use select::{FieldSelect, SelectFieldByLabel};
@@ -173,7 +173,7 @@ macro_rules! make_add_field {
     ) => {
         /// Type alias for the output of applying $push_fn to previous fields.
         pub type $pushed_alias<PrevFields, NewLabel, NewDType> =
-            <PrevFields as $push_trait<FieldSpec<NewLabel, NewDType>>>::Output;
+            <PrevFields as $push_trait<FieldSchema<NewLabel, NewDType>>>::Output;
 
         $(#[$add_trait_doc])*
         pub trait $add_trait<NewLabel, NewDType> {
@@ -187,7 +187,7 @@ macro_rules! make_add_field {
         impl<PrevFields, NewLabel, NewDType> $add_trait<NewLabel, NewDType>
             for DataStore<PrevFields>
         where
-            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            PrevFields: AssocStorage + $push_trait<FieldSchema<NewLabel, NewDType>>,
             $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
             PrevFields::Storage: $push_trait<
                 NewFieldStorage<NewLabel, NewDType>,
@@ -224,7 +224,7 @@ macro_rules! make_add_field {
         impl<PrevFields, NewLabel, NewDType> $add_valiter_trait<NewLabel, NewDType>
             for DataStore<PrevFields>
         where
-            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            PrevFields: AssocStorage + $push_trait<FieldSchema<NewLabel, NewDType>>,
             $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
             PrevFields::Storage: $push_trait<
                 NewFieldStorage<NewLabel, NewDType>,
@@ -268,7 +268,7 @@ macro_rules! make_add_field {
         impl<PrevFields, NewLabel, NewDType> $add_iter_trait<NewLabel, NewDType>
             for DataStore<PrevFields>
         where
-            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            PrevFields: AssocStorage + $push_trait<FieldSchema<NewLabel, NewDType>>,
             $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
             PrevFields::Storage: $push_trait<
                 NewFieldStorage<NewLabel, NewDType>,
@@ -313,7 +313,7 @@ macro_rules! make_add_field {
         impl<PrevFields, NewLabel, NewDType> $add_cloned_valiter_trait<NewLabel, NewDType>
             for DataStore<PrevFields>
         where
-            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            PrevFields: AssocStorage + $push_trait<FieldSchema<NewLabel, NewDType>>,
             $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
             PrevFields::Storage: $push_trait<
                 NewFieldStorage<NewLabel, NewDType>,
@@ -364,7 +364,7 @@ macro_rules! make_add_field {
         impl<PrevFields, NewLabel, NewDType> $add_cloned_iter_trait<NewLabel, NewDType>
             for DataStore<PrevFields>
         where
-            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            PrevFields: AssocStorage + $push_trait<FieldSchema<NewLabel, NewDType>>,
             $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
             PrevFields::Storage: $push_trait<
                 NewFieldStorage<NewLabel, NewDType>,
@@ -408,7 +408,7 @@ macro_rules! make_add_field {
         impl<PrevFields, NewLabel, NewDType> $add_empty_trait<NewLabel, NewDType>
             for DataStore<PrevFields>
         where
-            PrevFields: AssocStorage + $push_trait<FieldSpec<NewLabel, NewDType>>,
+            PrevFields: AssocStorage + $push_trait<FieldSchema<NewLabel, NewDType>>,
             $pushed_alias<PrevFields, NewLabel, NewDType>: AssocStorage,
             PrevFields::Storage: $push_trait<
                 NewFieldStorage<NewLabel, NewDType>,
@@ -709,12 +709,15 @@ mod tests {
     use cons::*;
     use field::Value;
     use select::FieldSelect;
-    use source::csv::{CsvReader, CsvSource, IntoCsvSrcSpec};
+    use source::csv::{CsvReader, CsvSource, IntoCsvSrcSchema};
 
-    fn load_csv_file<Spec>(filename: &str, spec: Spec) -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
+    fn load_csv_file<Schema>(
+        filename: &str,
+        spec: Schema,
+    ) -> (CsvReader<Schema::CsvSrcSchema>, Metadata)
     where
-        Spec: IntoCsvSrcSpec,
-        <Spec as IntoCsvSrcSpec>::CsvSrcSpec: Debug,
+        Schema: IntoCsvSrcSchema,
+        <Schema as IntoCsvSrcSchema>::CsvSrcSchema: Debug,
     {
         let data_filepath = Path::new(file!()) // start as this file
             .parent()
@@ -763,13 +766,13 @@ mod tests {
         assert_eq!(ds.nrows(), expected_nrows);
         assert_eq!(ds.field::<Test>().len(), expected_nrows);
 
-        let gdp_spec = spec![
+        let gdp_schema = schema![
             fieldname gdp::CountryName = "Country Name";
             fieldname gdp::CountryCode = "Country Code";
             fieldname gdp::Year1983 = "1983";
         ];
 
-        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
+        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_schema.clone());
         let ds = csv_rdr.read().unwrap();
         const EXPECTED_GDP_NROWS: usize = 264;
         assert_eq!(ds.nrows(), EXPECTED_GDP_NROWS);

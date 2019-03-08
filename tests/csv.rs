@@ -17,13 +17,13 @@ tablespace![
 fn csv_load_test() {
     use gdp::*;
 
-    let gdp_spec = spec![
+    let gdp_schema = schema![
         fieldname gdp::CountryName = "Country Name";
         fieldname gdp::CountryCode = "Country Code";
         fieldname gdp::Year1983 = "1983";
     ];
 
-    let (mut csv_rdr, metadata) = common::load_csv_file("gdp.nopreamble.csv", gdp_spec);
+    let (mut csv_rdr, metadata) = common::load_csv_file("gdp.nopreamble.csv", gdp_schema);
 
     assert_eq!(metadata.num_fields, 63);
     assert_eq!(metadata.dialect.header.num_preamble_rows, 0);
@@ -40,13 +40,13 @@ fn csv_load_test() {
 fn csv_load_test_skip() {
     use gdp::*;
 
-    let gdp_spec = spec![
+    let gdp_schema = schema![
         fieldname gdp::CountryName = "Country Name";
         fieldname gdp::CountryCode = "Country Code";
         fieldname gdp::Year1983 = "1983";
     ];
 
-    let (mut csv_rdr, metadata) = common::load_csv_file("gdp.csv", gdp_spec);
+    let (mut csv_rdr, metadata) = common::load_csv_file("gdp.csv", gdp_schema);
 
     assert_eq!(metadata.num_fields, 63);
     assert_eq!(metadata.dialect.header.num_preamble_rows, 4);

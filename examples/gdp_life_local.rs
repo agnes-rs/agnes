@@ -6,12 +6,12 @@ use std::path::Path;
 
 use agnes::field::Value;
 use agnes::join::{Equal, Join};
-use agnes::source::csv::{CsvReader, CsvSource, IntoCsvSrcSpec};
+use agnes::source::csv::{CsvReader, CsvSource, IntoCsvSrcSchema};
 
-fn load_csv_file<Spec>(filename: &str, spec: Spec) -> CsvReader<Spec::CsvSrcSpec>
+fn load_csv_file<Schema>(filename: &str, schema: Schema) -> CsvReader<Schema::CsvSrcSchema>
 where
-    Spec: IntoCsvSrcSpec,
-    <Spec as IntoCsvSrcSpec>::CsvSrcSpec: Debug,
+    Schema: IntoCsvSrcSchema,
+    <Schema as IntoCsvSrcSchema>::CsvSrcSchema: Debug,
 {
     let data_filepath = Path::new(file!()) // start as this file
         .parent()
@@ -20,7 +20,7 @@ where
         .join(filename); // navigate to target file
 
     let source = CsvSource::new(data_filepath).unwrap();
-    CsvReader::new(&source, spec).unwrap()
+    CsvReader::new(&source, schema).unwrap()
 }
 
 tablespace![
@@ -44,27 +44,27 @@ tablespace![
 ];
 
 fn main() {
-    let gdp_spec = spec![
+    let gdp_schema = schema![
         fieldname gdp::CountryName = "Country Name";
         fieldname gdp::CountryCode = "Country Code";
         fieldname gdp::Year1983 = "1983";
     ];
 
-    let mut csv_rdr = load_csv_file("gdp/API_NY.GDP.MKTP.CD_DS2_en_csv_v2.csv", gdp_spec);
+    let mut csv_rdr = load_csv_file("gdp/API_NY.GDP.MKTP.CD_DS2_en_csv_v2.csv", gdp_schema);
     let dv_gdp = csv_rdr.read().unwrap().into_view().v::<Labels![
         gdp::CountryName,
         gdp::CountryCode,
         gdp::Year1983
     ]>();
 
-    let gdp_metadata_spec = spec![
+    let gdp_metadata_schema = schema![
         fieldindex gdp_metadata::CountryCode = 0usize;
         fieldname gdp_metadata::Region = "Region";
     ];
 
     let mut csv_rdr = load_csv_file(
         "gdp/Metadata_Country_API_NY.GDP.MKTP.CD_DS2_en_csv_v2.csv",
-        gdp_metadata_spec,
+        gdp_metadata_schema,
     );
     let mut dv_gdp_metadata = csv_rdr
         .read()
@@ -77,11 +77,11 @@ fn main() {
     let dv_gdp_joined = dv_gdp
         .join::<Join<gdp::CountryCode, gdp_metadata::CountryCode, Equal>, _, _>(&dv_gdp_metadata);
 
-    let life_spec = spec![
+    let life_schema = schema![
         fieldname life::CountryCode = "Country Code";
         fieldname life::Year1983 = "1983";
     ];
-    let mut csv_rdr = load_csv_file("life/API_SP.DYN.LE00.IN_DS2_en_csv_v2.csv", life_spec);
+    let mut csv_rdr = load_csv_file("life/API_SP.DYN.LE00.IN_DS2_en_csv_v2.csv", life_schema);
     let dv_life = csv_rdr
         .read()
         .unwrap()

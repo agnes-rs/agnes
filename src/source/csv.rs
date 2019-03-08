@@ -12,7 +12,7 @@ use cons::*;
 use error::*;
 use field::FieldIdent;
 use field::Value;
-use fieldlist::{FieldDesignator, FieldPayloadCons, FieldSpec, SpecCons};
+use fieldlist::{FieldDesignator, FieldPayloadCons, FieldSchema, SchemaCons};
 use label::{TypedValue, Valued};
 use source::decode::decode;
 use source::file::{FileLocator, LocalFileReader, Uri};
@@ -50,26 +50,26 @@ impl CsvSource {
 
 /// Type alias for [Cons](../../cons/struct.Cons.html)-list specifying label, data type, and source
 /// index information of a CSV data source.
-pub type CsvSrcSpecCons<Label, DType, Tail> = FieldPayloadCons<Label, DType, usize, Tail>;
+pub type CsvSrcSchemaCons<Label, DType, Tail> = FieldPayloadCons<Label, DType, usize, Tail>;
 
-/// A trait for converting an object into a [CsvSrcSpecCons](type.CsvSrcSpecCons.html).
-pub trait IntoCsvSrcSpec {
-    /// Resultant `CsvSrcSpecCons` object.
-    type CsvSrcSpec;
+/// A trait for converting an object into a [CsvSrcSchemaCons](type.CsvSrcSchemaCons.html).
+pub trait IntoCsvSrcSchema {
+    /// Resultant `CsvSrcSchemaCons` object.
+    type CsvSrcSchema;
 
-    /// Convert this into a `CsvSrcSpecCons` cons-list. `headers` is a map of column header names
+    /// Convert this into a `CsvSrcSchemaCons` cons-list. `headers` is a map of column header names
     /// to column indices. `num_fields` is the number of columns in the CSV file (for checking for
     /// indexing errors).
-    fn into_csv_src_spec(
+    fn into_csv_src_schema(
         self,
         headers: &HashMap<String, usize>,
         num_fields: usize,
-    ) -> Result<Self::CsvSrcSpec>;
+    ) -> Result<Self::CsvSrcSchema>;
 }
-impl IntoCsvSrcSpec for Nil {
-    type CsvSrcSpec = Nil;
+impl IntoCsvSrcSchema for Nil {
+    type CsvSrcSchema = Nil;
 
-    fn into_csv_src_spec(
+    fn into_csv_src_schema(
         self,
         _headers: &HashMap<String, usize>,
         _num_fields: usize,
@@ -78,17 +78,17 @@ impl IntoCsvSrcSpec for Nil {
     }
 }
 
-impl<Label, DType, Tail> IntoCsvSrcSpec for SpecCons<Label, DType, Tail>
+impl<Label, DType, Tail> IntoCsvSrcSchema for SchemaCons<Label, DType, Tail>
 where
-    Tail: IntoCsvSrcSpec,
+    Tail: IntoCsvSrcSchema,
 {
-    type CsvSrcSpec = CsvSrcSpecCons<Label, DType, Tail::CsvSrcSpec>;
+    type CsvSrcSchema = CsvSrcSchemaCons<Label, DType, Tail::CsvSrcSchema>;
 
-    fn into_csv_src_spec(
+    fn into_csv_src_schema(
         self,
         headers: &HashMap<String, usize>,
         num_fields: usize,
-    ) -> Result<CsvSrcSpecCons<Label, DType, Tail::CsvSrcSpec>> {
+    ) -> Result<CsvSrcSchemaCons<Label, DType, Tail::CsvSrcSchema>> {
         let idx = match *self.head.value_ref() {
             FieldDesignator::Expr(ref s) => *headers
                 .get(s)
@@ -105,18 +105,18 @@ where
         };
         Ok(Cons {
             head: TypedValue::from(idx).into(),
-            tail: self.tail.into_csv_src_spec(headers, num_fields)?,
+            tail: self.tail.into_csv_src_schema(headers, num_fields)?,
         })
     }
 }
 
 /// A trait for building a [DataStore](../../store/struct.DataStore.html) from a
-/// [CsvSrcSpecCons](type.CsvSrcSpecCons.html).
+/// [CsvSrcSchemaCons](type.CsvSrcSchemaCons.html).
 pub trait BuildDStore {
     /// `Fields` type parameter of the resultant `DataStore`.
     type OutputFields: AssocStorage;
 
-    /// Builds a `DataStore` from the source spec (`self`) and a CSV source `src`.
+    /// Builds a `DataStore` from the source schema (`self`) and a CSV source `src`.
     fn build(&mut self, src: &CsvSource) -> Result<DataStore<Self::OutputFields>>;
 }
 impl BuildDStore for Nil {
@@ -125,12 +125,12 @@ impl BuildDStore for Nil {
         Ok(DataStore::<Nil>::empty())
     }
 }
-impl<Label, DType, Tail> BuildDStore for CsvSrcSpecCons<Label, DType, Tail>
+impl<Label, DType, Tail> BuildDStore for CsvSrcSchemaCons<Label, DType, Tail>
 where
     Tail: BuildDStore,
     DataStore<<Tail as BuildDStore>::OutputFields>: PushFrontFromValueIter<Label, DType>,
-    Tail::OutputFields: PushBack<FieldSpec<Label, DType>>,
-    <Tail::OutputFields as PushBack<FieldSpec<Label, DType>>>::Output: AssocStorage,
+    Tail::OutputFields: PushBack<FieldSchema<Label, DType>>,
+    <Tail::OutputFields as PushBack<FieldSchema<Label, DType>>>::Output: AssocStorage,
     Label: Debug,
     DType: FromStr + Debug + Default + Clone,
     ParseError: From<<DType as FromStr>::Err>,
@@ -176,20 +176,20 @@ where
 
 /// Object for reading CSV sources.
 #[derive(Debug)]
-pub struct CsvReader<CsvSpec> {
+pub struct CsvReader<CsvSchema> {
     src: CsvSource,
-    csv_src_spec: CsvSpec,
+    csv_src_schema: CsvSchema,
 }
 
-impl<CsvSrcSpec> CsvReader<CsvSrcSpec>
+impl<CsvSrcSchema> CsvReader<CsvSrcSchema>
 where
-    CsvSrcSpec: Debug,
+    CsvSrcSchema: Debug,
 {
     /// Create a new CSV reader from a CSV source specification. This will process header row (if
     /// exists), and verify the fields specified in the `CsvSource` object exist in this CSV file.
-    pub fn new<Spec>(src: &CsvSource, spec: Spec) -> Result<CsvReader<Spec::CsvSrcSpec>>
+    pub fn new<Schema>(src: &CsvSource, schema: Schema) -> Result<CsvReader<Schema::CsvSrcSchema>>
     where
-        Spec: IntoCsvSrcSpec<CsvSrcSpec = CsvSrcSpec>,
+        Schema: IntoCsvSrcSchema<CsvSrcSchema = CsvSrcSchema>,
     {
         let file_reader = LocalFileReader::new(&src.src)?;
         let mut csv_reader = src.metadata.dialect.open_reader(file_reader)?;
@@ -211,68 +211,68 @@ where
         } else {
             HashMap::new()
         };
-        let csv_src_spec = spec.into_csv_src_spec(&headers, src.metadata.num_fields)?;
+        let csv_src_schema = schema.into_csv_src_schema(&headers, src.metadata.num_fields)?;
 
         Ok(CsvReader {
             //TODO: remove source from here
             src: src.clone(),
-            csv_src_spec,
+            csv_src_schema,
         })
     }
 
     /// Read a `CsvSource` into a `DataStore` object.
-    pub fn read(&mut self) -> Result<DataStore<CsvSrcSpec::OutputFields>>
+    pub fn read(&mut self) -> Result<DataStore<CsvSrcSchema::OutputFields>>
     where
-        CsvSrcSpec: BuildDStore,
+        CsvSrcSchema: BuildDStore,
     {
-        self.csv_src_spec.build(&self.src)
+        self.csv_src_schema.build(&self.src)
     }
 }
 
 /// Utility function for loading a CSV file from a [FileLocator](../file/enum.FileLocator.html).
 ///
 /// Fails if unable to find or read file at location specified.
-pub fn load_csv<L: Into<FileLocator>, Spec>(
+pub fn load_csv<L: Into<FileLocator>, Schema>(
     loc: L,
-    spec: Spec,
-) -> Result<<DataStore<<Spec::CsvSrcSpec as BuildDStore>::OutputFields> as IntoView>::Output>
+    schema: Schema,
+) -> Result<<DataStore<<Schema::CsvSrcSchema as BuildDStore>::OutputFields> as IntoView>::Output>
 where
-    Spec: IntoCsvSrcSpec,
-    Spec::CsvSrcSpec: BuildDStore + Debug,
-    <Spec::CsvSrcSpec as BuildDStore>::OutputFields: AssocFrameLookup,
+    Schema: IntoCsvSrcSchema,
+    Schema::CsvSrcSchema: BuildDStore + Debug,
+    <Schema::CsvSrcSchema as BuildDStore>::OutputFields: AssocFrameLookup,
 {
     let source = CsvSource::new(loc)?;
-    let mut csv_reader = CsvReader::new(&source, spec)?;
+    let mut csv_reader = CsvReader::new(&source, schema)?;
     Ok(csv_reader.read()?.into_view())
 }
 
 /// Utility function for loading a CSV file from a URI string.
 ///
 /// Fails if unable to parse `uri`, or if unable to find or read file at the location specified.
-pub fn load_csv_from_uri<Spec>(
+pub fn load_csv_from_uri<Schema>(
     uri: &str,
-    spec: Spec,
-) -> Result<<DataStore<<Spec::CsvSrcSpec as BuildDStore>::OutputFields> as IntoView>::Output>
+    schema: Schema,
+) -> Result<<DataStore<<Schema::CsvSrcSchema as BuildDStore>::OutputFields> as IntoView>::Output>
 where
-    Spec: IntoCsvSrcSpec,
-    Spec::CsvSrcSpec: BuildDStore + Debug,
-    <Spec::CsvSrcSpec as BuildDStore>::OutputFields: AssocFrameLookup,
+    Schema: IntoCsvSrcSchema,
+    Schema::CsvSrcSchema: BuildDStore + Debug,
+    <Schema::CsvSrcSchema as BuildDStore>::OutputFields: AssocFrameLookup,
 {
-    load_csv(Uri::from_uri(uri.parse::<hyper::Uri>()?)?, spec)
+    load_csv(Uri::from_uri(uri.parse::<hyper::Uri>()?)?, schema)
 }
 
 /// Utility function for loading a CSV file from a local file path.
 ///
 /// Fails if unable to find or read file at the location specified.
-pub fn load_csv_from_path<P, Spec>(
+pub fn load_csv_from_path<P, Schema>(
     path: P,
-    spec: Spec,
-) -> Result<<DataStore<<Spec::CsvSrcSpec as BuildDStore>::OutputFields> as IntoView>::Output>
+    schema: Schema,
+) -> Result<<DataStore<<Schema::CsvSrcSchema as BuildDStore>::OutputFields> as IntoView>::Output>
 where
     P: Into<PathBuf>,
-    Spec: IntoCsvSrcSpec,
-    Spec::CsvSrcSpec: BuildDStore + Debug,
-    <Spec::CsvSrcSpec as BuildDStore>::OutputFields: AssocFrameLookup,
+    Schema: IntoCsvSrcSchema,
+    Schema::CsvSrcSchema: BuildDStore + Debug,
+    <Schema::CsvSrcSchema as BuildDStore>::OutputFields: AssocFrameLookup,
 {
-    load_csv(path.into(), spec)
+    load_csv(path.into(), schema)
 }

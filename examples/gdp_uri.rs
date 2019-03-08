@@ -14,15 +14,15 @@ tablespace![
 
 fn main() {
     // specify the source location for our GDP fields
-    let gdp_spec = spec![
+    let gdp_schema = schema![
         fieldname gdp::CountryName = "Country Name";
         fieldname gdp::CountryCode = "Country Code";
         fieldname gdp::Gdp2015 = "2015";
     ];
 
     // load the CSV file from a URI
-    let gdp_view =
-        load_csv_from_uri("https://wee.codes/data/gdp.csv", gdp_spec).expect("CSV loading failed.");
+    let gdp_view = load_csv_from_uri("https://wee.codes/data/gdp.csv", gdp_schema)
+        .expect("CSV loading failed.");
 
     // print the DataView
     println!("{}", gdp_view);

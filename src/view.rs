@@ -1102,7 +1102,7 @@ mod tests {
     use csv_sniffer::metadata::Metadata;
 
     use super::*;
-    use source::csv::{CsvReader, CsvSource, IntoCsvSrcSpec};
+    use source::csv::{CsvReader, CsvSource, IntoCsvSrcSchema};
 
     #[cfg(feature = "test-utils")]
     use test_utils::*;
@@ -1110,10 +1110,13 @@ mod tests {
     use access::DataIndex;
     use error::*;
 
-    fn load_csv_file<Spec>(filename: &str, spec: Spec) -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
+    fn load_csv_file<Schema>(
+        filename: &str,
+        schema: Schema,
+    ) -> (CsvReader<Schema::CsvSrcSchema>, Metadata)
     where
-        Spec: IntoCsvSrcSpec,
-        <Spec as IntoCsvSrcSpec>::CsvSrcSpec: Debug,
+        Schema: IntoCsvSrcSchema,
+        <Schema as IntoCsvSrcSchema>::CsvSrcSchema: Debug,
     {
         let data_filepath = Path::new(file!()) // start as this file
             .parent()
@@ -1126,7 +1129,7 @@ mod tests {
 
         let source = CsvSource::new(data_filepath).unwrap();
         (
-            CsvReader::new(&source, spec).unwrap(),
+            CsvReader::new(&source, schema).unwrap(),
             source.metadata().clone(),
         )
     }
@@ -1141,13 +1144,13 @@ mod tests {
 
     #[test]
     fn lookup_field() {
-        let gdp_spec = spec![
+        let gdp_schema = schema![
             fieldname gdp::CountryName = "Country Name";
             fieldname gdp::CountryCode = "Country Code";
             fieldname gdp::Year1983 = "1983";
         ];
 
-        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
+        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_schema.clone());
         let ds = csv_rdr.read().unwrap();
         let view = ds.into_view();
 
@@ -1157,13 +1160,13 @@ mod tests {
 
     #[test]
     fn generate_dataindex_cons() {
-        let gdp_spec = spec![
+        let gdp_schema = schema![
             fieldname gdp::CountryName = "Country Name";
             fieldname gdp::CountryCode = "Country Code";
             fieldname gdp::Year1983 = "1983";
         ];
 
-        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
+        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_schema.clone());
         let ds = csv_rdr.read().unwrap();
         let view = ds.into_view();
 

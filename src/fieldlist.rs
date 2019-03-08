@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use label::*;
 
 /// Type alias for a field label and data type.
-pub type FieldSpec<Label, DType> = Labeled<Label, PhantomData<DType>>;
+pub type FieldSchema<Label, DType> = Labeled<Label, PhantomData<DType>>;
 
 /// Type alias for an `LVCons`-list which only contains the data type information for the identified
 /// field.
@@ -26,12 +26,12 @@ impl SelfValued for FieldDesignator {}
 
 /// Type alias for a cons-list containing fields with their labels, data type, and source
 /// designators.
-pub type SpecCons<Label, DType, Tail> = FieldPayloadCons<Label, DType, FieldDesignator, Tail>;
+pub type SchemaCons<Label, DType, Tail> = FieldPayloadCons<Label, DType, FieldDesignator, Tail>;
 
-impl<Label, DType, Tail> SpecCons<Label, DType, Tail> {
-    /// Create a new `SpecCons` cons-list from a [FieldDesignator](enum.FieldDesignator.html).
-    pub fn new(src_designator: FieldDesignator, tail: Tail) -> SpecCons<Label, DType, Tail> {
-        SpecCons {
+impl<Label, DType, Tail> SchemaCons<Label, DType, Tail> {
+    /// Create a new `SchemaCons` cons-list from a [FieldDesignator](enum.FieldDesignator.html).
+    pub fn new(src_designator: FieldDesignator, tail: Tail) -> SchemaCons<Label, DType, Tail> {
+        SchemaCons {
             head: TypedValue::from(src_designator).into(),
             tail,
         }
@@ -42,9 +42,9 @@ impl<Label, DType, Tail> SpecCons<Label, DType, Tail> {
 /// extract fields from a data source. It correlates labels (defined using the
 /// [tablespace](macro.tablespace.html) macro) to field / column names or indices in a
 /// data source. This source specification structure is implemented as a
-//  [SpecCons](fieldlist/type.SpecCons.html) cons-list.
+//  [SchemaCons](fieldlist/type.SchemaCons.html) cons-list.
 ///
-/// The `spec` macro syntax is a list of `fieldname` or `fieldindex` declarations that connect
+/// The `schema` macro syntax is a list of `fieldname` or `fieldindex` declarations that connect
 /// field labels to either column titles or column indices (starting from 0), respectively.
 ///
 /// # Examples
@@ -69,7 +69,7 @@ impl<Label, DType, Tail> SpecCons<Label, DType, Tail> {
 /// ];
 ///
 /// fn main() {
-///     let gdp_spec = spec![
+///     let gdp_schema = schema![
 ///         fieldname gdp::CountryName = "Country Name";
 ///         fieldname gdp::CountryCode = 0usize;
 ///         fieldname gdp::Gdp2015 = "2015";
@@ -78,30 +78,30 @@ impl<Label, DType, Tail> SpecCons<Label, DType, Tail> {
 /// }
 /// ```
 #[macro_export]
-macro_rules! spec {
+macro_rules! schema {
     () => {{
         $crate::cons::Nil
     }};
     (fieldname $field_label:ty = $header:expr; $($rest:tt)*) => {{
-        use $crate::fieldlist::{FieldDesignator, SpecCons};
-        SpecCons::<
+        use $crate::fieldlist::{FieldDesignator, SchemaCons};
+        SchemaCons::<
             $field_label,
             <$field_label as $crate::label::Typed>::DType,
             _,
         >::new(
             FieldDesignator::Expr($header.to_string()),
-            spec![$($rest)*]
+            schema![$($rest)*]
         )
     }};
     (fieldindex $field_label:ty = $idx:expr; $($rest:tt)*) => {{
-        use $crate::fieldlist::{FieldDesignator, SpecCons};
-        SpecCons::<
+        use $crate::fieldlist::{FieldDesignator, SchemaCons};
+        SchemaCons::<
             $field_label,
             <$field_label as $crate::label::Typed>::DType,
             _,
         >::new(
             FieldDesignator::Idx($idx),
-            spec![$($rest)*]
+            schema![$($rest)*]
         )
     }};
 }

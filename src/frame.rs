@@ -195,12 +195,15 @@ mod tests {
     use super::*;
 
     use select::FieldSelect;
-    use source::csv::{CsvReader, CsvSource, IntoCsvSrcSpec};
+    use source::csv::{CsvReader, CsvSource, IntoCsvSrcSchema};
 
-    fn load_csv_file<Spec>(filename: &str, spec: Spec) -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
+    fn load_csv_file<Schema>(
+        filename: &str,
+        schema: Schema,
+    ) -> (CsvReader<Schema::CsvSrcSchema>, Metadata)
     where
-        Spec: IntoCsvSrcSpec,
-        <Spec as IntoCsvSrcSpec>::CsvSrcSpec: Debug,
+        Schema: IntoCsvSrcSchema,
+        <Schema as IntoCsvSrcSchema>::CsvSrcSchema: Debug,
     {
         let data_filepath = Path::new(file!()) // start as this file
             .parent()
@@ -213,7 +216,7 @@ mod tests {
 
         let source = CsvSource::new(data_filepath).unwrap();
         (
-            CsvReader::new(&source, spec).unwrap(),
+            CsvReader::new(&source, schema).unwrap(),
             source.metadata().clone(),
         )
     }
@@ -228,13 +231,13 @@ mod tests {
 
     #[test]
     fn frame_select() {
-        let gdp_spec = spec![
+        let gdp_schema = schema![
             fieldname gdp::CountryName = "Country Name";
             fieldname gdp::CountryCode = "Country Code";
             fieldname gdp::Year1983 = "1983";
         ];
 
-        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_spec.clone());
+        let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_schema.clone());
         let ds = csv_rdr.read().unwrap();
 
         let frame = DataFrame::from(ds);

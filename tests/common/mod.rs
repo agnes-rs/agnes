@@ -3,12 +3,15 @@ use std::path::Path;
 
 use csv_sniffer::metadata::Metadata;
 
-use agnes::source::csv::{CsvReader, CsvSource, IntoCsvSrcSpec};
+use agnes::source::csv::{CsvReader, CsvSource, IntoCsvSrcSchema};
 
-pub fn load_csv_file<Spec>(filename: &str, spec: Spec) -> (CsvReader<Spec::CsvSrcSpec>, Metadata)
+pub fn load_csv_file<Schema>(
+    filename: &str,
+    schema: Schema,
+) -> (CsvReader<Schema::CsvSrcSchema>, Metadata)
 where
-    Spec: IntoCsvSrcSpec,
-    <Spec as IntoCsvSrcSpec>::CsvSrcSpec: Debug,
+    Schema: IntoCsvSrcSchema,
+    <Schema as IntoCsvSrcSchema>::CsvSrcSchema: Debug,
 {
     let data_filepath = Path::new(file!()) // start as this file
         .parent()
@@ -20,7 +23,7 @@ where
 
     let source = CsvSource::new(data_filepath).unwrap();
     (
-        CsvReader::new(&source, spec).unwrap(),
+        CsvReader::new(&source, schema).unwrap(),
         source.metadata().clone(),
     )
 }

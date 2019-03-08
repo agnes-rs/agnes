@@ -27,13 +27,13 @@ tablespace![
 fn subview() {
     use gdp::*;
 
-    let gdp_spec = spec![
+    let gdp_schema = schema![
         fieldname CountryName = "Country Name";
         fieldname CountryCode = "Country Code";
         fieldname Year1983 = "1983";
     ];
 
-    let (mut csv_rdr, _) = common::load_csv_file("gdp.csv", gdp_spec);
+    let (mut csv_rdr, _) = common::load_csv_file("gdp.csv", gdp_schema);
     let dv = csv_rdr.read().unwrap().into_view();
     assert_eq!(dv.nfields(), 3);
     let subdv = dv.v::<Labels![CountryName, Year1983]>();
@@ -57,12 +57,12 @@ fn rename() {
     use sample::*;
     use sample2::*;
 
-    let sample_spec = spec![
+    let sample_schema = schema![
         fieldname State = "state";
         fieldname Value1 = "val1";
         fieldname Value2 = "val2";
     ];
-    let (mut csv_rdr, _) = common::load_csv_file("sample1.csv", sample_spec);
+    let (mut csv_rdr, _) = common::load_csv_file("sample1.csv", sample_schema);
 
     let dv = csv_rdr.read().unwrap().into_view();
     assert_eq!(
@@ -87,24 +87,24 @@ fn rename() {
 
 #[test]
 fn merge() {
-    let gdp_spec = spec![
+    let gdp_schema = schema![
         fieldname gdp::CountryName = "Country Name";
         fieldname gdp::CountryCode = "Country Code";
         fieldname gdp::Year1983 = "1983";
     ];
-    let (mut csv_rdr, _) = common::load_csv_file("gdp.csv", gdp_spec);
+    let (mut csv_rdr, _) = common::load_csv_file("gdp.csv", gdp_schema);
     let dv_gdp = csv_rdr.read().unwrap().into_view().v::<Labels![
         gdp::CountryName,
         gdp::CountryCode,
         gdp::Year1983
     ]>();
 
-    let life_spec = spec![
+    let life_schema = schema![
         fieldname life::CountryName = "Country Name";
         fieldname life::CountryCode = "Country Code";
         fieldname life::Year1983 = "1983";
     ];
-    let (mut csv_rdr, _) = common::load_csv_file("life.csv", life_spec);
+    let (mut csv_rdr, _) = common::load_csv_file("life.csv", life_schema);
     let dv_life = csv_rdr.read().unwrap().into_view();
     // only take extra '1983' column
     let dv_life = dv_life.v::<Labels![life::Year1983]>();

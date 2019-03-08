@@ -19,12 +19,12 @@ tablespace![
 fn csv_serialize_test() {
     use sample::*;
 
-    let sample_spec = spec![
+    let sample_schema = schema![
         fieldname State = "state";
         fieldname Value1 = "val1";
         fieldname Value2 = "val2";
     ];
-    let (mut csv_rdr, _) = common::load_csv_file("sample1.csv", sample_spec);
+    let (mut csv_rdr, _) = common::load_csv_file("sample1.csv", sample_schema);
 
     let dv = csv_rdr.read().unwrap().into_view();
     println!("{}", dv);
