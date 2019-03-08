@@ -14,5 +14,6 @@ Some currently planned features / changes (not a complete list) are:
 * `DataView` reshaping and aggregation (see R's `reshape` package / SQL GROUP BY)
 * Hash joins (currently only uses sort-merge joins)
 * Outer joins
-* Replacement partial functions with specializations once specializations stabilize.
+* Replacement of partial functions with specializations once specializations stabilize.
 * Expanded test suite.
+* Integration of [Apache Arrow](https://github.com/apache/arrow) data structures.
