@@ -9,12 +9,13 @@ use std::cmp::Ordering;
 use std::marker::PhantomData;
 use std::ops::Add;
 
-use access::*;
+use access::DataIndex;
 use cons::*;
 use error::*;
 use field::Value;
-use label::*;
-use select::*;
+use label::{LVCons, Labeled, LookupValuedElemByLabel, Valued};
+use permute::SortOrder;
+use select::{FieldSelect, SelectFieldByLabel};
 use store::{AssocStorage, DataStore, IntoView, PushBackClonedFromValueIter};
 use view::*;
 

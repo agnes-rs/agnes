@@ -34,6 +34,9 @@ use fieldlist::FieldPayloadCons;
 use join::*;
 use label::*;
 use partial::{DeriveCapabilities, Func, FuncDefault, Implemented, IsImplemented, PartialMap};
+use permute::{
+    FilterPerm, SortOrder, SortOrderComparator, SortOrderUnstable, SortOrderUnstableComparator,
+};
 use select::{FieldSelect, SelectFieldByLabel};
 use store::{AssocStorage, NRows};
 

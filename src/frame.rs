@@ -11,29 +11,30 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use access::{self, DataIndex};
+use access::DataIndex;
 use error;
 use field::{FieldData, Value};
 use label::{ElemOf, LookupElemByLabel, TypeOf, TypeOfElemOf, Typed, Valued};
+use permute;
 use select::{FieldSelect, SelectFieldByLabel};
 use store::{AssocStorage, DataRef, DataStore, NRows};
 
-type Permutation = access::Permutation<Vec<usize>>;
+type Permutation = permute::Permutation<Vec<usize>>;
 
 /// A data frame. A `DataStore` reference along with record-based filtering and sorting details.
 #[derive(Debug, Clone)]
-pub struct DataFrame<Fields>
+pub struct DataFrame<StoreFields>
 where
-    Fields: AssocStorage,
-    Fields::Storage: Debug,
+    StoreFields: AssocStorage,
+    StoreFields::Storage: Debug,
 {
     permutation: Rc<Permutation>,
-    store: Arc<DataStore<Fields>>,
+    store: Arc<DataStore<StoreFields>>,
 }
-impl<Fields> DataFrame<Fields>
+impl<StoreFields> DataFrame<StoreFields>
 where
-    Fields: AssocStorage,
-    DataStore<Fields>: NRows,
+    StoreFields: AssocStorage,
+    DataStore<StoreFields>: NRows,
 {
     /// Returns length (number of rows) in this `DataFrame`.
     pub fn len(&self) -> usize {
@@ -47,38 +48,38 @@ where
         self.len() == 0
     }
 }
-impl<Fields> NRows for DataFrame<Fields>
+impl<StoreFields> NRows for DataFrame<StoreFields>
 where
-    Fields: AssocStorage,
-    DataStore<Fields>: NRows,
+    StoreFields: AssocStorage,
+    DataStore<StoreFields>: NRows,
 {
     fn nrows(&self) -> usize {
         self.len()
     }
 }
 #[cfg(test)]
-impl<Fields> DataFrame<Fields>
+impl<StoreFields> DataFrame<StoreFields>
 where
-    Fields: AssocStorage,
+    StoreFields: AssocStorage,
 {
     pub fn store_ref_count(&self) -> usize {
         Arc::strong_count(&self.store)
     }
 }
-impl<Fields> DataFrame<Fields>
+impl<StoreFields> DataFrame<StoreFields>
 where
-    Fields: AssocStorage,
+    StoreFields: AssocStorage,
 {
     pub(crate) fn update_permutation(&mut self, new_permutation: &[usize]) {
         Rc::make_mut(&mut self.permutation).update(new_permutation);
     }
 }
 
-impl<Fields> From<DataStore<Fields>> for DataFrame<Fields>
+impl<StoreFields> From<DataStore<StoreFields>> for DataFrame<StoreFields>
 where
-    Fields: AssocStorage,
+    StoreFields: AssocStorage,
 {
-    fn from(store: DataStore<Fields>) -> DataFrame<Fields> {
+    fn from(store: DataStore<StoreFields>) -> DataFrame<StoreFields> {
         DataFrame {
             permutation: Rc::new(Permutation::default()),
             store: Arc::new(store),
@@ -160,15 +161,16 @@ where
     }
 }
 
-impl<Fields, Label> SelectFieldByLabel<Label> for DataFrame<Fields>
+impl<StoreFields, Label> SelectFieldByLabel<Label> for DataFrame<StoreFields>
 where
-    Fields: AssocStorage + Debug,
-    Fields::Storage: LookupElemByLabel<Label> + NRows,
-    ElemOf<Fields::Storage, Label>: Typed,
-    ElemOf<Fields::Storage, Label>: Valued<Value = DataRef<TypeOfElemOf<Fields::Storage, Label>>>,
-    TypeOf<ElemOf<Fields::Storage, Label>>: Debug,
+    StoreFields: AssocStorage + Debug,
+    StoreFields::Storage: LookupElemByLabel<Label> + NRows,
+    ElemOf<StoreFields::Storage, Label>: Typed,
+    ElemOf<StoreFields::Storage, Label>:
+        Valued<Value = DataRef<TypeOfElemOf<StoreFields::Storage, Label>>>,
+    TypeOf<ElemOf<StoreFields::Storage, Label>>: Debug,
 {
-    type Output = Framed<TypeOf<ElemOf<Fields::Storage, Label>>>;
+    type Output = Framed<TypeOf<ElemOf<StoreFields::Storage, Label>>>;
 
     fn select_field(&self) -> Self::Output {
         Framed::new(
@@ -178,7 +180,7 @@ where
     }
 }
 
-impl<Fields> FieldSelect for DataFrame<Fields> where Fields: AssocStorage {}
+impl<StoreFields> FieldSelect for DataFrame<StoreFields> where StoreFields: AssocStorage {}
 
 #[cfg(test)]
 mod tests {
