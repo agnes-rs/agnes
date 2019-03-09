@@ -69,10 +69,6 @@ impl<Fields> DataFrame<Fields>
 where
     Fields: AssocStorage,
 {
-    // /// Returns `true` if this `DataFrame` contains this field.
-    // pub fn has_field(&self, s: &FieldIdent) -> bool {
-    //     self.store.has_field(s)
-    // }
     pub(crate) fn update_permutation(&mut self, new_permutation: &[usize]) {
         Rc::make_mut(&mut self.permutation).update(new_permutation);
     }
