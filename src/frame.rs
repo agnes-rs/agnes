@@ -71,7 +71,7 @@ where
     StoreFields: AssocStorage,
 {
     pub(crate) fn update_permutation(&mut self, new_permutation: &[usize]) {
-        Rc::make_mut(&mut self.permutation).update(new_permutation);
+        Rc::make_mut(&mut self.permutation).update_indices(new_permutation);
     }
 }
 

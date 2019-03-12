@@ -31,7 +31,7 @@ impl<'a> From<&'a [usize]> for Permutation<&'a [usize]> {
 
 impl Permutation<Vec<usize>> {
     /// Update this permutation with new values from `new_permutation`.
-    pub fn update(&mut self, new_permutation: &[usize]) {
+    pub fn update_indices(&mut self, new_permutation: &[usize]) {
         // check if we already have a permutation
         self.perm = match self.perm {
             Some(ref prev_perm) => {
