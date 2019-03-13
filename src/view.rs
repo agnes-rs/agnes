@@ -195,7 +195,7 @@ where
 {
     /// Returns `true` if the DataView is empty (has no rows or has no fields)
     pub fn is_empty(&self) -> bool {
-        length![Labels] == 0 || self.frames.is_empty()
+        length![Labels] == 0 || Frames::is_empty()
     }
 }
 impl<Labels, Frames> DataView<Labels, Frames>
@@ -441,7 +441,7 @@ where
     Labels: StrLabels,
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        if self.frames.is_empty() {
+        if Frames::is_empty() {
             return write!(f, "Empty DataView");
         }
         let mut table = pt::Table::new();
