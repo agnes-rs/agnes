@@ -55,11 +55,7 @@ macro_rules! impl_permutation_len {
             /// Returns the re-organized index of a requested index.
             pub fn map_index(&self, requested: usize) -> usize
             {
-                match self.perm
-                {
-                    Some(ref perm) => perm[requested],
-                    None => requested
-                }
+                self.perm.as_ref().map_or(requested, |perm| perm[requested])
             }
             /// Returns the length of this permutation, if it exists. `None` means that no
             /// permutation exists (the full field in its original order can be used).
