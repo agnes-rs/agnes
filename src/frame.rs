@@ -5,6 +5,8 @@ A [DataFrame](struct.DataFrame.html) is a reference to an underlying
 [DataStore](../store/struct.DataStore.html) along with record-based filtering and sorting details.
 */
 
+use std::marker::PhantomData;
+
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, SerializeSeq, Serializer};
 use std::fmt::Debug;
@@ -91,44 +93,56 @@ where
 /// that structure. Provides DataIndex for the underlying data structure, as viewed through the
 /// frame.
 #[derive(Debug, Hash, PartialEq, Eq)]
-pub struct Framed<T> {
+pub struct Framed<T, DI> {
     permutation: Rc<Permutation>,
-    data: DataRef<T>,
+    data: DI,
+    _ty: PhantomData<T>,
 }
-impl<T> Framed<T> {
+impl<T, DI> Framed<T, DI> {
     /// Create a new framed view of some data, as view through a particular `DataFrame`.
-    pub fn new(permutation: Rc<Permutation>, data: DataRef<T>) -> Framed<T> {
-        Framed { permutation, data }
-    }
-}
-impl<T> Clone for Framed<T> {
-    fn clone(&self) -> Framed<T> {
+    pub fn new(permutation: Rc<Permutation>, data: DI) -> Framed<T, DI> {
         Framed {
-            permutation: Rc::clone(&self.permutation),
-            data: DataRef::clone(&self.data),
+            permutation,
+            data: data,
+            _ty: PhantomData,
         }
     }
 }
-impl<T> From<DataRef<T>> for Framed<T> {
-    fn from(orig: DataRef<T>) -> Framed<T> {
+impl<T, DI> Clone for Framed<T, DI>
+where
+    DI: Clone,
+{
+    fn clone(&self) -> Framed<T, DI> {
+        Framed {
+            permutation: Rc::clone(&self.permutation),
+            data: self.data.clone(),
+            _ty: PhantomData,
+        }
+    }
+}
+impl<T> From<DataRef<T>> for Framed<T, DataRef<T>> {
+    fn from(orig: DataRef<T>) -> Framed<T, DataRef<T>> {
         Framed {
             permutation: Rc::new(Permutation::default()),
             data: orig,
+            _ty: PhantomData,
         }
     }
 }
-impl<T> From<FieldData<T>> for Framed<T> {
-    fn from(orig: FieldData<T>) -> Framed<T> {
+impl<T> From<FieldData<T>> for Framed<T, DataRef<T>> {
+    fn from(orig: FieldData<T>) -> Framed<T, DataRef<T>> {
         Framed {
             permutation: Rc::new(Permutation::default()),
             data: orig.into(),
+            _ty: PhantomData,
         }
     }
 }
 
-impl<T> DataIndex for Framed<T>
+impl<T, DI> DataIndex for Framed<T, DI>
 where
     T: Debug,
+    DI: DataIndex<DType = T> + Debug,
 {
     type DType = T;
 
@@ -144,7 +158,7 @@ where
 }
 
 #[cfg(feature = "serialize")]
-impl<T> Serialize for Framed<T>
+impl<T, DI> Serialize for Framed<T, DI>
 where
     T: Serialize,
     Self: DataIndex<DType = T>,
@@ -170,7 +184,10 @@ where
         Valued<Value = DataRef<TypeOfElemOf<StoreFields::Storage, Label>>>,
     TypeOf<ElemOf<StoreFields::Storage, Label>>: Debug,
 {
-    type Output = Framed<TypeOf<ElemOf<StoreFields::Storage, Label>>>;
+    type Output = Framed<
+        TypeOf<ElemOf<StoreFields::Storage, Label>>,
+        DataRef<TypeOf<ElemOf<StoreFields::Storage, Label>>>,
+    >;
 
     fn select_field(&self) -> Self::Output {
         Framed::new(
@@ -245,7 +262,7 @@ mod tests {
     #[test]
     fn framed_serialize() {
         let field: FieldData<f64> = vec![5.0f64, 3.4, -1.3, 5.2, 6.0, -126.9].into();
-        let framed: Framed<f64> = field.into();
+        let framed: Framed<f64, _> = field.into();
         assert_eq!(
             serde_json::to_string(&framed).unwrap(),
             "[5.0,3.4,-1.3,5.2,6.0,-126.9]"

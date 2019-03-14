@@ -206,7 +206,7 @@ pub type TypeOf<T> = <T as Typed>::DType;
 impl<T> Typed for ::field::FieldData<T> {
     type DType = T;
 }
-impl<T> Typed for ::frame::Framed<T> {
+impl<T, DI> Typed for ::frame::Framed<T, DI> {
     type DType = T;
 }
 impl<T> Typed for ::store::DataRef<T>
@@ -231,7 +231,7 @@ impl_selfvalued![
     bool char str String
 ];
 impl<T> SelfValued for ::field::FieldData<T> {}
-impl<T> SelfValued for ::frame::Framed<T> {}
+impl<T, DI> SelfValued for ::frame::Framed<T, DI> {}
 impl<T> SelfValued for DataRef<T> {}
 
 /// Trait for extracting the an associated value of a value-holding container (e.g.

@@ -861,7 +861,7 @@ pub trait HashIndex {
         H: Hasher;
 }
 
-impl<T> HashIndex for Framed<T>
+impl<T, DI> HashIndex for Framed<T, DI>
 where
     for<'a> Value<&'a T>: Hash,
     Self: DataIndex<DType = T>,
@@ -914,7 +914,7 @@ pub trait PartialEqIndex {
     fn eq_index(&self, other: &Self, idx: usize) -> bool;
 }
 
-impl<T> PartialEqIndex for Framed<T>
+impl<T, DI> PartialEqIndex for Framed<T, DI>
 where
     for<'a> Value<&'a T>: PartialEq,
     Self: DataIndex<DType = T>,
