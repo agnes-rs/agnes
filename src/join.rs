@@ -6,6 +6,7 @@ satisfy a specific join predicate (much like a `JOIN` in a SQL database). Mergin
 combining fields of two `DataView` objects with the same number of rows into a single `DataView`.
 */
 use std::cmp::Ordering;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Add;
 
@@ -490,6 +491,7 @@ impl<Label, FrameIndex, FrameLabel, Tail, Frames, Store>
 where
     Frames: LookupValuedElemByLabel<FrameIndex>,
     FrameByFrameIndexOf<Frames, FrameIndex>: SelectFieldByLabel<FrameLabel>,
+    FieldTypeFromFrameDetailsOf<Frames, FrameIndex, FrameLabel>: Debug,
     Store: PushBackClonedFromValueIter<
         Label,
         FieldTypeFromFrameDetailsOf<Frames, FrameIndex, FrameLabel>,
@@ -519,7 +521,8 @@ where
             SelectFieldByLabel::<FrameLabel>::select_field(
                 LookupValuedElemByLabel::<FrameIndex>::elem(self).value_ref(),
             )
-            .permute(permutation)?,
+            .permute(permutation)
+            .iter(),
         );
         let store = JoinIntoStore::<Tail, _>::join_into_store(self, store, permutation)?;
         Ok(store)

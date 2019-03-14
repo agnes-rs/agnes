@@ -6,10 +6,11 @@ as method which generates a [DataIterator](struct.DataIterator.html).
 */
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::rc::Rc;
 
 use error::*;
 use field::Value;
-use permute::Permutation;
+use frame::Framed;
 
 /// Trait that provides access to values in a data field.
 pub trait DataIndex: Debug {
@@ -35,16 +36,14 @@ pub trait DataIndex: Debug {
         DataIterator::new(self)
     }
 
-    /// Returns an iterator over the values in this field, as permuted by `pemutation`.
-    /// `permutation` is a slice of indices into this `DataIndex`.
-    fn permute<'a, 'b>(
-        &'a self,
-        permutation: &'b [usize],
-    ) -> Result<DataIterator<'a, 'b, Self::DType>>
+    /// Returns a new `DataIndex`-implementing object which provides access to the values in this
+    /// field as permuted by `permutation`. `permutation` is a slice of indices into this
+    /// `DataIndex`.
+    fn permute(self, permutation: &[usize]) -> Framed<Self::DType, Self>
     where
         Self: Sized,
     {
-        DataIterator::with_permutation(self, permutation)
+        Framed::new(Rc::new(permutation.to_vec().into()), self)
     }
 
     /// Copies existing values in this field into a new `Vec`.
@@ -93,47 +92,25 @@ pub trait DataIndexMut: DataIndex {
 }
 
 /// Iterator over the data in a data structure that implement DataIndex.
-pub struct DataIterator<'a, 'b, T>
+pub struct DataIterator<'a, T>
 where
     T: 'a,
 {
     data: &'a dyn DataIndex<DType = T>,
-    permutation: Permutation<&'b [usize]>,
     cur_idx: usize,
     phantom: PhantomData<T>,
 }
-impl<'a, 'b, T> DataIterator<'a, 'b, T>
+impl<'a, T> DataIterator<'a, T>
 where
     T: 'a,
 {
     /// Create a new `DataIterator` from a type that implements `DataIndex`.
-    pub fn new(data: &'a dyn DataIndex<DType = T>) -> DataIterator<'a, 'b, T> {
+    pub fn new(data: &'a dyn DataIndex<DType = T>) -> DataIterator<'a, T> {
         DataIterator {
             data,
-            permutation: Permutation::default(),
             cur_idx: 0,
             phantom: PhantomData,
         }
-    }
-
-    /// Create a new `DataIterator` from a type that implements `DataIndex`, permuted using the
-    /// slice of indices `permutation`.
-    pub fn with_permutation(
-        data: &'a dyn DataIndex<DType = T>,
-        permutation: &'b [usize],
-    ) -> Result<DataIterator<'a, 'b, T>> {
-        if permutation.len() > 0 && permutation.iter().max().unwrap() >= &data.len() {
-            return Err(AgnesError::LengthMismatch {
-                expected: data.len(),
-                actual: permutation.len(),
-            });
-        }
-        Ok(DataIterator {
-            data,
-            permutation: permutation.into(),
-            cur_idx: 0,
-            phantom: PhantomData,
-        })
     }
 
     /// Returns an iterator applying function `F` to the stored values (where they exist) to this
@@ -151,23 +128,15 @@ where
     }
 }
 
-impl<'a, 'b, T> Iterator for DataIterator<'a, 'b, T>
+impl<'a, T> Iterator for DataIterator<'a, T>
 where
     T: 'a,
 {
     type Item = Value<&'a T>;
 
     fn next(&mut self) -> Option<Value<&'a T>> {
-        // use permutation length as length of iterator when permutation exists, otherwise use
-        // data length
-        if self.permutation.is_permuted() && self.cur_idx < self.permutation.len().unwrap()
-            || !self.permutation.is_permuted() && self.cur_idx < self.data.len()
-        {
-            let out = Some(
-                self.data
-                    .get_datum(self.permutation.map_index(self.cur_idx))
-                    .unwrap(),
-            );
+        if self.cur_idx < self.data.len() {
+            let out = Some(self.data.get_datum(self.cur_idx).unwrap());
             self.cur_idx += 1;
             out
         } else {

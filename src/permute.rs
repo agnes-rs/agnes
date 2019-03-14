@@ -28,6 +28,11 @@ impl<'a> From<&'a [usize]> for Permutation<&'a [usize]> {
         Permutation { perm: Some(orig) }
     }
 }
+impl From<Vec<usize>> for Permutation<Vec<usize>> {
+    fn from(orig: Vec<usize>) -> Permutation<Vec<usize>> {
+        Permutation { perm: Some(orig) }
+    }
+}
 
 impl Permutation<Vec<usize>> {
     /// Update this permutation with new values from `new_permutation`.
