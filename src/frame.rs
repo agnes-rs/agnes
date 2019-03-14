@@ -99,7 +99,7 @@ pub struct Framed<T, DI> {
     _ty: PhantomData<T>,
 }
 impl<T, DI> Framed<T, DI> {
-    /// Create a new framed view of some data, as view through a particular `DataFrame`.
+    /// Create a new framed view of some data, as viewed through a particular `DataFrame`.
     pub fn new(permutation: Rc<Permutation>, data: DI) -> Framed<T, DI> {
         Framed {
             permutation,
