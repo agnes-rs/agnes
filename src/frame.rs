@@ -95,7 +95,7 @@ where
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct Framed<T, DI> {
     permutation: Rc<Permutation>,
-    data: DI,
+    data: Vec<DI>,
     _ty: PhantomData<T>,
 }
 impl<T, DI> Framed<T, DI> {
@@ -103,7 +103,7 @@ impl<T, DI> Framed<T, DI> {
     pub fn new(permutation: Rc<Permutation>, data: DI) -> Framed<T, DI> {
         Framed {
             permutation,
-            data: data,
+            data: vec![data],
             _ty: PhantomData,
         }
     }
@@ -124,7 +124,7 @@ impl<T> From<DataRef<T>> for Framed<T, DataRef<T>> {
     fn from(orig: DataRef<T>) -> Framed<T, DataRef<T>> {
         Framed {
             permutation: Rc::new(Permutation::default()),
-            data: orig,
+            data: vec![orig],
             _ty: PhantomData,
         }
     }
@@ -133,7 +133,7 @@ impl<T> From<FieldData<T>> for Framed<T, DataRef<T>> {
     fn from(orig: FieldData<T>) -> Framed<T, DataRef<T>> {
         Framed {
             permutation: Rc::new(Permutation::default()),
-            data: orig.into(),
+            data: vec![orig.into()],
             _ty: PhantomData,
         }
     }
@@ -147,13 +147,16 @@ where
     type DType = T;
 
     fn get_datum(&self, idx: usize) -> error::Result<Value<&T>> {
-        self.data.get_datum(self.permutation.map_index(idx))
+        assert!(!self.data.is_empty());
+        // when we have multiple fields in this Framed struct, we loop through through the first
+        // record in each field, then the second, and so on....
+        let nfields = self.data.len();
+        self.data[idx % nfields].get_datum(self.permutation.map_index(idx / nfields))
     }
     fn len(&self) -> usize {
-        match self.permutation.len() {
-            Some(len) => len,
-            None => self.data.len(),
-        }
+        assert!(!self.data.is_empty());
+        // nfields * nrows
+        self.data.len() * self.permutation.len().unwrap_or(self.data[0].len())
     }
 }
 
