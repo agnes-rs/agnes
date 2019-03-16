@@ -10,6 +10,7 @@ This module also contains traits and methods for sorting data sets.
 use std::cmp::Ordering;
 
 use access::DataIndex;
+use cons::Nil;
 use field::Value;
 
 /// A structure containing information about the permutation status of a field. `I` represents the
@@ -74,6 +75,13 @@ macro_rules! impl_permutation_len {
     )*}
 }
 impl_permutation_len![&[usize] Vec<usize>];
+
+/// Trait for updating the permutation of all data storage in a type.
+pub trait UpdatePermutation {
+    /// Update the permutation with the providing indices.
+    fn update_permutation(&mut self, _order: &[usize]) {}
+}
+impl UpdatePermutation for Nil {}
 
 /// Trait providing function to compute and return the sorted permutation order. This sort is stable
 /// (preserves original order of equal elements).

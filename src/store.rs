@@ -128,9 +128,21 @@ impl NRows for Nil {
         0
     }
 }
-impl<Label, DType, Tail> NRows for StorageCons<Label, DType, Tail> {
+impl<L, V, Tail> NRows for LVCons<L, V, Tail>
+where
+    V: Valued,
+    ValueOf<V>: NRows,
+{
     fn nrows(&self) -> usize {
-        self.head.value_ref().len()
+        self.head.value_ref().nrows()
+    }
+}
+impl<DI> NRows for DI
+where
+    DI: DataIndex,
+{
+    fn nrows(&self) -> usize {
+        self.len()
     }
 }
 
@@ -664,7 +676,7 @@ where
     Fields: AssocStorage + AssocFrameLookup,
 {
     type Labels = <Fields as AssocFrameLookup>::Output;
-    type Frames = ViewFrameCons<UTerm, Fields, Nil>;
+    type Frames = ViewFrameCons<UTerm, DataFrame<Nil, Fields>, Nil>;
     type Output = DataView<Self::Labels, Self::Frames>;
 
     fn into_view(self) -> Self::Output {

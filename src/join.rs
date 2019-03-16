@@ -17,7 +17,7 @@ use field::Value;
 use label::{LVCons, Labeled, LookupValuedElemByLabel, Valued};
 use permute::SortOrder;
 use select::{FieldSelect, SelectFieldByLabel};
-use store::{AssocStorage, DataStore, IntoView, PushBackClonedFromValueIter};
+use store::{DataStore, IntoView, PushBackClonedFromValueIter};
 use view::*;
 
 /// A trait for applying a frame index offset `O`.
@@ -73,16 +73,15 @@ impl<FrameIndexOffset> UpdateFrameIndex<FrameIndexOffset> for Nil {
     }
 }
 
-impl<RFrameIndex, RFrameFields, RTail, FrameIndexOffset> UpdateFrameIndex<FrameIndexOffset>
-    for ViewFrameCons<RFrameIndex, RFrameFields, RTail>
+impl<RFrameIndex, RFrame, RTail, FrameIndexOffset> UpdateFrameIndex<FrameIndexOffset>
+    for ViewFrameCons<RFrameIndex, RFrame, RTail>
 where
     RFrameIndex: Offset<FrameIndexOffset>,
-    RFrameFields: AssocStorage,
     RTail: UpdateFrameIndex<FrameIndexOffset>,
 {
     type Output = ViewFrameCons<
         <RFrameIndex as Offset<FrameIndexOffset>>::Output,
-        RFrameFields,
+        RFrame,
         <RTail as UpdateFrameIndex<FrameIndexOffset>>::Output,
     >;
 

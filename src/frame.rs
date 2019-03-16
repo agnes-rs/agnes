@@ -16,8 +16,8 @@ use std::sync::Arc;
 use access::DataIndex;
 use error;
 use field::{FieldData, Value};
-use label::{ElemOf, LookupElemByLabel, TypeOf, TypeOfElemOf, Typed, Valued};
-use permute;
+use label::{ElemOf, LookupElemByLabel, SelfValued, TypeOf, TypeOfElemOf, Typed, Valued};
+use permute::{self, UpdatePermutation};
 use select::{FieldSelect, SelectFieldByLabel};
 use store::{AssocStorage, DataRef, DataStore, NRows};
 
@@ -25,15 +25,16 @@ type Permutation = permute::Permutation<Vec<usize>>;
 
 /// A data frame. A `DataStore` reference along with record-based filtering and sorting details.
 #[derive(Debug, Clone)]
-pub struct DataFrame<StoreFields>
+pub struct DataFrame<FrameFields, StoreFields>
 where
     StoreFields: AssocStorage,
     StoreFields::Storage: Debug,
 {
     permutation: Rc<Permutation>,
+    fields: PhantomData<FrameFields>,
     store: Arc<DataStore<StoreFields>>,
 }
-impl<StoreFields> DataFrame<StoreFields>
+impl<FrameFields, StoreFields> DataFrame<FrameFields, StoreFields>
 where
     StoreFields: AssocStorage,
     DataStore<StoreFields>: NRows,
@@ -50,7 +51,7 @@ where
         self.len() == 0
     }
 }
-impl<StoreFields> NRows for DataFrame<StoreFields>
+impl<FrameFields, StoreFields> NRows for DataFrame<FrameFields, StoreFields>
 where
     StoreFields: AssocStorage,
     DataStore<StoreFields>: NRows,
@@ -60,32 +61,73 @@ where
     }
 }
 #[cfg(test)]
-impl<StoreFields> DataFrame<StoreFields>
+pub trait StoreRefCount {
+    fn store_ref_count(&self) -> usize;
+}
+#[cfg(test)]
+impl<FrameFields, StoreFields> StoreRefCount for DataFrame<FrameFields, StoreFields>
 where
     StoreFields: AssocStorage,
 {
-    pub fn store_ref_count(&self) -> usize {
+    fn store_ref_count(&self) -> usize {
         Arc::strong_count(&self.store)
     }
 }
-impl<StoreFields> DataFrame<StoreFields>
+impl<FrameFields, StoreFields> UpdatePermutation for DataFrame<FrameFields, StoreFields>
 where
     StoreFields: AssocStorage,
 {
-    pub(crate) fn update_permutation(&mut self, new_permutation: &[usize]) {
+    fn update_permutation(&mut self, new_permutation: &[usize]) {
         Rc::make_mut(&mut self.permutation).update_indices(new_permutation);
     }
 }
 
-impl<StoreFields> From<DataStore<StoreFields>> for DataFrame<StoreFields>
+impl<FrameFields, StoreFields> From<DataStore<StoreFields>> for DataFrame<FrameFields, StoreFields>
 where
     StoreFields: AssocStorage,
 {
-    fn from(store: DataStore<StoreFields>) -> DataFrame<StoreFields> {
+    fn from(store: DataStore<StoreFields>) -> DataFrame<FrameFields, StoreFields> {
         DataFrame {
             permutation: Rc::new(Permutation::default()),
+            fields: PhantomData,
             store: Arc::new(store),
         }
+    }
+}
+
+/// Allow `DataFrame`s to be pulled from `LVCons` as `Value`s
+impl<FrameFields, StoreFields> SelfValued for DataFrame<FrameFields, StoreFields> where
+    StoreFields: AssocStorage
+{
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+enum FrameKind<DI> {
+    Single(DI),
+    Melt(Vec<DI>),
+}
+
+impl<DI> FrameKind<DI>
+where
+    DI: DataIndex,
+{
+    fn nfields(&self) -> usize {
+        match *self {
+            FrameKind::Single(_) => 1,
+            FrameKind::Melt(ref fields) => fields.len(),
+        }
+    }
+
+    fn nrows(&self) -> usize {
+        assert!(!self.is_empty());
+        match *self {
+            FrameKind::Single(ref field) => field.len(),
+            FrameKind::Melt(ref fields) => fields[0].len(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.nfields() == 0
     }
 }
 
@@ -95,7 +137,7 @@ where
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct Framed<T, DI> {
     permutation: Rc<Permutation>,
-    data: Vec<DI>,
+    data: FrameKind<DI>,
     _ty: PhantomData<T>,
 }
 impl<T, DI> Framed<T, DI> {
@@ -103,7 +145,7 @@ impl<T, DI> Framed<T, DI> {
     pub fn new(permutation: Rc<Permutation>, data: DI) -> Framed<T, DI> {
         Framed {
             permutation,
-            data: vec![data],
+            data: FrameKind::Single(data),
             _ty: PhantomData,
         }
     }
@@ -124,7 +166,7 @@ impl<T> From<DataRef<T>> for Framed<T, DataRef<T>> {
     fn from(orig: DataRef<T>) -> Framed<T, DataRef<T>> {
         Framed {
             permutation: Rc::new(Permutation::default()),
-            data: vec![orig],
+            data: FrameKind::Single(orig),
             _ty: PhantomData,
         }
     }
@@ -133,7 +175,7 @@ impl<T> From<FieldData<T>> for Framed<T, DataRef<T>> {
     fn from(orig: FieldData<T>) -> Framed<T, DataRef<T>> {
         Framed {
             permutation: Rc::new(Permutation::default()),
-            data: vec![orig.into()],
+            data: FrameKind::Single(orig.into()),
             _ty: PhantomData,
         }
     }
@@ -148,15 +190,20 @@ where
 
     fn get_datum(&self, idx: usize) -> error::Result<Value<&T>> {
         assert!(!self.data.is_empty());
-        // when we have multiple fields in this Framed struct, we loop through through the first
-        // record in each field, then the second, and so on....
-        let nfields = self.data.len();
-        self.data[idx % nfields].get_datum(self.permutation.map_index(idx / nfields))
+        match self.data {
+            FrameKind::Single(ref field) => field.get_datum(self.permutation.map_index(idx)),
+            FrameKind::Melt(ref fields) => {
+                // when we have multiple fields in this Framed struct, we loop through through the
+                // first record in each field, then the second, and so on....
+                let nfields = self.data.nfields();
+                fields[idx % nfields].get_datum(self.permutation.map_index(idx / nfields))
+            }
+        }
     }
     fn len(&self) -> usize {
         assert!(!self.data.is_empty());
         // nfields * nrows
-        self.data.len() * self.permutation.len().unwrap_or(self.data[0].len())
+        self.data.nfields() * self.permutation.len().unwrap_or(self.data.nrows())
     }
 }
 
@@ -178,7 +225,8 @@ where
     }
 }
 
-impl<StoreFields, Label> SelectFieldByLabel<Label> for DataFrame<StoreFields>
+impl<FrameFields, StoreFields, Label> SelectFieldByLabel<Label>
+    for DataFrame<FrameFields, StoreFields>
 where
     StoreFields: AssocStorage + Debug,
     StoreFields::Storage: LookupElemByLabel<Label> + NRows,
@@ -200,7 +248,10 @@ where
     }
 }
 
-impl<StoreFields> FieldSelect for DataFrame<StoreFields> where StoreFields: AssocStorage {}
+impl<FrameFields, StoreFields> FieldSelect for DataFrame<FrameFields, StoreFields> where
+    StoreFields: AssocStorage
+{
+}
 
 #[cfg(test)]
 mod tests {
@@ -212,7 +263,6 @@ mod tests {
 
     use super::*;
 
-    use select::FieldSelect;
     use source::csv::{CsvReader, CsvSource, IntoCsvSrcSchema};
 
     fn load_csv_file<Schema>(
@@ -258,7 +308,7 @@ mod tests {
         let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_schema.clone());
         let ds = csv_rdr.read().unwrap();
 
-        let frame = DataFrame::from(ds);
+        let frame: DataFrame<::cons::Nil, _> = DataFrame::from(ds);
         println!("{:?}", frame.field::<gdp::CountryName>());
     }
 

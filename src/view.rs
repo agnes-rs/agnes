@@ -26,7 +26,9 @@ use serde::ser::{Serialize, SerializeMap, Serializer};
 
 use access::*;
 use error;
-use frame::{DataFrame, Framed};
+use frame::Framed;
+#[cfg(test)]
+use frame::StoreRefCount;
 
 use cons::*;
 use field::Value;
@@ -36,22 +38,22 @@ use label::*;
 use partial::{DeriveCapabilities, Func, FuncDefault, Implemented, IsImplemented, PartialMap};
 use permute::{
     FilterPerm, SortOrder, SortOrderComparator, SortOrderUnstable, SortOrderUnstableComparator,
+    UpdatePermutation,
 };
 use select::{FieldSelect, SelectFieldByLabel};
-use store::{AssocStorage, NRows};
+use store::NRows;
 
 /// Cons-list of `DataFrame`s held by a `DataView. `FrameIndex` is simply an index used by
-/// `FrameLookupCons` to look up `DataFrame`s for a specified `Label`, and `FrameFields` is
-/// set of fields within the specified `DataFrame`.
-pub type ViewFrameCons<FrameIndex, FrameFields, Tail> =
-    LVCons<FrameIndex, DataFrame<FrameFields>, Tail>;
+/// `FrameLookupCons` to look up `DataFrame`s for a specified `Label`, and `Frame` is the type
+/// of the associated `DataFrame`.
+pub(crate) type ViewFrameCons<FrameIndex, Frame, Tail> = LVCons<FrameIndex, Frame, Tail>;
 
 /// Cons-list of field labels along with the details necessary to look up that label in a
 /// `DataView`'s `ViewFrameCons` cons-list of `DataFrame`s. The `FrameIndex` specifies the index
 /// of the `DataFrame` containing the field labeled `Label` in the `ViewFrameCons`, and the
 /// `FrameLabel` specifies the potentially-different (since `DataView` supports renaming fields)
 /// `Label` within that `DataFrame`.
-pub type FrameLookupCons<Label, FrameIndex, FrameLabel, Tail> =
+pub(crate) type FrameLookupCons<Label, FrameIndex, FrameLabel, Tail> =
     LMCons<Label, FrameDetailMarkers<FrameIndex, FrameLabel>, Tail>;
 
 /// A `DataView` is a specific view of data stored inside a `DataStore`. It consists of a list of
@@ -88,19 +90,6 @@ where
 {
     type FrameIndex = FrameIndex;
     type FrameLabel = FrameLabel;
-}
-
-/// Allow `DataFrame`s to be pulled from `LVCons` as `Value`s
-impl<FrameFields> SelfValued for DataFrame<FrameFields> where FrameFields: AssocStorage {}
-
-impl<FrameIndex, FrameFields, Tail> NRows for ViewFrameCons<FrameIndex, FrameFields, Tail>
-where
-    FrameFields: AssocStorage,
-    DataFrame<FrameFields>: NRows,
-{
-    fn nrows(&self) -> usize {
-        self.head.value_ref().nrows()
-    }
 }
 
 impl<Labels, Frames> DataView<Labels, Frames> {
@@ -229,9 +218,10 @@ impl StoreRefCounts for Nil {
     }
 }
 #[cfg(test)]
-impl<FrameIndex, FrameFields, Tail> StoreRefCounts for ViewFrameCons<FrameIndex, FrameFields, Tail>
+impl<FrameIndex, Frame, Tail> StoreRefCounts for ViewFrameCons<FrameIndex, Frame, Tail>
 where
-    FrameFields: AssocStorage,
+    Frame: Valued,
+    ValueOf<Frame>: StoreRefCount,
     Tail: StoreRefCounts,
 {
     fn store_ref_counts(&self) -> VecDeque<usize> {
@@ -641,16 +631,10 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     }
 }
 
-/// Trait for updating the permutation of all data storage in a type.
-pub trait UpdatePermutation {
-    /// Update the permutation with the providing indices.
-    fn update_permutation(&mut self, _order: &[usize]) {}
-}
-impl UpdatePermutation for Nil {}
-impl<FrameIndex, FrameFields, Tail> UpdatePermutation
-    for ViewFrameCons<FrameIndex, FrameFields, Tail>
+impl<FrameIndex, Frame, Tail> UpdatePermutation for ViewFrameCons<FrameIndex, Frame, Tail>
 where
-    FrameFields: AssocStorage,
+    Frame: Valued,
+    ValueOf<Frame>: UpdatePermutation,
     Tail: UpdatePermutation,
 {
     fn update_permutation(&mut self, order: &[usize]) {
