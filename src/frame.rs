@@ -13,17 +13,61 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use typenum::UTerm;
+
 use access::DataIndex;
+use cons::Nil;
 use error;
 use field::{FieldData, Value};
-use label::{ElemOf, LookupElemByLabel, SelfValued, TypeOf, TypeOfElemOf, Typed, Valued};
+use fieldlist::FieldCons;
+use label::*;
 use permute::{self, UpdatePermutation};
 use select::{FieldSelect, SelectFieldByLabel};
-use store::{AssocStorage, DataRef, DataStore, NRows};
+use store::{AssocFrameLookup, AssocStorage, DataRef, DataStore, IntoView, NRows};
+use view::{DataView, ViewFrameCons};
 
 type Permutation = permute::Permutation<Vec<usize>>;
 
+/// Type alias for label-only cons-list
+pub type StoreFieldCons<L, T> = LCons<L, T>;
+/// A marker struct for a frame type (Single, Melt, etc.) and the list of fields used with this
+/// type (a [StoreFieldCons](type.StoreFieldCons.html) / [LabelCons](../label/type.LabelCons.html)).
+pub struct StoreFieldMarkers<FrameType, StoreFieldList> {
+    _marker: PhantomData<(FrameType, StoreFieldList)>,
+}
+// `FrameLabel` is a label struct. `StoreFields` is a `StoreFieldMarkers` struct.
+type FieldLookupCons<FrameLabel, StoreFields, Tail> = LMCons<FrameLabel, StoreFields, Tail>;
+
+/// [StoreFieldMarkers](struct.StoreFieldMarkers.html) `FrameType` for typical single-source fields
+pub struct Single;
+/// [StoreFieldMarkers](struct.StoreFieldMarkers.html) `FrameType` for multi-source fields
+/// constructed by a 'melt' call.
+pub struct Melt;
+
+/// Trait for computing the `FrameFields` [FieldLookupCons](type.FieldLookupCons.html) cons-list
+/// for a standard [DataFrame](struct.DataFrame.html) (where all labels simple pass through with
+/// calls to the underlying [DataStore](../store/struct.DataStore.html)).
+pub trait SimpleFrameFields {
+    /// The computed `FrameFields` [FieldLookupCons](type.FieldLookupCons.html) cons-list.
+    type Fields;
+}
+impl SimpleFrameFields for Nil {
+    type Fields = Nil;
+}
+impl<Label, DType, Tail> SimpleFrameFields for FieldCons<Label, DType, Tail>
+where
+    Tail: SimpleFrameFields,
+{
+    type Fields = FieldLookupCons<
+        Label,
+        StoreFieldMarkers<Single, Labels![Label]>,
+        <Tail as SimpleFrameFields>::Fields,
+    >;
+}
+
 /// A data frame. A `DataStore` reference along with record-based filtering and sorting details.
+/// `FrameFields` is a [FieldLookupCons](type.FieldLookupCons.html) cons-list which maps a single
+/// label to one or more `DataStore` labels.
 #[derive(Debug, Clone)]
 pub struct DataFrame<FrameFields, StoreFields>
 where
@@ -82,13 +126,57 @@ where
     }
 }
 
-impl<FrameFields, StoreFields> From<DataStore<StoreFields>> for DataFrame<FrameFields, StoreFields>
+impl<StoreFields> From<DataStore<StoreFields>>
+    for DataFrame<<StoreFields as SimpleFrameFields>::Fields, StoreFields>
 where
-    StoreFields: AssocStorage,
+    StoreFields: AssocStorage + SimpleFrameFields,
 {
-    fn from(store: DataStore<StoreFields>) -> DataFrame<FrameFields, StoreFields> {
+    fn from(
+        store: DataStore<StoreFields>,
+    ) -> DataFrame<<StoreFields as SimpleFrameFields>::Fields, StoreFields> {
         DataFrame {
             permutation: Rc::new(Permutation::default()),
+            fields: PhantomData,
+            store: Arc::new(store),
+        }
+    }
+}
+
+impl<FrameFields, StoreFields> IntoView for DataFrame<FrameFields, StoreFields>
+where
+    StoreFields: AssocStorage,
+    FrameFields: AssocFrameLookup,
+{
+    type Labels = <FrameFields as AssocFrameLookup>::Output;
+    type Frames = ViewFrameCons<UTerm, Self, Nil>;
+    type Output = DataView<Self::Labels, Self::Frames>;
+
+    fn into_view(self) -> Self::Output {
+        DataView::new(ViewFrameCons {
+            head: self.into(),
+            tail: Nil,
+        })
+    }
+}
+
+impl<StoreFields> DataFrame<<StoreFields as SimpleFrameFields>::Fields, StoreFields>
+where
+    StoreFields: AssocStorage + SimpleFrameFields,
+    DataStore<StoreFields>: NRows,
+{
+    pub(crate) fn from_repeated_store(
+        store: DataStore<StoreFields>,
+        reps: usize,
+    ) -> DataFrame<<StoreFields as SimpleFrameFields>::Fields, StoreFields> {
+        DataFrame {
+            permutation: {
+                //TODO: replace with slice.repeat() call when stabilized
+                let mut v = Vec::with_capacity(store.nrows() * reps);
+                for _ in 0..reps {
+                    v.extend(0..store.nrows());
+                }
+                Rc::new(v.into())
+            },
             fields: PhantomData,
             store: Arc::new(store),
         }
@@ -225,25 +313,55 @@ where
     }
 }
 
+/// Trait for selecting a field associated with the label `Label` from a type, as mediated through
+/// the framing information in `FrameFields`.
+pub trait SelectFieldFromStore<FrameFields, Label> {
+    /// The resultant data type of the field.
+    type DType: Debug;
+    /// The field accessor type.
+    type Output: DataIndex<DType = Self::DType>;
+
+    /// Returns an accessor (implementing [DataIndex](../access/trait.DataIndex.html)) for the
+    /// selected field.
+    fn select_field(&self) -> Self::Output;
+}
+
+impl<FrameFields, StoreFields, Label, FirstLabel, Tail> SelectFieldFromStore<FrameFields, Label>
+    for DataStore<StoreFields>
+where
+    FrameFields: LookupElemByLabel<Label>,
+    ElemOf<FrameFields, Label>:
+        Marked<Marker = StoreFieldMarkers<Single, StoreFieldCons<FirstLabel, Tail>>>,
+    StoreFields: AssocStorage,
+    StoreFields::Storage: LookupElemByLabel<FirstLabel>,
+    ElemOf<StoreFields::Storage, FirstLabel>: Typed,
+    ElemOf<StoreFields::Storage, FirstLabel>:
+        Valued<Value = DataRef<TypeOfElemOf<StoreFields::Storage, FirstLabel>>>,
+    TypeOf<ElemOf<StoreFields::Storage, FirstLabel>>: Debug,
+{
+    type DType = TypeOf<ElemOf<StoreFields::Storage, FirstLabel>>;
+    type Output = DataRef<TypeOf<ElemOf<StoreFields::Storage, FirstLabel>>>;
+
+    fn select_field(&self) -> Self::Output {
+        DataRef::clone(&self.field::<FirstLabel>())
+    }
+}
+
 impl<FrameFields, StoreFields, Label> SelectFieldByLabel<Label>
     for DataFrame<FrameFields, StoreFields>
 where
-    StoreFields: AssocStorage + Debug,
-    StoreFields::Storage: LookupElemByLabel<Label> + NRows,
-    ElemOf<StoreFields::Storage, Label>: Typed,
-    ElemOf<StoreFields::Storage, Label>:
-        Valued<Value = DataRef<TypeOfElemOf<StoreFields::Storage, Label>>>,
-    TypeOf<ElemOf<StoreFields::Storage, Label>>: Debug,
+    DataStore<StoreFields>: SelectFieldFromStore<FrameFields, Label>,
+    StoreFields: AssocStorage,
 {
     type Output = Framed<
-        TypeOf<ElemOf<StoreFields::Storage, Label>>,
-        DataRef<TypeOf<ElemOf<StoreFields::Storage, Label>>>,
+        <DataStore<StoreFields> as SelectFieldFromStore<FrameFields, Label>>::DType,
+        <DataStore<StoreFields> as SelectFieldFromStore<FrameFields, Label>>::Output,
     >;
 
     fn select_field(&self) -> Self::Output {
         Framed::new(
             Rc::clone(&self.permutation),
-            DataRef::clone(&self.store.field::<Label>()),
+            SelectFieldFromStore::<FrameFields, Label>::select_field(&*self.store),
         )
     }
 }
@@ -308,7 +426,7 @@ mod tests {
         let (mut csv_rdr, _metadata) = load_csv_file("gdp.csv", gdp_schema.clone());
         let ds = csv_rdr.read().unwrap();
 
-        let frame: DataFrame<::cons::Nil, _> = DataFrame::from(ds);
+        let frame = DataFrame::from(ds);
         println!("{:?}", frame.field::<gdp::CountryName>());
     }
 
@@ -321,5 +439,38 @@ mod tests {
             "[5.0,3.4,-1.3,5.2,6.0,-126.9]"
         );
         println!("{}", serde_json::to_string(&framed).unwrap());
+    }
+
+    tablespace![
+        pub table order {
+            Name: String,
+        }
+    ];
+
+    #[test]
+    fn repeated() {
+        let field: FieldData<String> = vec!["First", "Second", "Third"]
+            .iter()
+            .map(|&s| s.to_owned())
+            .collect();
+        let store = DataStore::<Nil>::empty().push_back_field::<order::Name, _>(field);
+        let frame = DataFrame::from_repeated_store(store, 5);
+        assert_eq!(
+            frame.field::<order::Name>().to_vec(),
+            vec![
+                "First", "Second", "Third", "First", "Second", "Third", "First", "Second", "Third",
+                "First", "Second", "Third", "First", "Second", "Third",
+            ]
+        );
+
+        let dv = frame.into_view();
+        println!("{}", dv);
+        assert_eq!(
+            dv.field::<order::Name>().to_vec(),
+            vec![
+                "First", "Second", "Third", "First", "Second", "Third", "First", "Second", "Third",
+                "First", "Second", "Third", "First", "Second", "Third",
+            ]
+        );
     }
 }

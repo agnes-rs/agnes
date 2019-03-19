@@ -16,7 +16,7 @@ use cons::*;
 use error;
 use field::{FieldData, Value};
 use fieldlist::{FieldCons, FieldPayloadCons, FieldSchema};
-use frame::DataFrame;
+use frame::{DataFrame, SimpleFrameFields};
 use label::*;
 use select::{FieldSelect, SelectFieldByLabel};
 use view::{DataView, FrameLookupCons, ViewFrameCons};
@@ -673,10 +673,11 @@ pub trait IntoView {
 }
 impl<Fields> IntoView for DataStore<Fields>
 where
-    Fields: AssocStorage + AssocFrameLookup,
+    Fields: AssocStorage + AssocFrameLookup + SimpleFrameFields,
 {
     type Labels = <Fields as AssocFrameLookup>::Output;
-    type Frames = ViewFrameCons<UTerm, DataFrame<Nil, Fields>, Nil>;
+    type Frames =
+        ViewFrameCons<UTerm, DataFrame<<Fields as SimpleFrameFields>::Fields, Fields>, Nil>;
     type Output = DataView<Self::Labels, Self::Frames>;
 
     fn into_view(self) -> Self::Output {
@@ -695,7 +696,8 @@ impl<Label, I, T> IntoView for Labeled<Label, I>
 where
     I: Iterator<Item = Value<T>>,
     DataStore<Nil>: PushFrontFromValueIter<Label, T>,
-    <DataStore<Nil> as PushFrontFromValueIter<Label, T>>::OutputFields: AssocFrameLookup,
+    <DataStore<Nil> as PushFrontFromValueIter<Label, T>>::OutputFields:
+        AssocFrameLookup + SimpleFrameFields,
 {
     type Labels = <SingleFieldStore<Label, T> as IntoView>::Labels;
     type Frames = <SingleFieldStore<Label, T> as IntoView>::Frames;
