@@ -5,6 +5,7 @@ A [DataFrame](struct.DataFrame.html) is a reference to an underlying
 [DataStore](../store/struct.DataStore.html) along with record-based filtering and sorting details.
 */
 
+use std::collections::VecDeque;
 use std::marker::PhantomData;
 
 #[cfg(feature = "serialize")]
@@ -35,8 +36,8 @@ pub type StoreFieldCons<L, T> = LCons<L, T>;
 pub struct StoreFieldMarkers<FrameType, StoreFieldList> {
     _marker: PhantomData<(FrameType, StoreFieldList)>,
 }
-// `FrameLabel` is a label struct. `StoreFields` is a `StoreFieldMarkers` struct.
-type FieldLookupCons<FrameLabel, StoreFields, Tail> = LMCons<FrameLabel, StoreFields, Tail>;
+// `FrameLabel` is a label struct. `StoreDetails` is a `StoreFieldMarkers` struct.
+type FieldLookupCons<FrameLabel, StoreDetails, Tail> = LMCons<FrameLabel, StoreDetails, Tail>;
 
 /// [StoreFieldMarkers](struct.StoreFieldMarkers.html) `FrameType` for typical single-source fields
 pub struct Single;
@@ -237,6 +238,15 @@ impl<T, DI> Framed<T, DI> {
             _ty: PhantomData,
         }
     }
+
+    /// Create a new framed view of some data, rotating over data in a `Vec` of `DataIndex` objects.
+    pub fn new_melt(permutation: Rc<Permutation>, data: Vec<DI>) -> Framed<T, DI> {
+        Framed {
+            permutation,
+            data: FrameKind::Melt(data),
+            _ty: PhantomData,
+        }
+    }
 }
 impl<T, DI> Clone for Framed<T, DI>
 where
@@ -313,55 +323,192 @@ where
     }
 }
 
-/// Trait for selecting a field associated with the label `Label` from a type, as mediated through
-/// the framing information in `FrameFields`.
-pub trait SelectFieldFromStore<FrameFields, Label> {
+/// Trait for selecting a field associated with the label `Label` from the fields in `StoreFields`.
+pub trait SelectAndFrame<Label, StoreFields>
+where
+    StoreFields: AssocStorage,
+{
     /// The resultant data type of the field.
     type DType: Debug;
     /// The field accessor type.
-    type Output: DataIndex<DType = Self::DType>;
+    type Field: DataIndex<DType = Self::DType>;
 
-    /// Returns an accessor (implementing [DataIndex](../access/trait.DataIndex.html)) for the
-    /// selected field.
-    fn select_field(&self) -> Self::Output;
+    /// Returns an [Framed](struct.Framed.html) struct accessing the selected field.
+    fn select_and_frame(
+        perm: &Rc<Permutation>,
+        store: &DataStore<StoreFields>,
+    ) -> Framed<Self::DType, Self::Field>;
 }
 
-impl<FrameFields, StoreFields, Label, FirstLabel, Tail> SelectFieldFromStore<FrameFields, Label>
-    for DataStore<StoreFields>
+/// Helper trait for selecting and framing fields. Used by
+/// [SelectAndFrame](trait.SelectAndFrame.html). `Label` is the label to select, `StoreFields` is
+/// the set of fields the data is stored in, and `Match` is whether or not `Label` matches the head
+/// label in this type.
+pub trait SelectAndFrameMatch<Label, StoreFields, Match>
 where
-    FrameFields: LookupElemByLabel<Label>,
-    ElemOf<FrameFields, Label>:
-        Marked<Marker = StoreFieldMarkers<Single, StoreFieldCons<FirstLabel, Tail>>>,
     StoreFields: AssocStorage,
-    StoreFields::Storage: LookupElemByLabel<FirstLabel>,
-    ElemOf<StoreFields::Storage, FirstLabel>: Typed,
-    ElemOf<StoreFields::Storage, FirstLabel>:
-        Valued<Value = DataRef<TypeOfElemOf<StoreFields::Storage, FirstLabel>>>,
-    TypeOf<ElemOf<StoreFields::Storage, FirstLabel>>: Debug,
 {
-    type DType = TypeOf<ElemOf<StoreFields::Storage, FirstLabel>>;
-    type Output = DataRef<TypeOf<ElemOf<StoreFields::Storage, FirstLabel>>>;
+    /// The resultant data type of the field.
+    type DType: Debug;
+    /// The field accessor type.
+    type Field: DataIndex<DType = Self::DType>;
 
-    fn select_field(&self) -> Self::Output {
-        DataRef::clone(&self.field::<FirstLabel>())
+    /// Returns an [Framed](struct.Framed.html) struct accessing the selected field.
+    fn select_and_frame(
+        perm: &Rc<Permutation>,
+        store: &DataStore<StoreFields>,
+    ) -> Framed<Self::DType, Self::Field>;
+}
+
+impl<TargetLabel, FrameLabel, StoreDetails, Tail, StoreFields>
+    SelectAndFrame<TargetLabel, StoreFields> for FieldLookupCons<FrameLabel, StoreDetails, Tail>
+where
+    TargetLabel: LabelEq<FrameLabel>,
+    StoreFields: AssocStorage,
+    FieldLookupCons<FrameLabel, StoreDetails, Tail>:
+        SelectAndFrameMatch<TargetLabel, StoreFields, <TargetLabel as LabelEq<FrameLabel>>::Eq>,
+{
+    type DType = <FieldLookupCons<FrameLabel, StoreDetails, Tail> as SelectAndFrameMatch<
+        TargetLabel,
+        StoreFields,
+        <TargetLabel as LabelEq<FrameLabel>>::Eq,
+    >>::DType;
+    type Field = <FieldLookupCons<FrameLabel, StoreDetails, Tail> as SelectAndFrameMatch<
+        TargetLabel,
+        StoreFields,
+        <TargetLabel as LabelEq<FrameLabel>>::Eq,
+    >>::Field;
+
+    fn select_and_frame(
+        perm: &Rc<Permutation>,
+        store: &DataStore<StoreFields>,
+    ) -> Framed<Self::DType, Self::Field> {
+        <Self as SelectAndFrameMatch<
+            TargetLabel,
+            StoreFields,
+            <TargetLabel as LabelEq<FrameLabel>>::Eq,
+        >>::select_and_frame(perm, store)
+    }
+}
+
+impl<TargetLabel, FrameLabel, StoreFieldList, Tail, StoreFields>
+    SelectAndFrameMatch<TargetLabel, StoreFields, True>
+    for FieldLookupCons<FrameLabel, StoreFieldMarkers<Single, StoreFieldList>, Tail>
+where
+    StoreFields: AssocStorage,
+    StoreFields::Storage: LookupElemByLabel<TargetLabel>,
+    ElemOf<StoreFields::Storage, TargetLabel>: Typed,
+    TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>: Debug,
+    ElemOf<StoreFields::Storage, TargetLabel>:
+        Valued<Value = DataRef<TypeOfElemOf<StoreFields::Storage, TargetLabel>>>,
+{
+    type DType = TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>;
+    type Field = DataRef<TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>>;
+
+    fn select_and_frame(
+        perm: &Rc<Permutation>,
+        store: &DataStore<StoreFields>,
+    ) -> Framed<Self::DType, Self::Field> {
+        Framed::new(
+            Rc::clone(perm),
+            DataRef::clone(&store.field::<TargetLabel>()),
+        )
+    }
+}
+
+impl<TargetLabel, FrameLabel, StoreFieldList, Tail, StoreFields>
+    SelectAndFrameMatch<TargetLabel, StoreFields, True>
+    for FieldLookupCons<FrameLabel, StoreFieldMarkers<Melt, StoreFieldList>, Tail>
+where
+    StoreFields: AssocStorage,
+    StoreFields::Storage: LookupElemByLabel<TargetLabel>,
+    ElemOf<StoreFields::Storage, TargetLabel>: Typed,
+    TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>: Debug,
+    StoreFieldList: RotateFields<StoreFields, TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>>,
+{
+    type DType = TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>;
+    type Field = DataRef<TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>>;
+
+    fn select_and_frame(
+        perm: &Rc<Permutation>,
+        store: &DataStore<StoreFields>,
+    ) -> Framed<Self::DType, Self::Field> {
+        let melt_rotation =
+            <StoreFieldList as RotateFields<StoreFields, Self::DType>>::add_to_rotation(store);
+        Framed::new_melt(
+            Rc::clone(perm),
+            melt_rotation.iter().cloned().collect::<Vec<_>>(),
+        )
+    }
+}
+
+impl<TargetLabel, FrameLabel, StoreDetails, Tail, StoreFields>
+    SelectAndFrameMatch<TargetLabel, StoreFields, False>
+    for FieldLookupCons<FrameLabel, StoreDetails, Tail>
+where
+    Tail: SelectAndFrame<TargetLabel, StoreFields>,
+    StoreFields: AssocStorage,
+{
+    type DType = <Tail as SelectAndFrame<TargetLabel, StoreFields>>::DType;
+    type Field = <Tail as SelectAndFrame<TargetLabel, StoreFields>>::Field;
+
+    fn select_and_frame(
+        perm: &Rc<Permutation>,
+        store: &DataStore<StoreFields>,
+    ) -> Framed<Self::DType, Self::Field> {
+        <Tail as SelectAndFrame<TargetLabel, StoreFields>>::select_and_frame(perm, store)
+    }
+}
+
+/// Trait for generating a of fields to rotate over, producing a collection of
+/// [DataRef](../store/struct.DataRef.html) objects.
+pub trait RotateFields<StoreFields, DType>
+where
+    StoreFields: AssocStorage,
+{
+    /// Add data pointed to by this type to the `DataRef` collection, drawing data from the
+    /// provided `DataStore`.
+    fn add_to_rotation(store: &DataStore<StoreFields>) -> VecDeque<DataRef<DType>>;
+}
+
+impl<StoreFields, DType> RotateFields<StoreFields, DType> for Nil
+where
+    StoreFields: AssocStorage,
+{
+    fn add_to_rotation(_store: &DataStore<StoreFields>) -> VecDeque<DataRef<DType>> {
+        VecDeque::new()
+    }
+}
+impl<StoreFields, DType, Label, Tail> RotateFields<StoreFields, DType>
+    for StoreFieldCons<Label, Tail>
+where
+    StoreFields: AssocStorage,
+    DataStore<StoreFields>: SelectFieldByLabel<Label, Output = DataRef<DType>>,
+    Tail: RotateFields<StoreFields, DType>,
+    DType: Debug,
+{
+    fn add_to_rotation(store: &DataStore<StoreFields>) -> VecDeque<DataRef<DType>> {
+        let mut v = Tail::add_to_rotation(store);
+        v.push_front(store.field::<Label>());
+        v
     }
 }
 
 impl<FrameFields, StoreFields, Label> SelectFieldByLabel<Label>
     for DataFrame<FrameFields, StoreFields>
 where
-    DataStore<StoreFields>: SelectFieldFromStore<FrameFields, Label>,
+    FrameFields: SelectAndFrame<Label, StoreFields>,
     StoreFields: AssocStorage,
 {
     type Output = Framed<
-        <DataStore<StoreFields> as SelectFieldFromStore<FrameFields, Label>>::DType,
-        <DataStore<StoreFields> as SelectFieldFromStore<FrameFields, Label>>::Output,
+        <FrameFields as SelectAndFrame<Label, StoreFields>>::DType,
+        <FrameFields as SelectAndFrame<Label, StoreFields>>::Field,
     >;
 
     fn select_field(&self) -> Self::Output {
-        Framed::new(
-            Rc::clone(&self.permutation),
-            SelectFieldFromStore::<FrameFields, Label>::select_field(&*self.store),
+        <FrameFields as SelectAndFrame<Label, StoreFields>>::select_and_frame(
+            &self.permutation,
+            &*self.store,
         )
     }
 }
@@ -444,6 +591,9 @@ mod tests {
     tablespace![
         pub table order {
             Name: String,
+            Name1: String,
+            Name2: String,
+            Name3: String,
         }
     ];
 
@@ -470,6 +620,44 @@ mod tests {
             vec![
                 "First", "Second", "Third", "First", "Second", "Third", "First", "Second", "Third",
                 "First", "Second", "Third", "First", "Second", "Third",
+            ]
+        );
+    }
+
+    #[test]
+    fn framed_melt() {
+        let store = DataStore::<Nil>::empty().push_back_from_iter::<order::Name1, _, _, _>(
+            vec!["First1", "Second1", "Third1"]
+                .iter()
+                .map(|&s| s.to_owned()),
+        );
+        let store = store.push_back_from_iter::<order::Name2, _, _, _>(
+            vec!["First2", "Second2", "Third2"]
+                .iter()
+                .map(|&s| s.to_owned()),
+        );
+        let store = store.push_back_from_iter::<order::Name3, _, _, _>(
+            vec!["First3", "Second3", "Third3"]
+                .iter()
+                .map(|&s| s.to_owned()),
+        );
+
+        // let perm_ref = Rc::new(Permutation::default());
+        let framed_data = Framed::<String, _>::new_melt(
+            Rc::new(Permutation::default()),
+            vec![
+                store.field::<order::Name1>(),
+                store.field::<order::Name2>(),
+                store.field::<order::Name3>(),
+            ],
+        );
+
+        println!("{:?}", framed_data.to_vec());
+        assert_eq!(
+            framed_data.to_vec(),
+            vec![
+                "First1", "First2", "First3", "Second1", "Second2", "Second3", "Third1", "Third2",
+                "Third3",
             ]
         );
     }
