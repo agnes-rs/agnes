@@ -21,8 +21,10 @@ pub trait FieldSelect {
 
 /// Trait implemented by data structures to provide access to data for a single field.
 pub trait SelectFieldByLabel<Label> {
+    /// Data type of accessed data.
+    type DType;
     /// The return type for the `select_field` method.
-    type Output: DataIndex;
+    type Output: DataIndex<DType = Self::DType>;
 
     /// Returns an object that provides [DataIndex](../access/trait.DataIndex.html) access to the
     /// data in the field specified by `Label`.

@@ -619,10 +619,10 @@ where
     Fields::Storage: LookupElemByLabel<Label>,
     ElemOf<Fields::Storage, Label>: Typed,
     ElemOf<Fields::Storage, Label>: Valued<Value = DataRef<TypeOfElemOf<Fields::Storage, Label>>>,
-    DataRef<TypeOfElemOf<Fields::Storage, Label>>: DataIndex,
     TypeOfElemOf<Fields::Storage, Label>: Debug,
 {
-    type Output = DataRef<<<Fields::Storage as LookupElemByLabel<Label>>::Elem as Typed>::DType>;
+    type DType = TypeOfElemOf<Fields::Storage, Label>;
+    type Output = DataRef<Self::DType>;
 
     fn select_field(&self) -> Self::Output {
         DataRef::clone(LookupElemByLabel::<Label>::elem(&self.data).value_ref())
@@ -676,8 +676,7 @@ where
     Fields: AssocStorage + AssocFrameLookup + SimpleFrameFields,
 {
     type Labels = <Fields as AssocFrameLookup>::Output;
-    type Frames =
-        ViewFrameCons<UTerm, DataFrame<<Fields as SimpleFrameFields>::Fields, Fields>, Nil>;
+    type Frames = ViewFrameCons<UTerm, DataFrame<<Fields as SimpleFrameFields>::Fields, Self>, Nil>;
     type Output = DataView<Self::Labels, Self::Frames>;
 
     fn into_view(self) -> Self::Output {

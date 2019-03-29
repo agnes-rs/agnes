@@ -348,9 +348,8 @@ where
     Self: SelectFieldByLabel<LLabel>,
     <Self as SelectFieldByLabel<LLabel>>::Output: SortOrder,
     VFieldTypeOf<Self, LLabel>: Ord + PartialEq,
-    DataView<RLabels, RFrames>: SelectFieldByLabel<RLabel>,
+    DataView<RLabels, RFrames>: SelectFieldByLabel<RLabel, DType = VFieldTypeOf<Self, LLabel>>,
     <DataView<RLabels, RFrames> as SelectFieldByLabel<RLabel>>::Output: SortOrder,
-    VFieldOf<DataView<RLabels, RFrames>, RLabel>: DataIndex<DType = VFieldTypeOf<Self, LLabel>>,
     Pred: Predicate,
 {
     type Output = <<RFrames as JoinIntoStore<

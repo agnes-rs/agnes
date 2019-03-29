@@ -66,23 +66,18 @@ where
     >;
 }
 
-/// A data frame. A `DataStore` reference along with record-based filtering and sorting details.
-/// `FrameFields` is a [FieldLookupCons](type.FieldLookupCons.html) cons-list which maps a single
-/// label to one or more `DataStore` labels.
-#[derive(Debug, Clone)]
-pub struct DataFrame<FrameFields, StoreFields>
-where
-    StoreFields: AssocStorage,
-    StoreFields::Storage: Debug,
-{
+/// A data frame. A reference to the underlying data store along with record-based filtering and
+/// sorting details. `FrameFields` is a [FieldLookupCons](type.FieldLookupCons.html) cons-list which
+/// maps a single label to one or more underlying store labels.
+#[derive(Debug)]
+pub struct DataFrame<FrameFields, FramedStore> {
     permutation: Rc<Permutation>,
     fields: PhantomData<FrameFields>,
-    store: Arc<DataStore<StoreFields>>,
+    store: Arc<FramedStore>,
 }
-impl<FrameFields, StoreFields> DataFrame<FrameFields, StoreFields>
+impl<FrameFields, FramedStore> DataFrame<FrameFields, FramedStore>
 where
-    StoreFields: AssocStorage,
-    DataStore<StoreFields>: NRows,
+    FramedStore: NRows,
 {
     /// Returns length (number of rows) in this `DataFrame`.
     pub fn len(&self) -> usize {
@@ -96,45 +91,48 @@ where
         self.len() == 0
     }
 }
-impl<FrameFields, StoreFields> NRows for DataFrame<FrameFields, StoreFields>
+impl<FrameFields, FramedStore> NRows for DataFrame<FrameFields, FramedStore>
 where
-    StoreFields: AssocStorage,
-    DataStore<StoreFields>: NRows,
+    FramedStore: NRows,
 {
     fn nrows(&self) -> usize {
         self.len()
     }
 }
+impl<FrameFields, FramedStore> Clone for DataFrame<FrameFields, FramedStore> {
+    fn clone(&self) -> DataFrame<FrameFields, FramedStore> {
+        DataFrame {
+            permutation: self.permutation.clone(),
+            fields: PhantomData,
+            store: Arc::clone(&self.store),
+        }
+    }
+}
+
 #[cfg(test)]
 pub trait StoreRefCount {
     fn store_ref_count(&self) -> usize;
 }
 #[cfg(test)]
-impl<FrameFields, StoreFields> StoreRefCount for DataFrame<FrameFields, StoreFields>
-where
-    StoreFields: AssocStorage,
-{
+impl<FrameFields, FramedStore> StoreRefCount for DataFrame<FrameFields, FramedStore> {
     fn store_ref_count(&self) -> usize {
         Arc::strong_count(&self.store)
     }
 }
-impl<FrameFields, StoreFields> UpdatePermutation for DataFrame<FrameFields, StoreFields>
-where
-    StoreFields: AssocStorage,
-{
+impl<FrameFields, FramedStore> UpdatePermutation for DataFrame<FrameFields, FramedStore> {
     fn update_permutation(&mut self, new_permutation: &[usize]) {
         Rc::make_mut(&mut self.permutation).update_indices(new_permutation);
     }
 }
 
 impl<StoreFields> From<DataStore<StoreFields>>
-    for DataFrame<<StoreFields as SimpleFrameFields>::Fields, StoreFields>
+    for DataFrame<<StoreFields as SimpleFrameFields>::Fields, DataStore<StoreFields>>
 where
     StoreFields: AssocStorage + SimpleFrameFields,
 {
     fn from(
         store: DataStore<StoreFields>,
-    ) -> DataFrame<<StoreFields as SimpleFrameFields>::Fields, StoreFields> {
+    ) -> DataFrame<<StoreFields as SimpleFrameFields>::Fields, DataStore<StoreFields>> {
         DataFrame {
             permutation: Rc::new(Permutation::default()),
             fields: PhantomData,
@@ -143,9 +141,8 @@ where
     }
 }
 
-impl<FrameFields, StoreFields> IntoView for DataFrame<FrameFields, StoreFields>
+impl<FrameFields, FramedStore> IntoView for DataFrame<FrameFields, FramedStore>
 where
-    StoreFields: AssocStorage,
     FrameFields: AssocFrameLookup,
 {
     type Labels = <FrameFields as AssocFrameLookup>::Output;
@@ -160,7 +157,7 @@ where
     }
 }
 
-impl<StoreFields> DataFrame<<StoreFields as SimpleFrameFields>::Fields, StoreFields>
+impl<StoreFields> DataFrame<<StoreFields as SimpleFrameFields>::Fields, DataStore<StoreFields>>
 where
     StoreFields: AssocStorage + SimpleFrameFields,
     DataStore<StoreFields>: NRows,
@@ -168,7 +165,7 @@ where
     pub(crate) fn from_repeated_store(
         store: DataStore<StoreFields>,
         reps: usize,
-    ) -> DataFrame<<StoreFields as SimpleFrameFields>::Fields, StoreFields> {
+    ) -> DataFrame<<StoreFields as SimpleFrameFields>::Fields, DataStore<StoreFields>> {
         DataFrame {
             permutation: {
                 //TODO: replace with slice.repeat() call when stabilized
@@ -185,10 +182,7 @@ where
 }
 
 /// Allow `DataFrame`s to be pulled from `LVCons` as `Value`s
-impl<FrameFields, StoreFields> SelfValued for DataFrame<FrameFields, StoreFields> where
-    StoreFields: AssocStorage
-{
-}
+impl<FrameFields, FramedStore> SelfValued for DataFrame<FrameFields, FramedStore> {}
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 enum FrameKind<DI> {
@@ -323,11 +317,8 @@ where
     }
 }
 
-/// Trait for selecting a field associated with the label `Label` from the fields in `StoreFields`.
-pub trait SelectAndFrame<Label, StoreFields>
-where
-    StoreFields: AssocStorage,
-{
+/// Trait for selecting a field associated with the label `Label` from the fields in `FramedStore`.
+pub trait SelectAndFrame<Label, FramedStore> {
     /// The resultant data type of the field.
     type DType: Debug;
     /// The field accessor type.
@@ -336,18 +327,15 @@ where
     /// Returns an [Framed](struct.Framed.html) struct accessing the selected field.
     fn select_and_frame(
         perm: &Rc<Permutation>,
-        store: &DataStore<StoreFields>,
+        store: &FramedStore,
     ) -> Framed<Self::DType, Self::Field>;
 }
 
 /// Helper trait for selecting and framing fields. Used by
-/// [SelectAndFrame](trait.SelectAndFrame.html). `Label` is the label to select, `StoreFields` is
-/// the set of fields the data is stored in, and `Match` is whether or not `Label` matches the head
+/// [SelectAndFrame](trait.SelectAndFrame.html). `Label` is the label to select, `FramedStore` is
+/// the struct the data is stored in, and `Match` is whether or not `Label` matches the head
 /// label in this type.
-pub trait SelectAndFrameMatch<Label, StoreFields, Match>
-where
-    StoreFields: AssocStorage,
-{
+pub trait SelectAndFrameMatch<Label, FramedStore, Match> {
     /// The resultant data type of the field.
     type DType: Debug;
     /// The field accessor type.
@@ -356,85 +344,79 @@ where
     /// Returns an [Framed](struct.Framed.html) struct accessing the selected field.
     fn select_and_frame(
         perm: &Rc<Permutation>,
-        store: &DataStore<StoreFields>,
+        store: &FramedStore,
     ) -> Framed<Self::DType, Self::Field>;
 }
 
-impl<TargetLabel, FrameLabel, StoreDetails, Tail, StoreFields>
-    SelectAndFrame<TargetLabel, StoreFields> for FieldLookupCons<FrameLabel, StoreDetails, Tail>
+impl<TargetLabel, FrameLabel, StoreDetails, Tail, FramedStore>
+    SelectAndFrame<TargetLabel, FramedStore> for FieldLookupCons<FrameLabel, StoreDetails, Tail>
 where
     TargetLabel: LabelEq<FrameLabel>,
-    StoreFields: AssocStorage,
     FieldLookupCons<FrameLabel, StoreDetails, Tail>:
-        SelectAndFrameMatch<TargetLabel, StoreFields, <TargetLabel as LabelEq<FrameLabel>>::Eq>,
+        SelectAndFrameMatch<TargetLabel, FramedStore, <TargetLabel as LabelEq<FrameLabel>>::Eq>,
 {
     type DType = <FieldLookupCons<FrameLabel, StoreDetails, Tail> as SelectAndFrameMatch<
         TargetLabel,
-        StoreFields,
+        FramedStore,
         <TargetLabel as LabelEq<FrameLabel>>::Eq,
     >>::DType;
     type Field = <FieldLookupCons<FrameLabel, StoreDetails, Tail> as SelectAndFrameMatch<
         TargetLabel,
-        StoreFields,
+        FramedStore,
         <TargetLabel as LabelEq<FrameLabel>>::Eq,
     >>::Field;
 
     fn select_and_frame(
         perm: &Rc<Permutation>,
-        store: &DataStore<StoreFields>,
+        store: &FramedStore,
     ) -> Framed<Self::DType, Self::Field> {
         <Self as SelectAndFrameMatch<
             TargetLabel,
-            StoreFields,
+            FramedStore,
             <TargetLabel as LabelEq<FrameLabel>>::Eq,
         >>::select_and_frame(perm, store)
     }
 }
 
-impl<TargetLabel, FrameLabel, StoreFieldList, Tail, StoreFields>
-    SelectAndFrameMatch<TargetLabel, StoreFields, True>
+impl<TargetLabel, FrameLabel, StoreFieldList, Tail, FramedStore>
+    SelectAndFrameMatch<TargetLabel, FramedStore, True>
     for FieldLookupCons<FrameLabel, StoreFieldMarkers<Single, StoreFieldList>, Tail>
 where
-    StoreFields: AssocStorage,
-    StoreFields::Storage: LookupElemByLabel<TargetLabel>,
-    ElemOf<StoreFields::Storage, TargetLabel>: Typed,
-    TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>: Debug,
-    ElemOf<StoreFields::Storage, TargetLabel>:
-        Valued<Value = DataRef<TypeOfElemOf<StoreFields::Storage, TargetLabel>>>,
+    FramedStore: SelectFieldByLabel<TargetLabel>,
+    <FramedStore as SelectFieldByLabel<TargetLabel>>::DType: Debug,
 {
-    type DType = TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>;
-    type Field = DataRef<TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>>;
+    type DType = <FramedStore as SelectFieldByLabel<TargetLabel>>::DType;
+    type Field = <FramedStore as SelectFieldByLabel<TargetLabel>>::Output;
 
     fn select_and_frame(
         perm: &Rc<Permutation>,
-        store: &DataStore<StoreFields>,
+        store: &FramedStore,
     ) -> Framed<Self::DType, Self::Field> {
         Framed::new(
             Rc::clone(perm),
-            DataRef::clone(&store.field::<TargetLabel>()),
+            SelectFieldByLabel::<TargetLabel>::select_field(store),
         )
     }
 }
 
-impl<TargetLabel, FrameLabel, StoreFieldList, Tail, StoreFields>
-    SelectAndFrameMatch<TargetLabel, StoreFields, True>
+impl<TargetLabel, FrameLabel, StoreFieldList, Tail, FramedStore>
+    SelectAndFrameMatch<TargetLabel, FramedStore, True>
     for FieldLookupCons<FrameLabel, StoreFieldMarkers<Melt, StoreFieldList>, Tail>
 where
-    StoreFields: AssocStorage,
-    StoreFields::Storage: LookupElemByLabel<TargetLabel>,
-    ElemOf<StoreFields::Storage, TargetLabel>: Typed,
-    TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>: Debug,
-    StoreFieldList: RotateFields<StoreFields, TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>>,
+    FramedStore: LookupElemByLabel<TargetLabel>,
+    ElemOf<FramedStore, TargetLabel>: Typed,
+    TypeOf<ElemOf<FramedStore, TargetLabel>>: Debug,
+    StoreFieldList: RotateFields<FramedStore, TypeOf<ElemOf<FramedStore, TargetLabel>>>,
 {
-    type DType = TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>;
-    type Field = DataRef<TypeOf<ElemOf<StoreFields::Storage, TargetLabel>>>;
+    type DType = TypeOf<ElemOf<FramedStore, TargetLabel>>;
+    type Field = DataRef<TypeOf<ElemOf<FramedStore, TargetLabel>>>;
 
     fn select_and_frame(
         perm: &Rc<Permutation>,
-        store: &DataStore<StoreFields>,
+        store: &FramedStore,
     ) -> Framed<Self::DType, Self::Field> {
         let melt_rotation =
-            <StoreFieldList as RotateFields<StoreFields, Self::DType>>::add_to_rotation(store);
+            <StoreFieldList as RotateFields<FramedStore, Self::DType>>::add_to_rotation(store);
         Framed::new_melt(
             Rc::clone(perm),
             melt_rotation.iter().cloned().collect::<Vec<_>>(),
@@ -442,81 +424,67 @@ where
     }
 }
 
-impl<TargetLabel, FrameLabel, StoreDetails, Tail, StoreFields>
-    SelectAndFrameMatch<TargetLabel, StoreFields, False>
+impl<TargetLabel, FrameLabel, StoreDetails, Tail, FramedStore>
+    SelectAndFrameMatch<TargetLabel, FramedStore, False>
     for FieldLookupCons<FrameLabel, StoreDetails, Tail>
 where
-    Tail: SelectAndFrame<TargetLabel, StoreFields>,
-    StoreFields: AssocStorage,
+    Tail: SelectAndFrame<TargetLabel, FramedStore>,
 {
-    type DType = <Tail as SelectAndFrame<TargetLabel, StoreFields>>::DType;
-    type Field = <Tail as SelectAndFrame<TargetLabel, StoreFields>>::Field;
+    type DType = <Tail as SelectAndFrame<TargetLabel, FramedStore>>::DType;
+    type Field = <Tail as SelectAndFrame<TargetLabel, FramedStore>>::Field;
 
     fn select_and_frame(
         perm: &Rc<Permutation>,
-        store: &DataStore<StoreFields>,
+        store: &FramedStore,
     ) -> Framed<Self::DType, Self::Field> {
-        <Tail as SelectAndFrame<TargetLabel, StoreFields>>::select_and_frame(perm, store)
+        <Tail as SelectAndFrame<TargetLabel, FramedStore>>::select_and_frame(perm, store)
     }
 }
 
 /// Trait for generating a of fields to rotate over, producing a collection of
 /// [DataRef](../store/struct.DataRef.html) objects.
-pub trait RotateFields<StoreFields, DType>
-where
-    StoreFields: AssocStorage,
-{
+pub trait RotateFields<FramedStore, DType> {
     /// Add data pointed to by this type to the `DataRef` collection, drawing data from the
     /// provided `DataStore`.
-    fn add_to_rotation(store: &DataStore<StoreFields>) -> VecDeque<DataRef<DType>>;
+    fn add_to_rotation(store: &FramedStore) -> VecDeque<DataRef<DType>>;
 }
 
-impl<StoreFields, DType> RotateFields<StoreFields, DType> for Nil
-where
-    StoreFields: AssocStorage,
-{
-    fn add_to_rotation(_store: &DataStore<StoreFields>) -> VecDeque<DataRef<DType>> {
+impl<FramedStore, DType> RotateFields<FramedStore, DType> for Nil {
+    fn add_to_rotation(_store: &FramedStore) -> VecDeque<DataRef<DType>> {
         VecDeque::new()
     }
 }
-impl<StoreFields, DType, Label, Tail> RotateFields<StoreFields, DType>
+impl<FramedStore, DType, Label, Tail> RotateFields<FramedStore, DType>
     for StoreFieldCons<Label, Tail>
 where
-    StoreFields: AssocStorage,
-    DataStore<StoreFields>: SelectFieldByLabel<Label, Output = DataRef<DType>>,
-    Tail: RotateFields<StoreFields, DType>,
+    FramedStore: AssocStorage + SelectFieldByLabel<Label, DType = DType, Output = DataRef<DType>>,
+    Tail: RotateFields<FramedStore, DType>,
     DType: Debug,
 {
-    fn add_to_rotation(store: &DataStore<StoreFields>) -> VecDeque<DataRef<DType>> {
+    fn add_to_rotation(store: &FramedStore) -> VecDeque<DataRef<DType>> {
         let mut v = Tail::add_to_rotation(store);
-        v.push_front(store.field::<Label>());
+        v.push_front(SelectFieldByLabel::<Label>::select_field(store));
         v
     }
 }
 
-impl<FrameFields, StoreFields, Label> SelectFieldByLabel<Label>
-    for DataFrame<FrameFields, StoreFields>
+impl<FrameFields, FramedStore, Label> SelectFieldByLabel<Label>
+    for DataFrame<FrameFields, FramedStore>
 where
-    FrameFields: SelectAndFrame<Label, StoreFields>,
-    StoreFields: AssocStorage,
+    FrameFields: SelectAndFrame<Label, FramedStore>,
 {
-    type Output = Framed<
-        <FrameFields as SelectAndFrame<Label, StoreFields>>::DType,
-        <FrameFields as SelectAndFrame<Label, StoreFields>>::Field,
-    >;
+    type DType = <FrameFields as SelectAndFrame<Label, FramedStore>>::DType;
+    type Output = Framed<Self::DType, <FrameFields as SelectAndFrame<Label, FramedStore>>::Field>;
 
     fn select_field(&self) -> Self::Output {
-        <FrameFields as SelectAndFrame<Label, StoreFields>>::select_and_frame(
+        <FrameFields as SelectAndFrame<Label, FramedStore>>::select_and_frame(
             &self.permutation,
             &*self.store,
         )
     }
 }
 
-impl<FrameFields, StoreFields> FieldSelect for DataFrame<FrameFields, StoreFields> where
-    StoreFields: AssocStorage
-{
-}
+impl<FrameFields, FramedStore> FieldSelect for DataFrame<FrameFields, FramedStore> {}
 
 #[cfg(test)]
 mod tests {
@@ -642,7 +610,6 @@ mod tests {
                 .map(|&s| s.to_owned()),
         );
 
-        // let perm_ref = Rc::new(Permutation::default());
         let framed_data = Framed::<String, _>::new_melt(
             Rc::new(Permutation::default()),
             vec![

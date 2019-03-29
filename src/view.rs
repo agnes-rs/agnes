@@ -305,7 +305,7 @@ pub type FieldFromFrameDetailsOf<Frames, FrameIndex, FrameLabel> =
 /// [DataIndex](../access/trait.DataIndex.html)) within the frames list `Frames` associated with
 /// the `FrameIndex` and `FrameLabel`.
 pub type FieldTypeFromFrameDetailsOf<Frames, FrameIndex, FrameLabel> =
-    <FieldFromFrameDetailsOf<Frames, FrameIndex, FrameLabel> as DataIndex>::DType;
+    <FrameByFrameIndexOf<Frames, FrameIndex> as SelectFieldByLabel<FrameLabel>>::DType;
 
 /// Type alias for the field (implementing [DataIndex](../access/trait.DataIndex.html)) within the
 /// frames list `Frames` associated with the label `Label` in the label lookup list `Labels`.
@@ -314,7 +314,8 @@ pub type FieldOf<Frames, Labels, Label> =
 /// Type alias for the data type of the field (implementing
 /// [DataIndex](../access/trait.DataIndex.html)) within the frames list `Frames` associated with
 /// the label `Label` in the label lookup list `Labels`.
-pub type FieldTypeOf<Frames, Labels, Label> = <FieldOf<Frames, Labels, Label> as DataIndex>::DType;
+pub type FieldTypeOf<Frames, Labels, Label> =
+    <FrameOf<Frames, Labels, Label> as SelectFieldByLabel<FrameLabelOf<Labels, Label>>>::DType;
 
 /// Type alias for the field (implementing [DataIndex](../access/trait.DataIndex.html)) within
 /// the [DataView](struct.DataView.html) `View` associated with label `Label`.
@@ -322,13 +323,15 @@ pub type VFieldOf<View, Label> = <View as SelectFieldByLabel<Label>>::Output;
 /// Type alias for the datta type of the field (implementing
 /// [DataIndex](../access/trait.DataIndex.html)) within the [DataView](struct.DataView.html) `View`
 /// associated with label `Label`.
-pub type VFieldTypeOf<View, Label> = <VFieldOf<View, Label> as DataIndex>::DType;
+pub type VFieldTypeOf<View, Label> = <View as SelectFieldByLabel<Label>>::DType;
 
 /// Trait for selecting a field (implementing [DataIndex](../access/trait.DataIndex.html))
 /// associated with the label `Label` from the label lookup list `Labels` from a type.
 pub trait SelectFieldFromLabels<Labels, Label> {
-    /// Selected field type.
-    type Output: DataIndex;
+    /// Data type of field accessor
+    type DType;
+    /// Selected field accessor.
+    type Output: DataIndex<DType = Self::DType>;
 
     /// Returns an accessor (implementing [DataIndex](../access/trait.DataIndex.html)) for the
     /// selected field.
@@ -339,9 +342,10 @@ where
     Labels: FindFrameDetails<Label>,
     Frames: FindFrame<Labels, Label>,
     FrameOf<Frames, Labels, Label>: SelectFieldByLabel<FrameLabelOf<Labels, Label>>,
-    FieldOf<Frames, Labels, Label>: Typed + SelfValued + Clone,
-    TypeOf<FieldOf<Frames, Labels, Label>>: fmt::Debug,
+    FieldOf<Frames, Labels, Label>: SelfValued + Clone,
+    FieldTypeOf<Frames, Labels, Label>: fmt::Debug,
 {
+    type DType = FieldTypeOf<Frames, Labels, Label>;
     type Output = FieldOf<Frames, Labels, Label>;
 
     fn select_field(&self) -> Self::Output {
@@ -356,6 +360,7 @@ impl<Labels, Frames, Label> SelectFieldByLabel<Label> for DataView<Labels, Frame
 where
     Frames: SelectFieldFromLabels<Labels, Label>,
 {
+    type DType = <Frames as SelectFieldFromLabels<Labels, Label>>::DType;
     type Output = <Frames as SelectFieldFromLabels<Labels, Label>>::Output;
 
     fn select_field(&self) -> Self::Output {
