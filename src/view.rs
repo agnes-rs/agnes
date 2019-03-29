@@ -25,14 +25,12 @@ use prettytable as pt;
 use serde::ser::{Serialize, SerializeMap, Serializer};
 
 use access::*;
+use cons::*;
 use error;
+use fieldlist::FieldPayloadCons;
 use frame::Framed;
 #[cfg(test)]
 use frame::StoreRefCount;
-
-use cons::*;
-use field::Value;
-use fieldlist::FieldPayloadCons;
 use join::*;
 use label::*;
 use partial::{DeriveCapabilities, Func, FuncDefault, Implemented, IsImplemented, PartialMap};
@@ -41,7 +39,6 @@ use permute::{
     UpdatePermutation,
 };
 use select::{FieldSelect, SelectFieldByLabel};
-use store::NRows;
 
 /// Cons-list of `DataFrame`s held by a `DataView. `FrameIndex` is simply an index used by
 /// `FrameLookupCons` to look up `DataFrame`s for a specified `Label`, and `Frame` is the type
@@ -167,13 +164,22 @@ where
     }
 }
 
-impl<Labels, Frames> DataView<Labels, Frames>
+impl<Labels, Frames> NRows for DataView<Labels, Frames>
 where
     Frames: NRows,
 {
+    fn nrows(&self) -> usize {
+        self.frames.nrows()
+    }
+}
+
+impl<Labels, Frames> DataView<Labels, Frames>
+where
+    Self: NRows,
+{
     /// Number of rows in this data view
     pub fn nrows(&self) -> usize {
-        self.frames.nrows()
+        NRows::nrows(self)
     }
 }
 

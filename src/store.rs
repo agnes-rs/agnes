@@ -11,7 +11,7 @@ use std::rc::Rc;
 use serde::ser::{Serialize, Serializer};
 use typenum::uint::UTerm;
 
-use access::DataIndex;
+use access::{DataIndex, NRows};
 use cons::*;
 use error;
 use field::{FieldData, Value};
@@ -115,34 +115,6 @@ where
     /// Generate and return an empty data store
     pub fn empty() -> DataStore<Nil> {
         DataStore { data: Nil }
-    }
-}
-
-/// Trait to provide the number of rows of this data structure.
-pub trait NRows {
-    /// Return the number of rows in this data structure.
-    fn nrows(&self) -> usize;
-}
-impl NRows for Nil {
-    fn nrows(&self) -> usize {
-        0
-    }
-}
-impl<L, V, Tail> NRows for LVCons<L, V, Tail>
-where
-    V: Valued,
-    ValueOf<V>: NRows,
-{
-    fn nrows(&self) -> usize {
-        self.head.value_ref().nrows()
-    }
-}
-impl<DI> NRows for DI
-where
-    DI: DataIndex,
-{
-    fn nrows(&self) -> usize {
-        self.len()
     }
 }
 

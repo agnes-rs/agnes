@@ -13,6 +13,7 @@ use typenum::{
     uint::{UInt, UTerm, Unsigned},
 };
 
+use access::NRows;
 use cons::{Cons, Nil};
 use store::DataRef;
 
@@ -839,6 +840,21 @@ where
         let mut previous = T::labels();
         previous.push_front(L::name());
         previous
+    }
+}
+
+impl NRows for Nil {
+    fn nrows(&self) -> usize {
+        0
+    }
+}
+impl<L, V, Tail> NRows for LVCons<L, V, Tail>
+where
+    V: Valued,
+    ValueOf<V>: NRows,
+{
+    fn nrows(&self) -> usize {
+        self.head.value_ref().nrows()
     }
 }
 

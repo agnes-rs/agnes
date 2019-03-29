@@ -6,12 +6,11 @@ use std::fmt;
 
 use prettytable as pt;
 
-use access::DataIndex;
+use access::{DataIndex, NRows};
 use cons::Len;
 use label::{StrLabels, StrTypes};
 use partial::*;
 use stats::*;
-use store::NRows;
 use view::{AssocDataIndexCons, AssocDataIndexConsOf, DataView};
 
 /// Structure containing general statistics of a `DataView`.

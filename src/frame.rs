@@ -16,15 +16,14 @@ use std::sync::Arc;
 
 use typenum::UTerm;
 
-use access::DataIndex;
+use access::{DataIndex, NRows};
 use cons::Nil;
 use error;
 use field::{FieldData, Value};
-use fieldlist::FieldCons;
 use label::*;
 use permute::{self, UpdatePermutation};
 use select::{FieldSelect, SelectFieldByLabel};
-use store::{AssocFrameLookup, AssocStorage, DataRef, DataStore, IntoView, NRows};
+use store::{AssocFrameLookup, AssocStorage, DataRef, DataStore, IntoView};
 use view::{DataView, ViewFrameCons};
 
 type Permutation = permute::Permutation<Vec<usize>>;
@@ -55,7 +54,7 @@ pub trait SimpleFrameFields {
 impl SimpleFrameFields for Nil {
     type Fields = Nil;
 }
-impl<Label, DType, Tail> SimpleFrameFields for FieldCons<Label, DType, Tail>
+impl<Label, Marker, Tail> SimpleFrameFields for LMCons<Label, Marker, Tail>
 where
     Tail: SimpleFrameFields,
 {
@@ -75,6 +74,7 @@ pub struct DataFrame<FrameFields, FramedStore> {
     fields: PhantomData<FrameFields>,
     store: Arc<FramedStore>,
 }
+
 impl<FrameFields, FramedStore> DataFrame<FrameFields, FramedStore>
 where
     FramedStore: NRows,
@@ -91,6 +91,7 @@ where
         self.len() == 0
     }
 }
+
 impl<FrameFields, FramedStore> NRows for DataFrame<FrameFields, FramedStore>
 where
     FramedStore: NRows,
@@ -99,6 +100,7 @@ where
         self.len()
     }
 }
+
 impl<FrameFields, FramedStore> Clone for DataFrame<FrameFields, FramedStore> {
     fn clone(&self) -> DataFrame<FrameFields, FramedStore> {
         DataFrame {
@@ -137,6 +139,22 @@ where
             permutation: Rc::new(Permutation::default()),
             fields: PhantomData,
             store: Arc::new(store),
+        }
+    }
+}
+
+impl<Labels, Frames> From<DataView<Labels, Frames>>
+    for DataFrame<<Labels as SimpleFrameFields>::Fields, DataView<Labels, Frames>>
+where
+    Labels: SimpleFrameFields,
+{
+    fn from(
+        view: DataView<Labels, Frames>,
+    ) -> DataFrame<<Labels as SimpleFrameFields>::Fields, DataView<Labels, Frames>> {
+        DataFrame {
+            permutation: Rc::new(Permutation::default()),
+            fields: PhantomData,
+            store: Arc::new(view),
         }
     }
 }
@@ -627,5 +645,20 @@ mod tests {
                 "Third3",
             ]
         );
+    }
+
+    #[test]
+    fn frame_view() {
+        let store = DataStore::<Nil>::empty().push_back_from_iter::<order::Name1, _, _, _>(
+            vec!["First1", "Second1", "Third1"]
+                .iter()
+                .map(|&s| s.to_owned()),
+        );
+        let dv = store.into_view();
+        println!("{}", dv.nrows());
+        let view_in_frame: DataFrame<_, _> = dv.into();
+        println!("{}", view_in_frame.nrows());
+        let final_view = view_in_frame.into_view();
+        println!("{}", final_view);
     }
 }

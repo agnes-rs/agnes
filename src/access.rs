@@ -209,6 +209,20 @@ where
     }
 }
 
+/// Trait to provide the number of rows of this data structure.
+pub trait NRows {
+    /// Return the number of rows in this data structure.
+    fn nrows(&self) -> usize;
+}
+impl<DI> NRows for DI
+where
+    DI: DataIndex,
+{
+    fn nrows(&self) -> usize {
+        self.len()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
