@@ -13,6 +13,7 @@ use typenum::{
     uint::{UInt, UTerm, Unsigned},
 };
 
+use access::NRows;
 use cons::{Cons, Nil};
 use store::DataRef;
 
@@ -206,7 +207,7 @@ pub type TypeOf<T> = <T as Typed>::DType;
 impl<T> Typed for ::field::FieldData<T> {
     type DType = T;
 }
-impl<T> Typed for ::frame::Framed<T> {
+impl<T, DI> Typed for ::frame::Framed<T, DI> {
     type DType = T;
 }
 impl<T> Typed for ::store::DataRef<T>
@@ -231,7 +232,7 @@ impl_selfvalued![
     bool char str String
 ];
 impl<T> SelfValued for ::field::FieldData<T> {}
-impl<T> SelfValued for ::frame::Framed<T> {}
+impl<T, DI> SelfValued for ::frame::Framed<T, DI> {}
 impl<T> SelfValued for DataRef<T> {}
 
 /// Trait for extracting the an associated value of a value-holding container (e.g.
@@ -347,7 +348,8 @@ pub trait HasLabels<LabelList> {}
 // Everything as the empty label list
 impl<T> HasLabels<Nil> for T {}
 // make sure the first label is in the haystack, then move on the to rest of the needles
-impl<NeedleLbl, NeedleTail, Haystack> HasLabels<LabelCons<NeedleLbl, NeedleTail>> for Haystack
+impl<NeedleLbl, NeedleValue, NeedleTail, Haystack>
+    HasLabels<LVCons<NeedleLbl, NeedleValue, NeedleTail>> for Haystack
 where
     Haystack: Member<NeedleLbl, IsMember = True>,
     Haystack: HasLabels<NeedleTail>,
@@ -381,6 +383,100 @@ where
 {
     type IsSet = And<<<T as Member<L>>::IsMember as Not>::Output, <T as IsLabelSet>::IsSet>;
 }
+
+/// Determines the set difference between an [LVCons](type.LVCons.html) label set and another
+/// [LVCons](type.LVCons.html) label set `RightSet`.
+pub trait SetDiff<RightSet> {
+    /// The set of labels that exist in `Self` and not in `RightSet`.
+    type Set;
+}
+
+// edge case: set difference will null set
+impl<LLabel, LValue, LTail> SetDiff<Nil> for LVCons<LLabel, LValue, LTail> {
+    type Set = LVCons<LLabel, LValue, LTail>;
+}
+// edge case: null set difference with anything is null set
+impl<RSet> SetDiff<RSet> for Nil {
+    type Set = Nil;
+}
+
+impl<LLabel, LValue, LTail, RLabel, RValue, RTail> SetDiff<LVCons<RLabel, RValue, RTail>>
+    for LVCons<LLabel, LValue, LTail>
+where
+    Self: SetDiffStep<LVCons<RLabel, RValue, RTail>, LVCons<RLabel, RValue, RTail>>,
+{
+    type Set =
+        <Self as SetDiffStep<LVCons<RLabel, RValue, RTail>, LVCons<RLabel, RValue, RTail>>>::Set;
+}
+
+/// Helper trait used [SetDiff](trait.SetDiff.html) to compute the set difference between two label
+/// sets. `RightSet` is the set-subtrahend remaining at this point of the process, `FullRightSet`
+/// is the original full set-subtrahend.
+pub trait SetDiffStep<RightSet, FullRightSet> {
+    /// The set of labels that exist in `Self` and not in `RightSet`.
+    type Set;
+}
+
+// left set exhausted: we're done!
+impl<RightSet, FullRightSet> SetDiffStep<RightSet, FullRightSet> for Nil {
+    type Set = Nil;
+}
+
+// right set exhausted: recurse into left tail, restart with full right set
+impl<LLabel, LValue, LTail, FullRightSet> SetDiffStep<Nil, FullRightSet>
+    for LVCons<LLabel, LValue, LTail>
+where
+    LTail: SetDiffStep<FullRightSet, FullRightSet>,
+{
+    type Set = LVCons<LLabel, LValue, <LTail as SetDiffStep<FullRightSet, FullRightSet>>::Set>;
+}
+
+// normal step: check if heads match and use SetDiffMatch
+impl<LLabel, LValue, LTail, RLabel, RValue, RTail, FullRightSet>
+    SetDiffStep<LVCons<RLabel, RValue, RTail>, FullRightSet> for LVCons<LLabel, LValue, LTail>
+where
+    LLabel: LabelEq<RLabel>,
+    Self:
+        SetDiffMatch<LVCons<RLabel, RValue, RTail>, FullRightSet, <LLabel as LabelEq<RLabel>>::Eq>,
+{
+    type Set = <Self as SetDiffMatch<
+        LVCons<RLabel, RValue, RTail>,
+        FullRightSet,
+        <LLabel as LabelEq<RLabel>>::Eq,
+    >>::Set;
+}
+
+/// Helper trait used [SetDiff](trait.SetDiff.html) to compute the set difference between two label
+/// sets. `RightSet` is the set-subtrahend remaining at this point of the process, `FullRightSet`
+/// is the original full set-subtrahend. `Match` denotes whether or not the heads of the two
+/// cons-lists (`Self` and `RightSet`) match.
+pub trait SetDiffMatch<RightSet, FullRightSet, Match> {
+    /// The set of labels that exist in `Self` and not in `RightSet`.
+    type Set;
+}
+
+// heads of left and right do not match: recurse into right tail
+impl<LLabel, LValue, LTail, RLabel, RValue, RTail, FullRightSet>
+    SetDiffMatch<LVCons<RLabel, RValue, RTail>, FullRightSet, False>
+    for LVCons<LLabel, LValue, LTail>
+where
+    LVCons<LLabel, LValue, LTail>: SetDiffStep<RTail, FullRightSet>,
+{
+    type Set = <LVCons<LLabel, LValue, LTail> as SetDiffStep<RTail, FullRightSet>>::Set;
+}
+
+// heads of both left and right match: continues with tails of both left and right
+impl<LLabel, LValue, LTail, RLabel, RValue, RTail, FullRightSet>
+    SetDiffMatch<LVCons<RLabel, RValue, RTail>, FullRightSet, True>
+    for LVCons<LLabel, LValue, LTail>
+where
+    LTail: SetDiffStep<RTail, FullRightSet>,
+{
+    type Set = <LTail as SetDiffStep<RTail, FullRightSet>>::Set;
+}
+
+/// Type alias for the label set that is the set different between `LeftSet` and `RightSet`.
+pub type LabelSetDiff<LeftSet, RightSet> = <LeftSet as SetDiff<RightSet>>::Set;
 
 /// Look up an element from a cons-list by `typenum` natural number.
 pub trait LookupElemByNat<N> {
@@ -725,6 +821,11 @@ impl AssocLabels for Nil {
 pub trait StrLabels {
     /// Returns the labels (as strings) for the labels associated with `Self`.
     fn labels<'a>() -> VecDeque<&'a str>;
+    /// Returns the labels (as strings) for the labels associated with `Self`, collected in a
+    /// `Vec` struct.
+    fn labels_vec<'a>() -> Vec<&'a str> {
+        Self::labels().iter().map(|&s| s).collect::<Vec<_>>()
+    }
 }
 impl StrLabels for Nil {
     fn labels<'a>() -> VecDeque<&'a str> {
@@ -740,6 +841,21 @@ where
         let mut previous = T::labels();
         previous.push_front(L::name());
         previous
+    }
+}
+
+impl NRows for Nil {
+    fn nrows(&self) -> usize {
+        0
+    }
+}
+impl<L, V, Tail> NRows for LVCons<L, V, Tail>
+where
+    V: Valued,
+    ValueOf<V>: NRows,
+{
+    fn nrows(&self) -> usize {
+        self.head.value_ref().nrows()
     }
 }
 
@@ -1236,5 +1352,66 @@ mod tests {
             // we only filtered 2 label (albeit with some duplication), so length should be 2
             assert_eq!(length![Filtered], 2);
         }
+    }
+
+    #[test]
+    fn set_diff() {
+        type LSet1 = LCons<F0, LCons<F1, LCons<F2, Nil>>>;
+        type LSet2 = LCons<F4, LCons<F1, LCons<F2, Nil>>>;
+        type LSet3 = LCons<F1, Nil>;
+        type LSet4 = LCons<F4, Nil>;
+
+        assert_eq!(
+            ["F0"],
+            <LabelSetDiff<LSet1, LSet2> as StrLabels>::labels_vec()[..]
+        );
+        assert_eq!(
+            ["F4"],
+            <LabelSetDiff<LSet2, LSet1> as StrLabels>::labels_vec()[..]
+        );
+        assert_eq!(
+            ["F0", "F2"],
+            <LabelSetDiff<LSet1, LSet3> as StrLabels>::labels_vec()[..]
+        );
+        assert_eq!(
+            ["F4", "F2"],
+            <LabelSetDiff<LSet2, LSet3> as StrLabels>::labels_vec()[..]
+        );
+        assert_eq!(
+            ["F1", "F2"],
+            <LabelSetDiff<LSet2, LSet4> as StrLabels>::labels_vec()[..]
+        );
+        assert_eq!(
+            ["F0", "F1", "F2"],
+            <LabelSetDiff<LSet1, LSet4> as StrLabels>::labels_vec()[..]
+        );
+        assert_eq!(
+            [] as [&str; 0],
+            <LabelSetDiff<LSet3, LSet1> as StrLabels>::labels_vec()[..]
+        );
+        assert_eq!(
+            ["F4"],
+            <LabelSetDiff<LSet4, LSet1> as StrLabels>::labels_vec()[..]
+        );
+        assert_eq!(
+            [] as [&str; 0],
+            <LabelSetDiff<LSet4, LSet2> as StrLabels>::labels_vec()[..]
+        );
+        assert_eq!(
+            [] as [&str; 0],
+            <LabelSetDiff<Nil, Nil> as StrLabels>::labels_vec()[..]
+        );
+        assert_eq!(
+            [] as [&str; 0],
+            <LabelSetDiff<Nil, LSet2> as StrLabels>::labels_vec()[..]
+        );
+        assert_eq!(
+            ["F4", "F1", "F2"],
+            <LabelSetDiff<LSet2, Nil> as StrLabels>::labels_vec()[..]
+        );
+        assert_eq!(
+            [] as [&str; 0],
+            <LabelSetDiff<LSet2, LSet2> as StrLabels>::labels_vec()[..]
+        );
     }
 }

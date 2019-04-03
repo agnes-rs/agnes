@@ -13,6 +13,7 @@ use error::*;
 use field::FieldIdent;
 use field::Value;
 use fieldlist::{FieldDesignator, FieldPayloadCons, FieldSchema, SchemaCons};
+use frame::SimpleFrameFields;
 use label::{TypedValue, Valued};
 use source::decode::decode;
 use source::file::{FileLocator, LocalFileReader, Uri};
@@ -239,7 +240,7 @@ pub fn load_csv<L: Into<FileLocator>, Schema>(
 where
     Schema: IntoCsvSrcSchema,
     Schema::CsvSrcSchema: BuildDStore + Debug,
-    <Schema::CsvSrcSchema as BuildDStore>::OutputFields: AssocFrameLookup,
+    <Schema::CsvSrcSchema as BuildDStore>::OutputFields: AssocFrameLookup + SimpleFrameFields,
 {
     let source = CsvSource::new(loc)?;
     let mut csv_reader = CsvReader::new(&source, schema)?;
@@ -256,7 +257,7 @@ pub fn load_csv_from_uri<Schema>(
 where
     Schema: IntoCsvSrcSchema,
     Schema::CsvSrcSchema: BuildDStore + Debug,
-    <Schema::CsvSrcSchema as BuildDStore>::OutputFields: AssocFrameLookup,
+    <Schema::CsvSrcSchema as BuildDStore>::OutputFields: AssocFrameLookup + SimpleFrameFields,
 {
     load_csv(Uri::from_uri(uri.parse::<hyper::Uri>()?)?, schema)
 }
@@ -272,7 +273,7 @@ where
     P: Into<PathBuf>,
     Schema: IntoCsvSrcSchema,
     Schema::CsvSrcSchema: BuildDStore + Debug,
-    <Schema::CsvSrcSchema as BuildDStore>::OutputFields: AssocFrameLookup,
+    <Schema::CsvSrcSchema as BuildDStore>::OutputFields: AssocFrameLookup + SimpleFrameFields,
 {
     load_csv(path.into(), schema)
 }

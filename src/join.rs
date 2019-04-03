@@ -6,16 +6,19 @@ satisfy a specific join predicate (much like a `JOIN` in a SQL database). Mergin
 combining fields of two `DataView` objects with the same number of rows into a single `DataView`.
 */
 use std::cmp::Ordering;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Add;
 
-use access::*;
+use access::DataIndex;
 use cons::*;
 use error::*;
 use field::Value;
-use label::*;
-use select::*;
-use store::{AssocStorage, DataStore, IntoView, PushBackClonedFromValueIter};
+use frame::DataFrame;
+use label::{LVCons, Labeled, LookupValuedElemByLabel, Valued};
+use permute::SortOrder;
+use select::{FieldSelect, SelectFieldByLabel};
+use store::{DataStore, IntoView, PushBackClonedFromValueIter};
 use view::*;
 
 /// A trait for applying a frame index offset `O`.
@@ -71,16 +74,15 @@ impl<FrameIndexOffset> UpdateFrameIndex<FrameIndexOffset> for Nil {
     }
 }
 
-impl<RFrameIndex, RFrameFields, RTail, FrameIndexOffset> UpdateFrameIndex<FrameIndexOffset>
-    for ViewFrameCons<RFrameIndex, RFrameFields, RTail>
+impl<RFrameIndex, RFrame, RTail, FrameIndexOffset> UpdateFrameIndex<FrameIndexOffset>
+    for ViewFrameCons<RFrameIndex, RFrame, RTail>
 where
     RFrameIndex: Offset<FrameIndexOffset>,
-    RFrameFields: AssocStorage,
     RTail: UpdateFrameIndex<FrameIndexOffset>,
 {
     type Output = ViewFrameCons<
         <RFrameIndex as Offset<FrameIndexOffset>>::Output,
-        RFrameFields,
+        RFrame,
         <RTail as UpdateFrameIndex<FrameIndexOffset>>::Output,
     >;
 
@@ -88,6 +90,67 @@ where
         LVCons {
             head: Labeled::from(self.head.value),
             tail: self.tail.update_frame_label(),
+        }
+    }
+}
+
+/// Helper trait for computing the [FrameLookupCons](../view/type.FrameLookupCons.html) to lookup
+/// any labels within the implementing type as if they were in a new `DataFrame` with index
+/// `FrameIndex`.
+pub trait AsFrameLookup<FrameIndex> {
+    /// The computed `FrameLookupCons`.
+    type Output;
+}
+impl<FrameIndex> AsFrameLookup<FrameIndex> for Nil {
+    type Output = Nil;
+}
+impl<FrameIndex, Label, Value, Tail> AsFrameLookup<FrameIndex> for LVCons<Label, Value, Tail>
+where
+    Tail: AsFrameLookup<FrameIndex>,
+{
+    type Output =
+        FrameLookupCons<Label, FrameIndex, Label, <Tail as AsFrameLookup<FrameIndex>>::Output>;
+}
+impl<FrameIndex, FrameFields, FramedStore> AsFrameLookup<FrameIndex>
+    for DataFrame<FrameFields, FramedStore>
+where
+    FrameFields: AsFrameLookup<FrameIndex>,
+{
+    type Output = <FrameFields as AsFrameLookup<FrameIndex>>::Output;
+}
+
+/// Trait for adding a new frame `Frame` to a [DataView](../view/struct.DataView.html) object.
+pub trait AddFrame<Frame> {
+    /// `DataView` type after adding `Frame`.
+    type Output;
+
+    /// Add a new frame to `self`, returning a new `DataView` with the extra frame.
+    fn add_frame(&self, frame: Frame) -> Self::Output;
+}
+
+type NextFrameIndex<Frames> = <Frames as Len>::Len;
+
+impl<Labels, Frames, NewFrame> AddFrame<NewFrame> for DataView<Labels, Frames>
+where
+    NewFrame: AsFrameLookup<NextFrameIndex<Frames>>,
+    Frames: Len,
+    Labels: Append<<NewFrame as AsFrameLookup<NextFrameIndex<Frames>>>::Output>,
+    Frames: Clone + PushBack<Labeled<NextFrameIndex<Frames>, NewFrame>>,
+{
+    type Output = DataView<
+        <Labels as Append<<NewFrame as AsFrameLookup<NextFrameIndex<Frames>>>::Output>>::Appended,
+        <Frames as PushBack<Labeled<NextFrameIndex<Frames>, NewFrame>>>::Output,
+    >;
+
+    fn add_frame(&self, frame: NewFrame) -> Self::Output {
+        let frames = self
+            .frames
+            .clone()
+            .push_back(Labeled::<NextFrameIndex<Frames>, _>::from(frame));
+
+        DataView {
+            _labels: PhantomData,
+            frames,
         }
     }
 }
@@ -347,9 +410,8 @@ where
     Self: SelectFieldByLabel<LLabel>,
     <Self as SelectFieldByLabel<LLabel>>::Output: SortOrder,
     VFieldTypeOf<Self, LLabel>: Ord + PartialEq,
-    DataView<RLabels, RFrames>: SelectFieldByLabel<RLabel>,
+    DataView<RLabels, RFrames>: SelectFieldByLabel<RLabel, DType = VFieldTypeOf<Self, LLabel>>,
     <DataView<RLabels, RFrames> as SelectFieldByLabel<RLabel>>::Output: SortOrder,
-    VFieldOf<DataView<RLabels, RFrames>, RLabel>: DataIndex<DType = VFieldTypeOf<Self, LLabel>>,
     Pred: Predicate,
 {
     type Output = <<RFrames as JoinIntoStore<
@@ -489,6 +551,7 @@ impl<Label, FrameIndex, FrameLabel, Tail, Frames, Store>
 where
     Frames: LookupValuedElemByLabel<FrameIndex>,
     FrameByFrameIndexOf<Frames, FrameIndex>: SelectFieldByLabel<FrameLabel>,
+    FieldTypeFromFrameDetailsOf<Frames, FrameIndex, FrameLabel>: Debug,
     Store: PushBackClonedFromValueIter<
         Label,
         FieldTypeFromFrameDetailsOf<Frames, FrameIndex, FrameLabel>,
@@ -518,7 +581,8 @@ where
             SelectFieldByLabel::<FrameLabel>::select_field(
                 LookupValuedElemByLabel::<FrameIndex>::elem(self).value_ref(),
             )
-            .permute(permutation)?,
+            .permute(permutation)
+            .iter(),
         );
         let store = JoinIntoStore::<Tail, _>::join_into_store(self, store, permutation)?;
         Ok(store)

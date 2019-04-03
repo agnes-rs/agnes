@@ -11,12 +11,12 @@ use std::rc::Rc;
 use serde::ser::{Serialize, Serializer};
 use typenum::uint::UTerm;
 
-use access::DataIndex;
+use access::{DataIndex, NRows};
 use cons::*;
 use error;
 use field::{FieldData, Value};
 use fieldlist::{FieldCons, FieldPayloadCons, FieldSchema};
-use frame::DataFrame;
+use frame::{DataFrame, SimpleFrameFields};
 use label::*;
 use select::{FieldSelect, SelectFieldByLabel};
 use view::{DataView, FrameLookupCons, ViewFrameCons};
@@ -115,22 +115,6 @@ where
     /// Generate and return an empty data store
     pub fn empty() -> DataStore<Nil> {
         DataStore { data: Nil }
-    }
-}
-
-/// Trait to provide the number of rows of this data structure.
-pub trait NRows {
-    /// Return the number of rows in this data structure.
-    fn nrows(&self) -> usize;
-}
-impl NRows for Nil {
-    fn nrows(&self) -> usize {
-        0
-    }
-}
-impl<Label, DType, Tail> NRows for StorageCons<Label, DType, Tail> {
-    fn nrows(&self) -> usize {
-        self.head.value_ref().len()
     }
 }
 
@@ -607,10 +591,10 @@ where
     Fields::Storage: LookupElemByLabel<Label>,
     ElemOf<Fields::Storage, Label>: Typed,
     ElemOf<Fields::Storage, Label>: Valued<Value = DataRef<TypeOfElemOf<Fields::Storage, Label>>>,
-    DataRef<TypeOfElemOf<Fields::Storage, Label>>: DataIndex,
     TypeOfElemOf<Fields::Storage, Label>: Debug,
 {
-    type Output = DataRef<<<Fields::Storage as LookupElemByLabel<Label>>::Elem as Typed>::DType>;
+    type DType = TypeOfElemOf<Fields::Storage, Label>;
+    type Output = DataRef<Self::DType>;
 
     fn select_field(&self) -> Self::Output {
         DataRef::clone(LookupElemByLabel::<Label>::elem(&self.data).value_ref())
@@ -661,10 +645,10 @@ pub trait IntoView {
 }
 impl<Fields> IntoView for DataStore<Fields>
 where
-    Fields: AssocStorage + AssocFrameLookup,
+    Fields: AssocStorage + AssocFrameLookup + SimpleFrameFields,
 {
     type Labels = <Fields as AssocFrameLookup>::Output;
-    type Frames = ViewFrameCons<UTerm, Fields, Nil>;
+    type Frames = ViewFrameCons<UTerm, DataFrame<<Fields as SimpleFrameFields>::Fields, Self>, Nil>;
     type Output = DataView<Self::Labels, Self::Frames>;
 
     fn into_view(self) -> Self::Output {
@@ -683,7 +667,8 @@ impl<Label, I, T> IntoView for Labeled<Label, I>
 where
     I: Iterator<Item = Value<T>>,
     DataStore<Nil>: PushFrontFromValueIter<Label, T>,
-    <DataStore<Nil> as PushFrontFromValueIter<Label, T>>::OutputFields: AssocFrameLookup,
+    <DataStore<Nil> as PushFrontFromValueIter<Label, T>>::OutputFields:
+        AssocFrameLookup + SimpleFrameFields,
 {
     type Labels = <SingleFieldStore<Label, T> as IntoView>::Labels;
     type Frames = <SingleFieldStore<Label, T> as IntoView>::Frames;

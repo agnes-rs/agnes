@@ -105,6 +105,7 @@ pub mod frame;
 pub mod join;
 #[cfg(feature = "ops")]
 pub mod ops;
+pub mod permute;
 pub mod select;
 pub mod source;
 pub mod stats;

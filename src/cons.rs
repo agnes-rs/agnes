@@ -114,12 +114,12 @@ pub trait Len {
     type Len: Unsigned;
 
     /// Returns `true` if length is 0, and `false` otherwise.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
+    fn is_empty() -> bool {
+        Self::len() == 0
     }
 
     /// Returns the length of this list.
-    fn len(&self) -> usize {
+    fn len() -> usize {
         Self::Len::to_usize()
     }
 }
