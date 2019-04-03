@@ -17,3 +17,5 @@ Some currently planned features / changes (not a complete list) are:
 * Replacement of partial functions with specializations once specializations stabilize.
 * Expanded test suite.
 * Integration of [Apache Arrow](https://github.com/apache/arrow) data structures.
+* Improve mutability handling, preferring a more functional (immutable) approach. Specifically, update filter and sort mechanisms.
+* Move compile failure tests into doc tests (using compile_fail attribute).
