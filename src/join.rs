@@ -14,6 +14,7 @@ use access::DataIndex;
 use cons::*;
 use error::*;
 use field::Value;
+use frame::DataFrame;
 use label::{LVCons, Labeled, LookupValuedElemByLabel, Valued};
 use permute::SortOrder;
 use select::{FieldSelect, SelectFieldByLabel};
@@ -89,6 +90,67 @@ where
         LVCons {
             head: Labeled::from(self.head.value),
             tail: self.tail.update_frame_label(),
+        }
+    }
+}
+
+/// Helper trait for computing the [FrameLookupCons](../view/type.FrameLookupCons.html) to lookup
+/// any labels within the implementing type as if they were in a new `DataFrame` with index
+/// `FrameIndex`.
+pub trait AsFrameLookup<FrameIndex> {
+    /// The computed `FrameLookupCons`.
+    type Output;
+}
+impl<FrameIndex> AsFrameLookup<FrameIndex> for Nil {
+    type Output = Nil;
+}
+impl<FrameIndex, Label, Value, Tail> AsFrameLookup<FrameIndex> for LVCons<Label, Value, Tail>
+where
+    Tail: AsFrameLookup<FrameIndex>,
+{
+    type Output =
+        FrameLookupCons<Label, FrameIndex, Label, <Tail as AsFrameLookup<FrameIndex>>::Output>;
+}
+impl<FrameIndex, FrameFields, FramedStore> AsFrameLookup<FrameIndex>
+    for DataFrame<FrameFields, FramedStore>
+where
+    FrameFields: AsFrameLookup<FrameIndex>,
+{
+    type Output = <FrameFields as AsFrameLookup<FrameIndex>>::Output;
+}
+
+/// Trait for adding a new frame `Frame` to a [DataView](../view/struct.DataView.html) object.
+pub trait AddFrame<Frame> {
+    /// `DataView` type after adding `Frame`.
+    type Output;
+
+    /// Add a new frame to `self`, returning a new `DataView` with the extra frame.
+    fn add_frame(&self, frame: Frame) -> Self::Output;
+}
+
+type NextFrameIndex<Frames> = <Frames as Len>::Len;
+
+impl<Labels, Frames, NewFrame> AddFrame<NewFrame> for DataView<Labels, Frames>
+where
+    NewFrame: AsFrameLookup<NextFrameIndex<Frames>>,
+    Frames: Len,
+    Labels: Append<<NewFrame as AsFrameLookup<NextFrameIndex<Frames>>>::Output>,
+    Frames: Clone + PushBack<Labeled<NextFrameIndex<Frames>, NewFrame>>,
+{
+    type Output = DataView<
+        <Labels as Append<<NewFrame as AsFrameLookup<NextFrameIndex<Frames>>>::Output>>::Appended,
+        <Frames as PushBack<Labeled<NextFrameIndex<Frames>, NewFrame>>>::Output,
+    >;
+
+    fn add_frame(&self, frame: NewFrame) -> Self::Output {
+        let frames = self
+            .frames
+            .clone()
+            .push_back(Labeled::<NextFrameIndex<Frames>, _>::from(frame));
+
+        DataView {
+            _labels: PhantomData,
+            frames,
         }
     }
 }

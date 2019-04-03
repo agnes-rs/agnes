@@ -16,7 +16,7 @@ parameters.
 use std::collections::HashSet;
 #[cfg(test)]
 use std::collections::VecDeque;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
@@ -27,10 +27,11 @@ use serde::ser::{Serialize, SerializeMap, Serializer};
 use access::*;
 use cons::*;
 use error;
+use field::Value;
 use fieldlist::FieldPayloadCons;
-use frame::Framed;
 #[cfg(test)]
 use frame::StoreRefCount;
+use frame::{Framed, IntoFrame, IntoMeltFrame, IntoStrFrame};
 use join::*;
 use label::*;
 use partial::{DeriveCapabilities, Func, FuncDefault, Implemented, IsImplemented, PartialMap};
@@ -39,6 +40,7 @@ use permute::{
     UpdatePermutation,
 };
 use select::{FieldSelect, SelectFieldByLabel};
+use store::IntoView;
 
 /// Cons-list of `DataFrame`s held by a `DataView. `FrameIndex` is simply an index used by
 /// `FrameLookupCons` to look up `DataFrame`s for a specified `Label`, and `Frame` is the type
@@ -134,33 +136,47 @@ where
     /// Generate a new subview of this `DataView`. LabelList is a
     /// [LabelCons](../label/type.LabelCons.html) list of labels, which can be generated using the
     /// [Labels](../macro.Labels.html) macro.
-    pub fn v<LabelList>(
-        &self,
-    ) -> DataView<
+    pub fn v<LabelList>(&self) -> <Self as Subview<LabelList>>::Output
+    where
+        Self: Subview<LabelList>,
+    {
+        Subview::<LabelList>::subview(self)
+    }
+    /// Generate a new subview of this `DataView`. Equivalent to [v](struct.DataView.html#method.v).
+    pub fn subview<LabelList>(&self) -> <Self as Subview<LabelList>>::Output
+    where
+        Self: Subview<LabelList>,
+    {
+        Subview::<LabelList>::subview(self)
+    }
+}
+
+/// Trait for generating a subview of a [DataView](struct.DataView.html). `LabelList` is the fields
+/// to keep in the generated `DataView`.
+pub trait Subview<LabelList> {
+    /// Resulting subview `DataView` type.
+    type Output;
+
+    /// Generate a new subview of this `DataView`, resulting in a newly created `DataView` object
+    /// only containing the fields matching the labels in `LabelList`.
+    fn subview(&self) -> Self::Output;
+}
+
+impl<Labels, Frames, LabelList> Subview<LabelList> for DataView<Labels, Frames>
+where
+    Labels: FrameIndexList + HasLabels<LabelList> + LabelSubset<LabelList>,
+    Frames: Clone + SubsetClone<<Labels as FrameIndexList>::LabelList>,
+{
+    type Output = DataView<
         <Labels as LabelSubset<LabelList>>::Output,
         <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
-    >
-    where
-        Labels: HasLabels<LabelList> + LabelSubset<LabelList> + FrameIndexList,
-        Frames: SubsetClone<<Labels as FrameIndexList>::LabelList>,
-    {
+    >;
+
+    fn subview(&self) -> Self::Output {
         DataView {
             _labels: PhantomData,
             frames: self.frames.subset_clone(),
         }
-    }
-    /// Generate a new subview of this `DataView`. Equivalent to [v](struct.DataView.html#ethod.v).
-    pub fn subview<LabelList>(
-        &self,
-    ) -> DataView<
-        <Labels as LabelSubset<LabelList>>::Output,
-        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
-    >
-    where
-        Labels: HasLabels<LabelList> + LabelSubset<LabelList> + FrameIndexList,
-        Frames: SubsetClone<<Labels as FrameIndexList>::LabelList>,
-    {
-        self.v::<LabelList>()
     }
 }
 
@@ -1092,6 +1108,187 @@ where
     }
 }
 
+impl<Labels, Frames> DataView<Labels, Frames> {
+    /// Creates a new a `DataView` that accesses source data in a different way, viewing the data
+    /// as a series of identifier / value pairs instead of a having values in multiple
+    /// related fields.
+    ///
+    /// This is useful when converting a data table in a wide format where several fields represent
+    /// different instances of some quantity to a long format where each record only has one
+    /// instance of the appropriate value.
+    ///
+    /// The type parameter `MeltLabels` is a [LabelCons](../label/type.LabelCons.html) list of the
+    /// labels of the fields containing the values to 'melt'. `NameLabel` is the desired label for
+    /// the new identifier field, which will contain the `String` identifiers for where a record's
+    /// value originally came from. `ValueLabel` is the desired label for the new value field, which
+    /// will contain the values associated with each of the corresponding `String` identifiers.
+    /// `HoldLabels` should be left for the compiler to infer using `_` -- it specifies the
+    /// remaining fields that are not affected by this method.
+    ///
+    /// Since the values from the fields denoted in `MeltLabels` will all be combined into one field
+    /// they must be the same data type.
+    ///
+    /// # Example
+    /// Let us consider a table of employee salaries with the tablespace:
+    /// ```
+    /// # #[macro_use] extern crate agnes;
+    /// tablespace![
+    ///     table salary {
+    ///         EmpId: u64,
+    ///         Year2010: f64,
+    ///         Year2011: f64,
+    ///         Year2012: f64,
+    ///         Year2013: f64,
+    ///         Year2014: f64,
+    ///     }
+    /// ];
+    /// ```
+    /// which, when first loaded from the source file, looks like this:
+    /// ```text
+    ///  EmpId | Year2010 | Year2011 | Year2012 | Year2013 | Year2014
+    /// -------+----------+----------+----------+----------+----------
+    ///  0     | 1500     | 1600     | 1700     | 1850     | 2000
+    ///  1     | 900      | 920      | 940      | 940      | 970
+    ///  2     | 600      | 800      | 900      | 1020     | 1100
+    /// ```
+    /// While this is a valid way to store and present this data, there are definitely cases where
+    /// you might want to have the different years separated into different records instead of
+    /// having a column for each year. That's what `melt` is for!
+    ///
+    /// For the first step, we need to create new labels for `melt`'s `NameLabel` and `ValueLabel`
+    /// type arguments. The `NameLabel` will be filled in with `String` identifiers for the field
+    /// a data point came from, and the `ValueLabel` will be filled with the data values themselves.
+    /// We can add these two labels to our previous `tablespace` call.
+    ///
+    /// Next, after we load the original data, we call `melt`:
+    /// ```
+    /// # #[macro_use] extern crate agnes;
+    /// tablespace![
+    ///     table salary {
+    ///         EmpId: u64,
+    ///         Year2010: f64,
+    ///         Year2011: f64,
+    ///         Year2012: f64,
+    ///         Year2013: f64,
+    ///         Year2014: f64,
+    ///         SalaryYear: String,
+    ///         Salary: f64,
+    ///     }
+    /// ];
+    /// #
+    /// # use salary::*;
+    /// # use agnes::{store, cons::Nil};
+    /// #
+    /// fn main() {
+    /// #     let orig_table = store::DataStore::<Nil>::empty()
+    /// #         .push_back_cloned_from_iter::<EmpId, _, _, _>(&[0u64, 1u64, 2u64])
+    /// #         .push_back_cloned_from_iter::<Year2010, _, _, _>(&[1500.0, 900.0, 600.0])
+    /// #         .push_back_cloned_from_iter::<Year2011, _, _, _>(&[1600.0, 920.0, 800.0])
+    /// #         .push_back_cloned_from_iter::<Year2012, _, _, _>(&[1700.0, 940.0, 900.0])
+    /// #         .push_back_cloned_from_iter::<Year2013, _, _, _>(&[1850.0, 940.0, 1020.0])
+    /// #         .push_back_cloned_from_iter::<Year2014, _, _, _>(&[2000.0, 970.0, 1100.0])
+    /// #         .into_view();
+    ///     // <load data into DataView orig_table>
+    ///     // quick check to make sure we loaded the right table: with 3 rows, 6 fields
+    ///     assert_eq!((orig_table.nrows(), orig_table.nfields()), (3, 6));
+    ///
+    ///     let melted_table = orig_table.melt::<
+    ///         Labels![Year2010, Year2011, Year2012, Year2013, Year2014],
+    ///         SalaryYear,
+    ///         Salary,
+    ///         _,
+    ///     >();
+    ///
+    ///     // melted table should have 15 rows -- 5 for each of our 3 employees -- and 3 fields
+    ///     assert_eq!((melted_table.nrows(), melted_table.nfields()), (15, 3));
+    ///     println!("{}", melted_table);
+    /// }
+    /// ```
+    /// This call to `melt` transforms the year fields into two new fields: one which contains the
+    /// salary year (text) and has the label SalaryYear, and one which contains the salary values
+    /// (floating-point) with the label Salary.
+    ///
+    /// The first type argument is the list of year labels we want to melt, the second is the
+    /// new label for the year specifier field, the third is the new label for the year value field,
+    /// and we let the compiler compute the list of labels we aren't melting (in this case, the
+    /// EmpId field).
+    ///
+    /// As a result we should have a table with 15 rows, five for each of our three employees, and
+    /// three fields: `EmpId`, `SalaryYear`, and `Salary`. This code should output:
+    /// ```text
+    ///  SalaryYear | EmpId | Salary
+    /// ------------+-------+--------
+    ///  Year2010   | 0     | 1500
+    ///  Year2011   | 0     | 1600
+    ///  Year2012   | 0     | 1700
+    ///  Year2013   | 0     | 1850
+    ///  Year2014   | 0     | 2000
+    ///  Year2010   | 1     | 900
+    ///  Year2011   | 1     | 920
+    ///  Year2012   | 1     | 940
+    ///  Year2013   | 1     | 940
+    ///  Year2014   | 1     | 970
+    ///  Year2010   | 2     | 600
+    ///  Year2011   | 2     | 800
+    ///  Year2012   | 2     | 900
+    ///  Year2013   | 2     | 1020
+    ///  Year2014   | 2     | 1100
+    /// ```
+    pub fn melt<MeltLabels, NameLabel, ValueLabel, HoldLabels>(
+        &self,
+    ) -> <<<<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output as AddFrame<
+        <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output,
+    >>::Output as AddFrame<
+        <<Self as Subview<MeltLabels>>::Output as IntoMeltFrame<ValueLabel>>::Output,
+    >>::Output
+    where
+        Frames: NRows + Clone,
+        NameLabel: Debug,
+        Labels: SetDiff<MeltLabels, Set = HoldLabels>,
+        MeltLabels: Len + IntoStrFrame<NameLabel>,
+        <MeltLabels as IntoStrFrame<NameLabel>>::Output: IntoView,
+        Self: Subview<HoldLabels>,
+        <Self as Subview<HoldLabels>>::Output: IntoFrame,
+        <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output: UpdatePermutation,
+        <<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output:
+            AddFrame<<<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output>,
+        Self: Subview<MeltLabels>,
+        <Self as Subview<MeltLabels>>::Output: IntoMeltFrame<ValueLabel>,
+        <<<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output as AddFrame<
+            <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output,
+        >>::Output:
+            AddFrame<<<Self as Subview<MeltLabels>>::Output as IntoMeltFrame<ValueLabel>>::Output>,
+    {
+        let premelt_nrows = self.nrows();
+        let melt_len = MeltLabels::len();
+
+        // create a new FieldData<String> with the label names from MeltLabels, and convert it into
+        // a DataStore. Build a DataFrame around it with an index permutation that repeats the whole
+        // list `premelt_nrows` times (e.g. [0,1,2,3,0,1,2,3,0,1,2,3,...,0,1,2,3])
+        let melt_label_view = MeltLabels::into_repeated_str_frame(premelt_nrows).into_view();
+
+        // create new frame based on the hold labels, with an index permutation that repeats
+        // every element `melt_len` times
+        // (e.g. [0,0,0,0,1,1,1,1,...,nrows-1,nrows-1,nrows-1,nrows-1])
+        let mut hold_frame = Subview::<HoldLabels>::subview(self).into_frame();
+        let mut hold_permutation = Vec::with_capacity(melt_len * premelt_nrows);
+        for i in 0..premelt_nrows {
+            for _ in 0..melt_len {
+                hold_permutation.push(i);
+            }
+        }
+        hold_frame.update_permutation(&hold_permutation);
+        let label_hold_dv = melt_label_view.add_frame(hold_frame);
+
+        // create a new frame based on the MeltLabels as a LabelSpan-based frame (switches the
+        // store field it draws from for each index)
+        let melt_frame =
+            IntoMeltFrame::<ValueLabel>::into_melt_frame(Subview::<MeltLabels>::subview(self));
+        let final_dv = label_hold_dv.add_frame(melt_frame);
+        final_dv
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Debug;
@@ -1597,4 +1794,17 @@ mod tests {
             vec![false, false, true, true, false, true]
         );
     }
+
+    tablespace![
+        table salary {
+            EmpId: u64,
+            Year2010: f64,
+            Year2011: f64,
+            Year2012: f64,
+            Year2013: f64,
+            Year2014: f64,
+            SalaryYear: String,
+            Salary: f64,
+        }
+    ];
 }

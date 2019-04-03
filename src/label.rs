@@ -348,7 +348,8 @@ pub trait HasLabels<LabelList> {}
 // Everything as the empty label list
 impl<T> HasLabels<Nil> for T {}
 // make sure the first label is in the haystack, then move on the to rest of the needles
-impl<NeedleLbl, NeedleTail, Haystack> HasLabels<LabelCons<NeedleLbl, NeedleTail>> for Haystack
+impl<NeedleLbl, NeedleValue, NeedleTail, Haystack>
+    HasLabels<LVCons<NeedleLbl, NeedleValue, NeedleTail>> for Haystack
 where
     Haystack: Member<NeedleLbl, IsMember = True>,
     Haystack: HasLabels<NeedleTail>,

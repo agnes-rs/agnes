@@ -20,6 +20,7 @@ use access::{DataIndex, NRows};
 use cons::Nil;
 use error;
 use field::{FieldData, Value};
+use fieldlist::FieldCons;
 use label::*;
 use permute::{self, UpdatePermutation};
 use select::{FieldSelect, SelectFieldByLabel};
@@ -54,7 +55,7 @@ pub trait SimpleFrameFields {
 impl SimpleFrameFields for Nil {
     type Fields = Nil;
 }
-impl<Label, Marker, Tail> SimpleFrameFields for LMCons<Label, Marker, Tail>
+impl<Label, Value, Tail> SimpleFrameFields for LVCons<Label, Value, Tail>
 where
     Tail: SimpleFrameFields,
 {
@@ -63,6 +64,59 @@ where
         StoreFieldMarkers<Single, Labels![Label]>,
         <Tail as SimpleFrameFields>::Fields,
     >;
+}
+
+/// Trait for creating a [DataFrame](struct.DataFrame.html) containing a single field with label
+/// `Label` which contains the `String` labels of the implementing type (a cons-list).
+pub trait IntoStrFrame<Label> {
+    /// Output `DataFrame` type.
+    type Output;
+
+    /// Create the `DataFrame` with the a single field labeled `Label` which contains the `String`
+    /// labels from this type. The frame will have a number of rows equal to the length of the
+    /// implementing cons-list.
+    fn into_str_frame() -> Self::Output;
+    /// Create the `DataFrame` with the a single field labeled `Label` which contains the `String`
+    /// labels from this type, repeated `n` times. The frame will have a number of rows equal to the
+    /// length of the implementing cons-list multiplied by `n`.
+    fn into_repeated_str_frame(n: usize) -> Self::Output;
+}
+
+impl<Label, List> IntoStrFrame<Label> for List
+where
+    Label: Debug,
+    List: StrLabels,
+{
+    type Output = DataFrame<
+        <FieldCons<Label, String, Nil> as SimpleFrameFields>::Fields,
+        DataStore<FieldCons<Label, String, Nil>>,
+    >;
+
+    fn into_str_frame() -> Self::Output {
+        let strs: FieldData<String> = Self::labels().iter().map(|&s| s.to_owned()).collect();
+        DataFrame::from(DataStore::<Nil>::empty().push_back_field::<Label, _>(strs))
+    }
+
+    fn into_repeated_str_frame(n: usize) -> Self::Output {
+        let strs: FieldData<String> = Self::labels().iter().map(|&s| s.to_owned()).collect();
+        DataFrame::from_repeated_store(
+            DataStore::<Nil>::empty().push_back_field::<Label, _>(strs),
+            n,
+        )
+    }
+}
+
+/// Helper trait for [IntoMeltFrame](trait.IntoMeltFrame.html) to generate the `FrameFields` list.
+pub trait MeltFrameFields<MeltLabel> {
+    /// The computed melt `FrameFields` [FieldLookupCons](type.FieldLookupCons.html) cons-list.
+    type Fields;
+}
+impl<MeltLabel, Labels> MeltFrameFields<MeltLabel> for Labels
+where
+    Labels: AssocLabels,
+{
+    type Fields =
+        FieldLookupCons<MeltLabel, StoreFieldMarkers<Melt, <Labels as AssocLabels>::Labels>, Nil>;
 }
 
 /// A data frame. A reference to the underlying data store along with record-based filtering and
@@ -159,6 +213,69 @@ where
     }
 }
 
+/// Trait for repackaging an data store into a `DataFrame`[struct.DataFrame.html]. The output
+/// `DataFrame` should have the same labels as the underlying data store.
+pub trait IntoFrame {
+    /// The `FrameFields` type parameter for the output `DataFrame`.
+    type FrameFields;
+    /// The `FramedStore` type parameter for the output `DataFrame`.
+    type FramedStore;
+    /// The output `DataFrame` (should always be `DataFrame<Self::FrameFields, Self::FramedStore>`).
+    type Output; // = DataFrame<Self::FrameFields, Self::FramedStore>
+
+    /// Convert `self` into a [DataFrame](struct.DataFrame.html) object.
+    fn into_frame(self) -> Self::Output;
+}
+
+impl<Labels, Frames> IntoFrame for DataView<Labels, Frames>
+where
+    Labels: SimpleFrameFields,
+    DataFrame<<Labels as SimpleFrameFields>::Fields, DataView<Labels, Frames>>:
+        From<DataView<Labels, Frames>>,
+{
+    type FrameFields = <Labels as SimpleFrameFields>::Fields;
+    type FramedStore = DataView<Labels, Frames>;
+
+    type Output = DataFrame<Self::FrameFields, Self::FramedStore>;
+
+    fn into_frame(self) -> Self::Output {
+        self.into()
+    }
+}
+
+/// Trait for repackaging an data store into a `DataFrame`[struct.DataFrame.html] as a melted data
+/// structure. The output `DataFrame` will have one label, `MeltLabel`, which rotates over the
+/// labels in underlying data store.
+pub trait IntoMeltFrame<MeltLabel> {
+    /// The `FrameFields` type parameter for the output `DataFrame`.
+    type FrameFields;
+    /// The `FramedStore` type parameter for the output `DataFrame`.
+    type FramedStore;
+    /// The output `DataFrame` (should always be `DataFrame<Self::FrameFields, Self::FramedStore>`).
+    type Output; // = DataFrame<Self::FrameFields, Self::FramedStore>
+
+    /// Convert `self` into a [DataFrame](struct.DataFrame.html) object.
+    fn into_melt_frame(self) -> Self::Output;
+}
+
+impl<MeltLabel, Labels, Frames> IntoMeltFrame<MeltLabel> for DataView<Labels, Frames>
+where
+    Labels: MeltFrameFields<MeltLabel>,
+{
+    type FrameFields = <Labels as MeltFrameFields<MeltLabel>>::Fields;
+    type FramedStore = DataView<Labels, Frames>;
+
+    type Output = DataFrame<Self::FrameFields, Self::FramedStore>;
+
+    fn into_melt_frame(self) -> Self::Output {
+        DataFrame {
+            permutation: Rc::new(Permutation::default()),
+            fields: PhantomData,
+            store: Arc::new(self),
+        }
+    }
+}
+
 impl<FrameFields, FramedStore> IntoView for DataFrame<FrameFields, FramedStore>
 where
     FrameFields: AssocFrameLookup,
@@ -202,6 +319,7 @@ where
 /// Allow `DataFrame`s to be pulled from `LVCons` as `Value`s
 impl<FrameFields, FramedStore> SelfValued for DataFrame<FrameFields, FramedStore> {}
 
+/// Inner frame kind enum used in a [Framed](struct.Framed.html) struct.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 enum FrameKind<DI> {
     Single(DI),
@@ -421,20 +539,18 @@ impl<TargetLabel, FrameLabel, StoreFieldList, Tail, FramedStore>
     SelectAndFrameMatch<TargetLabel, FramedStore, True>
     for FieldLookupCons<FrameLabel, StoreFieldMarkers<Melt, StoreFieldList>, Tail>
 where
-    FramedStore: LookupElemByLabel<TargetLabel>,
-    ElemOf<FramedStore, TargetLabel>: Typed,
-    TypeOf<ElemOf<FramedStore, TargetLabel>>: Debug,
-    StoreFieldList: RotateFields<FramedStore, TypeOf<ElemOf<FramedStore, TargetLabel>>>,
+    StoreFieldList: RotateFields<FramedStore>,
+    <StoreFieldList as RotateFields<FramedStore>>::DType: Debug,
+    <StoreFieldList as RotateFields<FramedStore>>::Output: Clone,
 {
-    type DType = TypeOf<ElemOf<FramedStore, TargetLabel>>;
-    type Field = DataRef<TypeOf<ElemOf<FramedStore, TargetLabel>>>;
+    type DType = <StoreFieldList as RotateFields<FramedStore>>::DType;
+    type Field = <StoreFieldList as RotateFields<FramedStore>>::Output;
 
     fn select_and_frame(
         perm: &Rc<Permutation>,
         store: &FramedStore,
     ) -> Framed<Self::DType, Self::Field> {
-        let melt_rotation =
-            <StoreFieldList as RotateFields<FramedStore, Self::DType>>::add_to_rotation(store);
+        let melt_rotation = <StoreFieldList as RotateFields<FramedStore>>::add_to_rotation(store);
         Framed::new_melt(
             Rc::clone(perm),
             melt_rotation.iter().cloned().collect::<Vec<_>>(),
@@ -459,30 +575,67 @@ where
     }
 }
 
-/// Trait for generating a of fields to rotate over, producing a collection of
-/// [DataRef](../store/struct.DataRef.html) objects.
-pub trait RotateFields<FramedStore, DType> {
-    /// Add data pointed to by this type to the `DataRef` collection, drawing data from the
+/// Trait for generating a collection of objects implementing
+/// [DataIndex](../access/trait.DataIndex.html) with the same underlying type. Used for rotating
+/// through source fields in a [Melt](struct.Melt.html)ed field.
+pub trait RotateFields<FramedStore> {
+    /// Underlying data type of the source fields
+    type DType;
+    /// Type of the individual `DataIndex`-implementing objects returned.
+    type Output: DataIndex<DType = Self::DType>;
+
+    /// Add data pointed to by this type to the data collection, drawing data from the
     /// provided `DataStore`.
-    fn add_to_rotation(store: &FramedStore) -> VecDeque<DataRef<DType>>;
+    fn add_to_rotation(store: &FramedStore) -> VecDeque<Self::Output>;
 }
 
-impl<FramedStore, DType> RotateFields<FramedStore, DType> for Nil {
-    fn add_to_rotation(_store: &FramedStore) -> VecDeque<DataRef<DType>> {
+impl<FramedStore> RotateFields<FramedStore> for Nil {
+    type DType = usize;
+    type Output = DataRef<usize>;
+
+    fn add_to_rotation(_store: &FramedStore) -> VecDeque<Self::Output> {
         VecDeque::new()
     }
 }
-impl<FramedStore, DType, Label, Tail> RotateFields<FramedStore, DType>
-    for StoreFieldCons<Label, Tail>
+impl<FramedStore, Label, Tail> RotateFields<FramedStore> for StoreFieldCons<Label, Tail>
 where
-    FramedStore: AssocStorage + SelectFieldByLabel<Label, DType = DType, Output = DataRef<DType>>,
-    Tail: RotateFields<FramedStore, DType>,
-    DType: Debug,
+    FramedStore: SelectFieldByLabel<Label>,
+    Tail: RotateFieldsTerm<
+        FramedStore,
+        <FramedStore as SelectFieldByLabel<Label>>::DType,
+        <FramedStore as SelectFieldByLabel<Label>>::Output,
+    >,
 {
-    fn add_to_rotation(store: &FramedStore) -> VecDeque<DataRef<DType>> {
+    type DType = <FramedStore as SelectFieldByLabel<Label>>::DType;
+    type Output = <FramedStore as SelectFieldByLabel<Label>>::Output;
+
+    fn add_to_rotation(store: &FramedStore) -> VecDeque<Self::Output> {
         let mut v = Tail::add_to_rotation(store);
         v.push_front(SelectFieldByLabel::<Label>::select_field(store));
         v
+    }
+}
+
+/// Helper trait for helping terminate a [RotateFields](trait.RotateFields.html) recursion. Handles
+/// taking care of the [Nil](../cons/struct.Nil.html) end-case without losing the type information
+/// of the returned output collection.
+pub trait RotateFieldsTerm<FramedStore, DType, Output> {
+    /// Create or add data to the data collection.
+    fn add_to_rotation(store: &FramedStore) -> VecDeque<Output>;
+}
+impl<FramedStore, DType, Output> RotateFieldsTerm<FramedStore, DType, Output> for Nil {
+    fn add_to_rotation(_store: &FramedStore) -> VecDeque<Output> {
+        VecDeque::new()
+    }
+}
+impl<FramedStore, DType, Output, Label, Tail> RotateFieldsTerm<FramedStore, DType, Output>
+    for StoreFieldCons<Label, Tail>
+where
+    StoreFieldCons<Label, Tail>: RotateFields<FramedStore, DType = DType, Output = Output>,
+    Output: DataIndex<DType = DType>,
+{
+    fn add_to_rotation(store: &FramedStore) -> VecDeque<Output> {
+        <StoreFieldCons<Label, Tail> as RotateFields<FramedStore>>::add_to_rotation(store)
     }
 }
 
