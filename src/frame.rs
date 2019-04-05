@@ -36,8 +36,9 @@ pub type StoreFieldCons<L, T> = LCons<L, T>;
 pub struct StoreFieldMarkers<FrameType, StoreFieldList> {
     _marker: PhantomData<(FrameType, StoreFieldList)>,
 }
-// `FrameLabel` is a label struct. `StoreDetails` is a `StoreFieldMarkers` struct.
-type FieldLookupCons<FrameLabel, StoreDetails, Tail> = LMCons<FrameLabel, StoreDetails, Tail>;
+/// Type alias for a cons-list which associated frame labels with their underlying store(s).
+/// `FrameLabel` is a label struct. `StoreDetails` is a `StoreFieldMarkers` struct.
+pub type FieldLookupCons<FrameLabel, StoreDetails, Tail> = LMCons<FrameLabel, StoreDetails, Tail>;
 
 /// [StoreFieldMarkers](struct.StoreFieldMarkers.html) `FrameType` for typical single-source fields
 pub struct Single;
