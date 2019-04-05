@@ -1818,17 +1818,4 @@ mod tests {
             vec![false, false, true, true, false, true]
         );
     }
-
-    tablespace![
-        table salary {
-            EmpId: u64,
-            Year2010: f64,
-            Year2011: f64,
-            Year2012: f64,
-            Year2013: f64,
-            Year2014: f64,
-            SalaryYear: String,
-            Salary: f64,
-        }
-    ];
 }
