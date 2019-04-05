@@ -1236,29 +1236,53 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     /// ```
     pub fn melt<MeltLabels, NameLabel, ValueLabel, HoldLabels>(
         &self,
-    ) -> <<<<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output as AddFrame<
-        <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output,
-    >>::Output as AddFrame<
-        <<Self as Subview<MeltLabels>>::Output as IntoMeltFrame<ValueLabel>>::Output,
-    >>::Output
+    ) -> <Self as Melt<MeltLabels, NameLabel, ValueLabel, HoldLabels>>::Output
     where
-        Frames: NRows + Clone,
-        NameLabel: Debug,
-        Labels: SetDiff<MeltLabels, Set = HoldLabels>,
-        MeltLabels: Len + IntoStrFrame<NameLabel>,
-        <MeltLabels as IntoStrFrame<NameLabel>>::Output: IntoView,
-        Self: Subview<HoldLabels>,
-        <Self as Subview<HoldLabels>>::Output: IntoFrame,
-        <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output: UpdatePermutation,
-        <<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output:
-            AddFrame<<<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output>,
-        Self: Subview<MeltLabels>,
-        <Self as Subview<MeltLabels>>::Output: IntoMeltFrame<ValueLabel>,
-        <<<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output as AddFrame<
-            <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output,
-        >>::Output:
-            AddFrame<<<Self as Subview<MeltLabels>>::Output as IntoMeltFrame<ValueLabel>>::Output>,
+        Self: Melt<MeltLabels, NameLabel, ValueLabel, HoldLabels>,
     {
+        Melt::<MeltLabels, NameLabel, ValueLabel, HoldLabels>::melt(self)
+    }
+}
+
+/// Trait providing the `melt` method for converting wide-format tables into long-format tables.
+/// See the intrinsic method [melt](struct.DataView.html#method.melt) for more details.
+pub trait Melt<MeltLabels, NameLabel, ValueLabel, HoldLabels> {
+    /// Type produced by this melt method.
+    type Output;
+
+    /// Perform the 'melt' operation. See the intrinsic method
+    /// [melt](struct.DataView.html#method.melt) for more details.
+    fn melt(&self) -> Self::Output;
+}
+
+impl<Frames, Labels, MeltLabels, NameLabel, ValueLabel, HoldLabels>
+    Melt<MeltLabels, NameLabel, ValueLabel, HoldLabels> for DataView<Labels, Frames>
+where
+    Frames: NRows + Clone,
+    NameLabel: Debug,
+    Labels: SetDiff<MeltLabels, Set = HoldLabels>,
+    MeltLabels: Len + IntoStrFrame<NameLabel>,
+    <MeltLabels as IntoStrFrame<NameLabel>>::Output: IntoView,
+    Self: Subview<HoldLabels>,
+    <Self as Subview<HoldLabels>>::Output: IntoFrame,
+    <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output: UpdatePermutation,
+    <<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output:
+        AddFrame<<<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output>,
+    Self: Subview<MeltLabels>,
+    <Self as Subview<MeltLabels>>::Output: IntoMeltFrame<ValueLabel>,
+    <<<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output as AddFrame<
+        <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output,
+    >>::Output:
+        AddFrame<<<Self as Subview<MeltLabels>>::Output as IntoMeltFrame<ValueLabel>>::Output>,
+{
+    type Output =
+        <<<<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output as AddFrame<
+            <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output,
+        >>::Output as AddFrame<
+            <<Self as Subview<MeltLabels>>::Output as IntoMeltFrame<ValueLabel>>::Output,
+        >>::Output;
+
+    fn melt(&self) -> Self::Output {
         let premelt_nrows = self.nrows();
         let melt_len = MeltLabels::len();
 
