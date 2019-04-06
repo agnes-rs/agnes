@@ -14,7 +14,7 @@ use typenum::{
 };
 
 use access::NRows;
-use cons::{Cons, Nil};
+use cons::{cons, Cons, Nil};
 use store::DataRef;
 
 /// Trait to provide associated types (table and backing natural) for a field identifier.
@@ -580,6 +580,82 @@ where
     }
 }
 
+/// Take an element from a cons-list using `typenum` natural number.
+pub trait TakeElemByNat<N> {
+    /// Type of taken element.
+    type Elem;
+    /// Type of remaining cons-list after element was taken.
+    type Rest;
+    /// Take the element from this cons-list.
+    fn take_elem(self) -> (Self::Elem, Self::Rest);
+}
+
+impl<H, T> TakeElemByNat<UTerm> for Cons<H, T> {
+    type Elem = H;
+    type Rest = T;
+    fn take_elem(self) -> (H, T) {
+        (self.head, self.tail)
+    }
+}
+
+impl<H, T> TakeElemByNat<UInt<UTerm, B1>> for Cons<H, T>
+where
+    T: TakeElemByNat<UTerm>,
+{
+    type Elem = <T as TakeElemByNat<UTerm>>::Elem;
+    type Rest = Cons<H, <T as TakeElemByNat<UTerm>>::Rest>;
+    fn take_elem(self) -> (Self::Elem, Self::Rest) {
+        let (elem, rest) = self.tail.take_elem();
+        (elem, cons(self.head, rest))
+    }
+}
+
+impl<H, T, N> TakeElemByNat<UInt<N, B0>> for Cons<H, T>
+where
+    N: Sub<B1>,
+    T: TakeElemByNat<UInt<Sub1<N>, B1>>,
+{
+    type Elem = <T as TakeElemByNat<UInt<Sub1<N>, B1>>>::Elem;
+    type Rest = Cons<H, <T as TakeElemByNat<UInt<Sub1<N>, B1>>>::Rest>;
+    fn take_elem(self) -> (Self::Elem, Self::Rest) {
+        let (elem, rest) = self.tail.take_elem();
+        (elem, cons(self.head, rest))
+    }
+}
+
+impl<H, T, N, B> TakeElemByNat<UInt<UInt<N, B>, B1>> for Cons<H, T>
+where
+    T: TakeElemByNat<UInt<UInt<N, B>, B0>>,
+{
+    type Elem = <T as TakeElemByNat<UInt<UInt<N, B>, B0>>>::Elem;
+    type Rest = Cons<H, <T as TakeElemByNat<UInt<UInt<N, B>, B0>>>::Rest>;
+    fn take_elem(self) -> (Self::Elem, Self::Rest) {
+        let (elem, rest) = self.tail.take_elem();
+        (elem, cons(self.head, rest))
+    }
+}
+
+/// Take an element from a cons-list using label `L`.
+pub trait TakeElemByLabel<L> {
+    /// Type of taken element.
+    type Elem;
+    /// Type of remaining cons-list after element was taken.
+    type Rest;
+    /// Take the element from this cons-list.
+    fn take_elem(self) -> (Self::Elem, Self::Rest);
+}
+impl<L, T> TakeElemByLabel<L> for T
+where
+    T: LookupNatByLabel<L>,
+    T: TakeElemByNat<<T as LookupNatByLabel<L>>::Nat>,
+{
+    type Elem = <Self as TakeElemByNat<<Self as LookupNatByLabel<L>>::Nat>>::Elem;
+    type Rest = <Self as TakeElemByNat<<Self as LookupNatByLabel<L>>::Nat>>::Rest;
+    fn take_elem(self) -> (Self::Elem, Self::Rest) {
+        TakeElemByNat::<_>::take_elem(self)
+    }
+}
+
 /// Type alias for an element (as looked up by `Label`) from cons-list `T`.
 pub type ElemOf<T, Label> = <T as LookupElemByLabel<Label>>::Elem;
 
@@ -700,6 +776,67 @@ where
 {
     // head isn't in list, so we check the tail
     type Output = <T as LabelSubset<LabelList>>::Output;
+}
+
+/// Trait to compute the new ordering of a labeled cons-list using the new ordering
+/// `TargetOrdering`.
+pub trait Reorder<TargetOrdering> {
+    /// The values from `Self`, re-ordered to match the ordering of `TargetOrdering`.
+    type Output;
+
+    /// Reorder this cons-list according to the new ordering `TargetOrdering`.
+    fn reorder(self) -> Self::Output;
+}
+// Verifies that the label sets are equivalent, and calls Reordering.
+impl<L, V, T, TargetL, TargetV, TargetT> Reorder<LVCons<TargetL, TargetV, TargetT>>
+    for LVCons<L, V, T>
+where
+    LVCons<L, V, T>: HasLabels<LVCons<TargetL, TargetV, TargetT>>,
+    LVCons<TargetL, TargetV, TargetT>: HasLabels<LVCons<L, V, T>>,
+    LVCons<TargetL, TargetV, TargetT>: Reordering<Self>,
+{
+    type Output = <LVCons<TargetL, TargetV, TargetT> as Reordering<Self>>::Output;
+
+    fn reorder(self) -> Self::Output {
+        <LVCons<TargetL, TargetV, TargetT> as Reordering<Self>>::reorder(self)
+    }
+}
+
+/// Trait for a labeled cons-list which describes a reordering of the labels in `Original`.
+pub trait Reordering<Original> {
+    /// The values from `Original`, re-ordered to match the ordering of `Self`.
+    type Output;
+
+    /// Reorder `Original` according to the ordering of `Self`.
+    fn reorder(orig: Original) -> Self::Output;
+}
+impl Reordering<Nil> for Nil {
+    type Output = Nil;
+
+    fn reorder(_: Nil) -> Nil {
+        Nil
+    }
+}
+impl<L, V, T, TargetL, TargetV, TargetT> Reordering<LVCons<L, V, T>>
+    for LVCons<TargetL, TargetV, TargetT>
+where
+    LVCons<L, V, T>: TakeElemByLabel<TargetL>,
+    <LVCons<L, V, T> as TakeElemByLabel<TargetL>>::Elem: Valued,
+    TargetT: Reordering<<LVCons<L, V, T> as TakeElemByLabel<TargetL>>::Rest>,
+{
+    type Output = LVCons<
+        TargetL,
+        <<LVCons<L, V, T> as TakeElemByLabel<TargetL>>::Elem as Valued>::Value,
+        <TargetT as Reordering<<LVCons<L, V, T> as TakeElemByLabel<TargetL>>::Rest>>::Output,
+    >;
+
+    fn reorder(orig: LVCons<L, V, T>) -> Self::Output {
+        let (elem, rest) = TakeElemByLabel::<TargetL>::take_elem(orig);
+        LVCons {
+            head: Labeled::from(elem.value()),
+            tail: <TargetT as Reordering<_>>::reorder(rest),
+        }
+    }
 }
 
 macro_rules! subset_apply {
@@ -1352,6 +1489,38 @@ mod tests {
             // we only filtered 2 label (albeit with some duplication), so length should be 2
             assert_eq!(length![Filtered], 2);
         }
+    }
+
+    #[test]
+    fn reorder() {
+        type LSet = LVCons<F0, u64, LVCons<F1, f64, LVCons<F2, i64, Nil>>>;
+        assert_eq!(["F0", "F1", "F2"], <LSet as StrLabels>::labels_vec()[..]);
+
+        type NewOrder = Labels![F0, F2, F1];
+        type Reordered = <LSet as Reorder<NewOrder>>::Output;
+        assert_eq!(
+            ["F0", "F2", "F1"],
+            <Reordered as StrLabels>::labels_vec()[..]
+        );
+
+        let orig = LVCons {
+            head: Labeled::<F0, _>::from(6u64),
+            tail: LVCons {
+                head: Labeled::<F1, _>::from(5.3f64),
+                tail: LVCons {
+                    head: Labeled::<F2, _>::from(-3i64),
+                    tail: Nil,
+                },
+            },
+        };
+        assert_eq!(LookupElemByNat::<U0>::elem(&orig).value, 6u64);
+        assert_eq!(LookupElemByNat::<U1>::elem(&orig).value, 5.3);
+        assert_eq!(LookupElemByNat::<U2>::elem(&orig).value, -3i64);
+
+        let reordered: Reordered = Reorder::<NewOrder>::reorder(orig);
+        assert_eq!(LookupElemByNat::<U0>::elem(&reordered).value, 6u64);
+        assert_eq!(LookupElemByNat::<U1>::elem(&reordered).value, -3i64);
+        assert_eq!(LookupElemByNat::<U2>::elem(&reordered).value, 5.3);
     }
 
     #[test]
