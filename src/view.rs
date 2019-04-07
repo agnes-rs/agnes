@@ -1157,6 +1157,9 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     /// Since the values from the fields denoted in `MeltLabels` will all be combined into one field
     /// they must be the same data type.
     ///
+    /// The resultant `DataView` will be have the following field order: all the fields with labels
+    /// in `HoldLabels`, the `NameLabel` field, then the `ValueLabel` field.
+    ///
     /// # Example
     /// Let us consider a table of employee salaries with the tablespace:
     /// ```
@@ -1230,6 +1233,7 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     ///
     ///     // melted table should have 15 rows -- 5 for each of our 3 employees -- and 3 fields
     ///     assert_eq!((melted_table.nrows(), melted_table.nfields()), (15, 3));
+    ///     assert_eq!(melted_table.fieldnames(), vec!["EmpId", "SalaryYear", "Salary"]);
     ///     println!("{}", melted_table);
     /// }
     /// ```
@@ -1245,23 +1249,23 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     /// As a result we should have a table with 15 rows, five for each of our three employees, and
     /// three fields: `EmpId`, `SalaryYear`, and `Salary`. This code should output:
     /// ```text
-    ///  SalaryYear | EmpId | Salary
-    /// ------------+-------+--------
-    ///  Year2010   | 0     | 1500
-    ///  Year2011   | 0     | 1600
-    ///  Year2012   | 0     | 1700
-    ///  Year2013   | 0     | 1850
-    ///  Year2014   | 0     | 2000
-    ///  Year2010   | 1     | 900
-    ///  Year2011   | 1     | 920
-    ///  Year2012   | 1     | 940
-    ///  Year2013   | 1     | 940
-    ///  Year2014   | 1     | 970
-    ///  Year2010   | 2     | 600
-    ///  Year2011   | 2     | 800
-    ///  Year2012   | 2     | 900
-    ///  Year2013   | 2     | 1020
-    ///  Year2014   | 2     | 1100
+    ///  EmpId | SalaryYear | Salary
+    /// -------+------------+--------
+    ///  0     | Year2010   | 1500
+    ///  0     | Year2011   | 1600
+    ///  0     | Year2012   | 1700
+    ///  0     | Year2013   | 1850
+    ///  0     | Year2014   | 2000
+    ///  1     | Year2010   | 900
+    ///  1     | Year2011   | 920
+    ///  1     | Year2012   | 940
+    ///  1     | Year2013   | 940
+    ///  1     | Year2014   | 970
+    ///  2     | Year2010   | 600
+    ///  2     | Year2011   | 800
+    ///  2     | Year2012   | 900
+    ///  2     | Year2013   | 1020
+    ///  2     | Year2014   | 1100
     /// ```
     pub fn melt<MeltLabels, NameLabel, ValueLabel, HoldLabels>(
         &self,
@@ -1284,6 +1288,12 @@ pub trait Melt<MeltLabels, NameLabel, ValueLabel, HoldLabels> {
     fn melt(&self) -> Self::Output;
 }
 
+// type aliases to hopefully help with readability of Melt trait bounds.
+type AsView<Orig> = <Orig as IntoView>::Output;
+type AsFrame<Orig> = <Orig as IntoFrame>::Output;
+type AsMeltFrame<Orig, ValueLabel> = <Orig as IntoMeltFrame<ValueLabel>>::Output;
+type WithFrame<Orig, Added> = <Orig as AddFrame<Added>>::Output;
+
 impl<Frames, Labels, MeltLabels, NameLabel, ValueLabel, HoldLabels>
     Melt<MeltLabels, NameLabel, ValueLabel, HoldLabels> for DataView<Labels, Frames>
 where
@@ -1295,21 +1305,35 @@ where
     Self: Subview<HoldLabels>,
     <Self as Subview<HoldLabels>>::Output: IntoFrame,
     <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output: UpdatePermutation,
-    <<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output:
+    AsView<<MeltLabels as IntoStrFrame<NameLabel>>::Output>:
         AddFrame<<<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output>,
     Self: Subview<MeltLabels>,
     <Self as Subview<MeltLabels>>::Output: IntoMeltFrame<ValueLabel>,
-    <<<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output as AddFrame<
-        <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output,
-    >>::Output:
-        AddFrame<<<Self as Subview<MeltLabels>>::Output as IntoMeltFrame<ValueLabel>>::Output>,
+    WithFrame<
+        AsView<<MeltLabels as IntoStrFrame<NameLabel>>::Output>,
+        AsFrame<<Self as Subview<HoldLabels>>::Output>,
+    >: AddFrame<AsMeltFrame<<Self as Subview<MeltLabels>>::Output, ValueLabel>>,
+    HoldLabels: AssocLabels,
+    <HoldLabels as AssocLabels>::Labels: Append<Labels![NameLabel, ValueLabel]>,
+    WithFrame<
+        WithFrame<
+            AsView<<MeltLabels as IntoStrFrame<NameLabel>>::Output>,
+            AsFrame<<Self as Subview<HoldLabels>>::Output>,
+        >,
+        AsMeltFrame<<Self as Subview<MeltLabels>>::Output, ValueLabel>,
+    >: Subview<
+        <<HoldLabels as AssocLabels>::Labels as Append<Labels![NameLabel, ValueLabel]>>::Appended,
+    >,
 {
-    type Output =
-        <<<<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output as AddFrame<
-            <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output,
-        >>::Output as AddFrame<
-            <<Self as Subview<MeltLabels>>::Output as IntoMeltFrame<ValueLabel>>::Output,
-        >>::Output;
+    type Output = <WithFrame<
+        WithFrame<
+            AsView<<MeltLabels as IntoStrFrame<NameLabel>>::Output>,
+            AsFrame<<Self as Subview<HoldLabels>>::Output>,
+        >,
+        AsMeltFrame<<Self as Subview<MeltLabels>>::Output, ValueLabel>,
+    > as Subview<
+        <<HoldLabels as AssocLabels>::Labels as Append<Labels![NameLabel, ValueLabel]>>::Appended,
+    >>::Output;
 
     fn melt(&self) -> Self::Output {
         let premelt_nrows = self.nrows();
@@ -1338,7 +1362,8 @@ where
         let melt_frame =
             IntoMeltFrame::<ValueLabel>::into_melt_frame(Subview::<MeltLabels>::subview(self));
         let final_dv = label_hold_dv.add_frame(melt_frame);
-        final_dv
+        // call subview to reorder fields properly
+        final_dv.subview()
     }
 }
 
