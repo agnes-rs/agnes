@@ -730,7 +730,8 @@ pub type TypeOfElemOf<T, Label> = <<T as LookupTypedElemByLabel<Label>>::Elem as
 /// Trait to find the subset of cons-list `Self` which are labeled with labels in `LabelList`.
 ///
 /// Any labels in `LabelList` not found in `Self` will be ignored (see `HasLabels` for a trait
-/// that requires all members of `LabelList` to be found).
+/// that requires all members of `LabelList` to be found). The labels will be in the same order as
+/// in the original cons-list (with those labels not in `LabelList` filtered out).
 pub trait LabelSubset<LabelList> {
     /// Subset of `Self` that are labeled with labels in `LabelList`.
     type Output;
@@ -851,7 +852,9 @@ macro_rules! subset_apply {
         /// which match a specified `LabelList`.
         ///
         /// Any labels in `LabelList` not found in `Self` will be ignored (see `HasLabels` for a
-        /// trait that requires all members of `LabelList` to be found).
+        /// trait that requires all members of `LabelList` to be found). The labels will be in the
+        /// same order as in the original cons-list (with those labels not in `LabelList` filtered
+        /// out).
         pub trait $trait_name<LabelList> {
             /// Output of applying `$req_fn` to values in this cons-list which match labels in
             /// `LabelList`.
