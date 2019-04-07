@@ -1006,10 +1006,58 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     /// Fields referenced by `LabelList` must implement `Hash`.
     pub fn unique_indices<LabelList>(&self) -> Vec<usize>
     where
-        Labels: FieldList<LabelList, Frames>,
-        <Labels as FieldList<LabelList, Frames>>::Output: HashIndex + PartialEqIndex,
-        Frames: NRows,
+        Self: Unique<LabelList>,
     {
+        Unique::<LabelList>::unique_indices(self)
+    }
+
+    /// Computes the set of unique composite values among the fields in this `DataView` associated
+    /// with labels in `LabelList`. Returns a new `DataView` with those specific sets of values. The
+    /// returned `DataView` contains the values of the `LabelList`-labeled fields that represent
+    /// all the possible combinations of values of these fields that exist in the original
+    /// `DataView`.
+    ///
+    /// Fields referenced by `LabelList` must implement `Hash`.
+    pub fn unique_values<LabelList>(&self) -> <Self as Unique<LabelList>>::Output
+    where
+        Self: Unique<LabelList>,
+    {
+        Unique::<LabelList>::unique_values(self)
+    }
+}
+
+/// Trait providing methods for finding the unique indices and values for a
+/// [DataView](struct.DataView.html). See the intrinsic methods
+/// [unique_indices](struct.DataView.html#method.unique_indices) and
+/// [unique_values](struct.DataView.html#method.unique_values) for more details.
+pub trait Unique<LabelList> {
+    /// Output of the `unique_values` method.
+    type Output;
+    /// Compute the unique indices for fields with labels in `LabelList`. See the intrinsic method
+    /// [unique_indices](struct.DataView.html#method.unique_indices) for more details.
+    fn unique_indices(&self) -> Vec<usize>;
+    /// Compute the unique values for fields with labels in `LabelList`. See the intrinsic method
+    /// [unique_values](struct.DataView.html#method.unique_values) for more details.
+    fn unique_values(&self) -> Self::Output;
+}
+
+impl<Labels, Frames, LabelList> Unique<LabelList> for DataView<Labels, Frames>
+where
+    Labels: FieldList<LabelList, Frames>
+        + HasLabels<LabelList>
+        + LabelSubset<LabelList>
+        + FrameIndexList,
+    <Labels as FieldList<LabelList, Frames>>::Output: HashIndex + PartialEqIndex,
+    <Labels as LabelSubset<LabelList>>::Output: Reorder<LabelList>,
+    Frames: NRows + SubsetClone<<Labels as FrameIndexList>::LabelList>,
+    <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output: UpdatePermutation,
+{
+    type Output = DataView<
+        <<Labels as LabelSubset<LabelList>>::Output as Reorder<LabelList>>::Output,
+        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
+    >;
+
+    fn unique_indices(&self) -> Vec<usize> {
         let fl = self.field_list::<LabelList>();
         let mut indices = vec![];
         let mut set = HashSet::new();
@@ -1023,27 +1071,7 @@ impl<Labels, Frames> DataView<Labels, Frames> {
         indices
     }
 
-    /// Computes the set of unique composite values among the fields in this `DataView` associated
-    /// with labels in `LabelList`. Returns a new `DataView` with those specific sets of values. The
-    /// returned `DataView` contains the values of the `LabelList`-labeled fields that represent
-    /// all the possible combinations of values of these fields that exist in the original
-    /// `DataView`.
-    ///
-    /// Fields referenced by `LabelList` must implement `Hash`.
-    pub fn unique_values<LabelList>(
-        &self,
-    ) -> DataView<
-        <Labels as LabelSubset<LabelList>>::Output,
-        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
-    >
-    where
-        Labels: HasLabels<LabelList> + LabelSubset<LabelList> + FrameIndexList,
-        Frames: SubsetClone<<Labels as FrameIndexList>::LabelList>,
-        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output: UpdatePermutation,
-        Labels: FieldList<LabelList, Frames>,
-        <Labels as FieldList<LabelList, Frames>>::Output: HashIndex + PartialEqIndex,
-        Frames: NRows,
-    {
+    fn unique_values(&self) -> Self::Output {
         let indices = self.unique_indices::<LabelList>();
         let mut new_frames = self.frames.subset_clone();
         new_frames.update_permutation(&indices);
@@ -1821,6 +1849,7 @@ mod tests {
 
         let uniq_vals = dv.unique_values::<Labels![emp_table::DeptId, extra_emp::DidTraining]>();
         println!("{}", uniq_vals);
+        assert_eq!(uniq_vals.fieldnames(), vec!["DeptId", "DidTraining",]);
         assert_eq!(
             uniq_vals.field::<emp_table::DeptId>().to_vec(),
             vec![1u64, 2, 1, 3, 4, 4]
@@ -1829,5 +1858,10 @@ mod tests {
             uniq_vals.field::<extra_emp::DidTraining>().to_vec(),
             vec![false, false, true, true, false, true]
         );
+
+        // check ordering
+        let uniq_vals = dv.unique_values::<Labels![extra_emp::DidTraining, emp_table::DeptId]>();
+        println!("{}", uniq_vals);
+        assert_eq!(uniq_vals.fieldnames(), vec!["DidTraining", "DeptId",]);
     }
 }
