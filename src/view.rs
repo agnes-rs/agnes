@@ -165,10 +165,11 @@ pub trait Subview<LabelList> {
 impl<Labels, Frames, LabelList> Subview<LabelList> for DataView<Labels, Frames>
 where
     Labels: FrameIndexList + HasLabels<LabelList> + LabelSubset<LabelList>,
+    <Labels as LabelSubset<LabelList>>::Output: Reorder<LabelList>,
     Frames: Clone + SubsetClone<<Labels as FrameIndexList>::LabelList>,
 {
     type Output = DataView<
-        <Labels as LabelSubset<LabelList>>::Output,
+        <<Labels as LabelSubset<LabelList>>::Output as Reorder<LabelList>>::Output,
         <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
     >;
 
@@ -1005,10 +1006,58 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     /// Fields referenced by `LabelList` must implement `Hash`.
     pub fn unique_indices<LabelList>(&self) -> Vec<usize>
     where
-        Labels: FieldList<LabelList, Frames>,
-        <Labels as FieldList<LabelList, Frames>>::Output: HashIndex + PartialEqIndex,
-        Frames: NRows,
+        Self: Unique<LabelList>,
     {
+        Unique::<LabelList>::unique_indices(self)
+    }
+
+    /// Computes the set of unique composite values among the fields in this `DataView` associated
+    /// with labels in `LabelList`. Returns a new `DataView` with those specific sets of values. The
+    /// returned `DataView` contains the values of the `LabelList`-labeled fields that represent
+    /// all the possible combinations of values of these fields that exist in the original
+    /// `DataView`.
+    ///
+    /// Fields referenced by `LabelList` must implement `Hash`.
+    pub fn unique_values<LabelList>(&self) -> <Self as Unique<LabelList>>::Output
+    where
+        Self: Unique<LabelList>,
+    {
+        Unique::<LabelList>::unique_values(self)
+    }
+}
+
+/// Trait providing methods for finding the unique indices and values for a
+/// [DataView](struct.DataView.html). See the intrinsic methods
+/// [unique_indices](struct.DataView.html#method.unique_indices) and
+/// [unique_values](struct.DataView.html#method.unique_values) for more details.
+pub trait Unique<LabelList> {
+    /// Output of the `unique_values` method.
+    type Output;
+    /// Compute the unique indices for fields with labels in `LabelList`. See the intrinsic method
+    /// [unique_indices](struct.DataView.html#method.unique_indices) for more details.
+    fn unique_indices(&self) -> Vec<usize>;
+    /// Compute the unique values for fields with labels in `LabelList`. See the intrinsic method
+    /// [unique_values](struct.DataView.html#method.unique_values) for more details.
+    fn unique_values(&self) -> Self::Output;
+}
+
+impl<Labels, Frames, LabelList> Unique<LabelList> for DataView<Labels, Frames>
+where
+    Labels: FieldList<LabelList, Frames>
+        + HasLabels<LabelList>
+        + LabelSubset<LabelList>
+        + FrameIndexList,
+    <Labels as FieldList<LabelList, Frames>>::Output: HashIndex + PartialEqIndex,
+    <Labels as LabelSubset<LabelList>>::Output: Reorder<LabelList>,
+    Frames: NRows + SubsetClone<<Labels as FrameIndexList>::LabelList>,
+    <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output: UpdatePermutation,
+{
+    type Output = DataView<
+        <<Labels as LabelSubset<LabelList>>::Output as Reorder<LabelList>>::Output,
+        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
+    >;
+
+    fn unique_indices(&self) -> Vec<usize> {
         let fl = self.field_list::<LabelList>();
         let mut indices = vec![];
         let mut set = HashSet::new();
@@ -1022,27 +1071,7 @@ impl<Labels, Frames> DataView<Labels, Frames> {
         indices
     }
 
-    /// Computes the set of unique composite values among the fields in this `DataView` associated
-    /// with labels in `LabelList`. Returns a new `DataView` with those specific sets of values. The
-    /// returned `DataView` contains the values of the `LabelList`-labeled fields that represent
-    /// all the possible combinations of values of these fields that exist in the original
-    /// `DataView`.
-    ///
-    /// Fields referenced by `LabelList` must implement `Hash`.
-    pub fn unique_values<LabelList>(
-        &self,
-    ) -> DataView<
-        <Labels as LabelSubset<LabelList>>::Output,
-        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
-    >
-    where
-        Labels: HasLabels<LabelList> + LabelSubset<LabelList> + FrameIndexList,
-        Frames: SubsetClone<<Labels as FrameIndexList>::LabelList>,
-        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output: UpdatePermutation,
-        Labels: FieldList<LabelList, Frames>,
-        <Labels as FieldList<LabelList, Frames>>::Output: HashIndex + PartialEqIndex,
-        Frames: NRows,
-    {
+    fn unique_values(&self) -> Self::Output {
         let indices = self.unique_indices::<LabelList>();
         let mut new_frames = self.frames.subset_clone();
         new_frames.update_permutation(&indices);
@@ -1128,6 +1157,9 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     /// Since the values from the fields denoted in `MeltLabels` will all be combined into one field
     /// they must be the same data type.
     ///
+    /// The resultant `DataView` will be have the following field order: all the fields with labels
+    /// in `HoldLabels`, the `NameLabel` field, then the `ValueLabel` field.
+    ///
     /// # Example
     /// Let us consider a table of employee salaries with the tablespace:
     /// ```
@@ -1201,6 +1233,7 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     ///
     ///     // melted table should have 15 rows -- 5 for each of our 3 employees -- and 3 fields
     ///     assert_eq!((melted_table.nrows(), melted_table.nfields()), (15, 3));
+    ///     assert_eq!(melted_table.fieldnames(), vec!["EmpId", "SalaryYear", "Salary"]);
     ///     println!("{}", melted_table);
     /// }
     /// ```
@@ -1216,23 +1249,23 @@ impl<Labels, Frames> DataView<Labels, Frames> {
     /// As a result we should have a table with 15 rows, five for each of our three employees, and
     /// three fields: `EmpId`, `SalaryYear`, and `Salary`. This code should output:
     /// ```text
-    ///  SalaryYear | EmpId | Salary
-    /// ------------+-------+--------
-    ///  Year2010   | 0     | 1500
-    ///  Year2011   | 0     | 1600
-    ///  Year2012   | 0     | 1700
-    ///  Year2013   | 0     | 1850
-    ///  Year2014   | 0     | 2000
-    ///  Year2010   | 1     | 900
-    ///  Year2011   | 1     | 920
-    ///  Year2012   | 1     | 940
-    ///  Year2013   | 1     | 940
-    ///  Year2014   | 1     | 970
-    ///  Year2010   | 2     | 600
-    ///  Year2011   | 2     | 800
-    ///  Year2012   | 2     | 900
-    ///  Year2013   | 2     | 1020
-    ///  Year2014   | 2     | 1100
+    ///  EmpId | SalaryYear | Salary
+    /// -------+------------+--------
+    ///  0     | Year2010   | 1500
+    ///  0     | Year2011   | 1600
+    ///  0     | Year2012   | 1700
+    ///  0     | Year2013   | 1850
+    ///  0     | Year2014   | 2000
+    ///  1     | Year2010   | 900
+    ///  1     | Year2011   | 920
+    ///  1     | Year2012   | 940
+    ///  1     | Year2013   | 940
+    ///  1     | Year2014   | 970
+    ///  2     | Year2010   | 600
+    ///  2     | Year2011   | 800
+    ///  2     | Year2012   | 900
+    ///  2     | Year2013   | 1020
+    ///  2     | Year2014   | 1100
     /// ```
     pub fn melt<MeltLabels, NameLabel, ValueLabel, HoldLabels>(
         &self,
@@ -1255,6 +1288,12 @@ pub trait Melt<MeltLabels, NameLabel, ValueLabel, HoldLabels> {
     fn melt(&self) -> Self::Output;
 }
 
+// type aliases to hopefully help with readability of Melt trait bounds.
+type AsView<Orig> = <Orig as IntoView>::Output;
+type AsFrame<Orig> = <Orig as IntoFrame>::Output;
+type AsMeltFrame<Orig, ValueLabel> = <Orig as IntoMeltFrame<ValueLabel>>::Output;
+type WithFrame<Orig, Added> = <Orig as AddFrame<Added>>::Output;
+
 impl<Frames, Labels, MeltLabels, NameLabel, ValueLabel, HoldLabels>
     Melt<MeltLabels, NameLabel, ValueLabel, HoldLabels> for DataView<Labels, Frames>
 where
@@ -1266,21 +1305,35 @@ where
     Self: Subview<HoldLabels>,
     <Self as Subview<HoldLabels>>::Output: IntoFrame,
     <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output: UpdatePermutation,
-    <<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output:
+    AsView<<MeltLabels as IntoStrFrame<NameLabel>>::Output>:
         AddFrame<<<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output>,
     Self: Subview<MeltLabels>,
     <Self as Subview<MeltLabels>>::Output: IntoMeltFrame<ValueLabel>,
-    <<<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output as AddFrame<
-        <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output,
-    >>::Output:
-        AddFrame<<<Self as Subview<MeltLabels>>::Output as IntoMeltFrame<ValueLabel>>::Output>,
+    WithFrame<
+        AsView<<MeltLabels as IntoStrFrame<NameLabel>>::Output>,
+        AsFrame<<Self as Subview<HoldLabels>>::Output>,
+    >: AddFrame<AsMeltFrame<<Self as Subview<MeltLabels>>::Output, ValueLabel>>,
+    HoldLabels: AssocLabels,
+    <HoldLabels as AssocLabels>::Labels: Append<Labels![NameLabel, ValueLabel]>,
+    WithFrame<
+        WithFrame<
+            AsView<<MeltLabels as IntoStrFrame<NameLabel>>::Output>,
+            AsFrame<<Self as Subview<HoldLabels>>::Output>,
+        >,
+        AsMeltFrame<<Self as Subview<MeltLabels>>::Output, ValueLabel>,
+    >: Subview<
+        <<HoldLabels as AssocLabels>::Labels as Append<Labels![NameLabel, ValueLabel]>>::Appended,
+    >,
 {
-    type Output =
-        <<<<MeltLabels as IntoStrFrame<NameLabel>>::Output as IntoView>::Output as AddFrame<
-            <<Self as Subview<HoldLabels>>::Output as IntoFrame>::Output,
-        >>::Output as AddFrame<
-            <<Self as Subview<MeltLabels>>::Output as IntoMeltFrame<ValueLabel>>::Output,
-        >>::Output;
+    type Output = <WithFrame<
+        WithFrame<
+            AsView<<MeltLabels as IntoStrFrame<NameLabel>>::Output>,
+            AsFrame<<Self as Subview<HoldLabels>>::Output>,
+        >,
+        AsMeltFrame<<Self as Subview<MeltLabels>>::Output, ValueLabel>,
+    > as Subview<
+        <<HoldLabels as AssocLabels>::Labels as Append<Labels![NameLabel, ValueLabel]>>::Appended,
+    >>::Output;
 
     fn melt(&self) -> Self::Output {
         let premelt_nrows = self.nrows();
@@ -1309,7 +1362,8 @@ where
         let melt_frame =
             IntoMeltFrame::<ValueLabel>::into_melt_frame(Subview::<MeltLabels>::subview(self));
         let final_dv = label_hold_dv.add_frame(melt_frame);
-        final_dv
+        // call subview to reorder fields properly
+        final_dv.subview()
     }
 }
 
@@ -1628,6 +1682,17 @@ mod tests {
         assert_eq!(subdv.nfields(), 2);
     }
 
+    #[cfg(feature = "test-utils")]
+    #[test]
+    fn subview_order() {
+        use test_utils::emp_table::*;
+        let dv = sample_emp_table().into_view();
+        assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+
+        let subdv = dv.v::<Labels![DeptId, EmpId]>();
+        assert_eq!(subdv.fieldnames(), vec!["DeptId", "EmpId"]);
+    }
+
     //TODO: multi-frame subview tests (which filter out no-longer-needed frames)
 
     #[cfg(feature = "test-utils")]
@@ -1809,6 +1874,7 @@ mod tests {
 
         let uniq_vals = dv.unique_values::<Labels![emp_table::DeptId, extra_emp::DidTraining]>();
         println!("{}", uniq_vals);
+        assert_eq!(uniq_vals.fieldnames(), vec!["DeptId", "DidTraining",]);
         assert_eq!(
             uniq_vals.field::<emp_table::DeptId>().to_vec(),
             vec![1u64, 2, 1, 3, 4, 4]
@@ -1817,5 +1883,10 @@ mod tests {
             uniq_vals.field::<extra_emp::DidTraining>().to_vec(),
             vec![false, false, true, true, false, true]
         );
+
+        // check ordering
+        let uniq_vals = dv.unique_values::<Labels![extra_emp::DidTraining, emp_table::DeptId]>();
+        println!("{}", uniq_vals);
+        assert_eq!(uniq_vals.fieldnames(), vec!["DidTraining", "DeptId",]);
     }
 }
