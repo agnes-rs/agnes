@@ -165,10 +165,11 @@ pub trait Subview<LabelList> {
 impl<Labels, Frames, LabelList> Subview<LabelList> for DataView<Labels, Frames>
 where
     Labels: FrameIndexList + HasLabels<LabelList> + LabelSubset<LabelList>,
+    <Labels as LabelSubset<LabelList>>::Output: Reorder<LabelList>,
     Frames: Clone + SubsetClone<<Labels as FrameIndexList>::LabelList>,
 {
     type Output = DataView<
-        <Labels as LabelSubset<LabelList>>::Output,
+        <<Labels as LabelSubset<LabelList>>::Output as Reorder<LabelList>>::Output,
         <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
     >;
 
@@ -1626,6 +1627,17 @@ mod tests {
         assert_eq!(dv.store_ref_counts(), vec![2, 2]);
         assert_eq!(subdv.nrows(), 7);
         assert_eq!(subdv.nfields(), 2);
+    }
+
+    #[cfg(feature = "test-utils")]
+    #[test]
+    fn subview_order() {
+        use test_utils::emp_table::*;
+        let dv = sample_emp_table().into_view();
+        assert_eq!(dv.fieldnames(), vec!["EmpId", "DeptId", "EmpName"]);
+
+        let subdv = dv.v::<Labels![DeptId, EmpId]>();
+        assert_eq!(subdv.fieldnames(), vec!["DeptId", "EmpId"]);
     }
 
     //TODO: multi-frame subview tests (which filter out no-longer-needed frames)

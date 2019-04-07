@@ -234,6 +234,7 @@ impl_selfvalued![
 impl<T> SelfValued for ::field::FieldData<T> {}
 impl<T, DI> SelfValued for ::frame::Framed<T, DI> {}
 impl<T> SelfValued for DataRef<T> {}
+impl<T> SelfValued for PhantomData<T> {}
 
 /// Trait for extracting the an associated value of a value-holding container (e.g.
 /// [TypedValue](struct.TypedValue.html), [Labeled](struct.Labeled.html)).
