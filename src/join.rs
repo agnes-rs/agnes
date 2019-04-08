@@ -748,11 +748,12 @@ mod tests {
     fn filter_inner_equi_join() {
         // should have same results as first test in inner_equi_join_missing_dept_id
         let dv_emp = sample_emp_table().into_view();
-        let mut dv_dept = sample_dept_table().into_view();
+        let dv_dept = sample_dept_table().into_view();
         println!("{}", dv_emp);
         println!("{}", dv_dept);
 
-        dv_dept.filter::<dept_table::DeptId, _>(|val: Value<&u64>| val != valref![1u64]);
+        let dv_dept =
+            dv_dept.filter::<dept_table::DeptId, _>(|val: Value<&u64>| val != valref![1u64]);
         println!("{}", dv_dept);
         let joined_dv =
             dv_emp.join::<Join<emp_table::DeptId, dept_table::DeptId, Equal>, _, _>(&dv_dept);

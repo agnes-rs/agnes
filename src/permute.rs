@@ -36,8 +36,9 @@ impl From<Vec<usize>> for Permutation<Vec<usize>> {
 }
 
 impl Permutation<Vec<usize>> {
-    /// Update this permutation with new values from `new_permutation`.
-    pub fn update_indices(&mut self, new_permutation: &[usize]) {
+    /// Consumes this `Permutation` and returns a new `Permutation` with new values from
+    /// `new_permutation`.
+    pub fn update_indices(mut self, new_permutation: &[usize]) -> Permutation<Vec<usize>> {
         // check if we already have a permutation
         self.perm = match self.perm {
             Some(ref prev_perm) => {
@@ -51,6 +52,7 @@ impl Permutation<Vec<usize>> {
             }
             None => Some(new_permutation.iter().map(|&idx| idx).collect()),
         };
+        self
     }
 }
 
@@ -78,10 +80,15 @@ impl_permutation_len![&[usize] Vec<usize>];
 
 /// Trait for updating the permutation of all data storage in a type.
 pub trait UpdatePermutation {
-    /// Update the permutation with the providing indices.
-    fn update_permutation(&mut self, _order: &[usize]) {}
+    /// Consumes this object returns a new object with a permutation updated according to the
+    /// provided indices.
+    fn update_permutation(self, order: &[usize]) -> Self;
 }
-impl UpdatePermutation for Nil {}
+impl UpdatePermutation for Nil {
+    fn update_permutation(self, _order: &[usize]) -> Nil {
+        Nil
+    }
+}
 
 /// Trait providing function to compute and return the sorted permutation order. This sort is stable
 /// (preserves original order of equal elements).

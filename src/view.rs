@@ -661,13 +661,14 @@ impl<Labels, Frames> DataView<Labels, Frames> {
 
 impl<FrameIndex, Frame, Tail> UpdatePermutation for ViewFrameCons<FrameIndex, Frame, Tail>
 where
-    Frame: Valued,
+    Frame: Valued<Value = Frame>,
     ValueOf<Frame>: UpdatePermutation,
     Tail: UpdatePermutation,
 {
-    fn update_permutation(&mut self, order: &[usize]) {
-        self.head.value_mut().update_permutation(order);
-        self.tail.update_permutation(order);
+    fn update_permutation(mut self, order: &[usize]) -> Self {
+        self.head = Labeled::from(self.head.value().update_permutation(order));
+        self.tail = self.tail.update_permutation(order);
+        self
     }
 }
 
@@ -676,13 +677,11 @@ where
     Frames: UpdatePermutation,
 {
     /// Sorts this `DataView` by the provided label. This sort is stable -- it preserves the
-    /// original order of equal elements. Returns the permutation (list of indices in
-    /// sorted order) of values in field identified by `Label`.
-    ///
-    /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
+    /// original order of equal elements. Consumes the `DataView` and returns a `DataView`
+    /// sorted by values from field identified by `Label` in ascending order, with missing (NA)
     /// values at the beginning of the order (considered to be of 'lesser' value than existing
     /// values).
-    pub fn sort_by_label<Label>(&mut self) -> Vec<usize>
+    pub fn sort_by_label<Label>(mut self) -> Self
     where
         Self: SelectFieldByLabel<Label>,
         <Self as SelectFieldByLabel<Label>>::Output: SortOrder,
@@ -690,18 +689,16 @@ where
         // find sort order for this field
         let sorted = self.field::<Label>().sort_order();
         // apply sort order to each frame
-        self.frames.update_permutation(&sorted);
-        sorted
+        self.frames = self.frames.update_permutation(&sorted);
+        self
     }
 
     /// Sorts this `DataView` by the provided label. This sort is unstable -- it does not
-    /// necessarily preserve the original order of equal elements, but may be faster. Returns the
-    /// permutation (list of indices in sorted order) of values in field identified by `Label`.
-    ///
-    /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
-    /// values at the beginning of the order (considered to be of 'lesser' value than existing
-    /// values).
-    pub fn sort_unstable_by_label<Label>(&mut self) -> Vec<usize>
+    /// necessarily preserve the original order of equal elements, but may be faster. Consumes the
+    /// `DataView` and returns a `DataView sorted by values from field identifier by `Label` in
+    /// ascending order, with missing (NA) values at the beginning of the order (considered to be of
+    /// 'lesser' value than existing values).
+    pub fn sort_unstable_by_label<Label>(mut self) -> Self
     where
         Self: SelectFieldByLabel<Label>,
         <Self as SelectFieldByLabel<Label>>::Output: SortOrderUnstable,
@@ -709,18 +706,16 @@ where
         // find sort order for this field
         let sorted = self.field::<Label>().sort_order_unstable();
         // apply sort order to each frame
-        self.frames.update_permutation(&sorted);
-        sorted
+        self.frames = self.frames.update_permutation(&sorted);
+        self
     }
 
     /// Sorts this `DataView` by the provided label using a specific comparator. This sort is
-    /// stable -- it preserves the original order of equal elements. Returns the permutation (list
-    /// of indices in sorted order) of values in field identified by `Label`.
-    ///
-    /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
-    /// values at the beginning of the order (considered to be of 'lesser' value than existing
-    /// values).
-    pub fn sort_by_label_comparator<Label, F>(&mut self, compare: F) -> Vec<usize>
+    /// stable -- it preserves the original order of equal elements. Consumes the `DataView` and
+    /// returns a `DataView sorted by values from field identifier by `Label` in ascending order,
+    /// with missing (NA) values at the beginning of the order (considered to be of 'lesser' value
+    /// than existing values).
+    pub fn sort_by_label_comparator<Label, F>(mut self, compare: F) -> Self
     where
         Self: SelectFieldByLabel<Label>,
         <Self as SelectFieldByLabel<Label>>::Output: SortOrderComparator<F>,
@@ -728,19 +723,16 @@ where
         // find sort order for this field
         let sorted = self.field::<Label>().sort_order_by(compare);
         // apply sort order to each frame
-        self.frames.update_permutation(&sorted);
-        sorted
+        self.frames = self.frames.update_permutation(&sorted);
+        self
     }
 
     /// Sorts this `DataView` by the provided label using a specific comparator. This sort is
     /// unstable -- it does not necessarily preserve the original order of equal elements, but may
-    /// be faster. Returns the permutation (list of indices in sorted order) of values in field
-    /// identified by `Label`.
-    ///
-    /// The resulting permutation denotes the order of values in ascending order, with missing (NA)
-    /// values at the beginning of the order (considered to be of 'lesser' value than existing
-    /// values).
-    pub fn sort_unstable_by_label_comparator<Label, F>(&mut self, compare: F) -> Vec<usize>
+    /// be faster. Consumes the `DataView` and returns a `DataView sorted by values from field
+    /// identifier by `Label` in ascending order, with missing (NA) values at the beginning of the
+    /// order (considered to be of 'lesser' value than existing values).
+    pub fn sort_unstable_by_label_comparator<Label, F>(mut self, compare: F) -> Self
     where
         Self: SelectFieldByLabel<Label>,
         <Self as SelectFieldByLabel<Label>>::Output: SortOrderUnstableComparator<F>,
@@ -748,24 +740,22 @@ where
         // find sort order for this field
         let sorted = self.field::<Label>().sort_order_unstable_by(compare);
         // apply sort order to each frame
-        self.frames.update_permutation(&sorted);
-        sorted
+        self.frames = self.frames.update_permutation(&sorted);
+        self
     }
 
     /// Filters this `DataView` by `predicate` (a function mapping from `Value<&T>` to `bool` where
-    /// `T` is the type of the field with label `Label`). Mutates this `DataView` so only those
-    /// rows where values within the field with label `Label` matching `prediate` remain.
-    ///
-    /// Returns the indices of the values that matched `predicate` in the oringal `DataView` (before
-    /// filtering).
-    pub fn filter<Label, P>(&mut self, predicate: P) -> Vec<usize>
+    /// `T` is the type of the field with label `Label`). Consumes this `DataView` and returns a new
+    /// `DataView` such that only those rows where values within the field with label `Label`
+    /// matching `predicate` remain.
+    pub fn filter<Label, P>(mut self, predicate: P) -> Self
     where
         Self: SelectFieldByLabel<Label>,
         <Self as SelectFieldByLabel<Label>>::Output: FilterPerm<P>,
     {
         let perm = self.field::<Label>().filter_perm(predicate);
-        self.frames.update_permutation(&perm);
-        perm
+        self.frames = self.frames.update_permutation(&perm);
+        self
     }
 }
 
@@ -1073,8 +1063,7 @@ where
 
     fn unique_values(&self) -> Self::Output {
         let indices = self.unique_indices::<LabelList>();
-        let mut new_frames = self.frames.subset_clone();
-        new_frames.update_permutation(&indices);
+        let new_frames = self.frames.subset_clone().update_permutation(&indices);
         DataView {
             _labels: PhantomData,
             frames: new_frames,
@@ -1347,14 +1336,14 @@ where
         // create new frame based on the hold labels, with an index permutation that repeats
         // every element `melt_len` times
         // (e.g. [0,0,0,0,1,1,1,1,...,nrows-1,nrows-1,nrows-1,nrows-1])
-        let mut hold_frame = Subview::<HoldLabels>::subview(self).into_frame();
+        let hold_frame = Subview::<HoldLabels>::subview(self).into_frame();
         let mut hold_permutation = Vec::with_capacity(melt_len * premelt_nrows);
         for i in 0..premelt_nrows {
             for _ in 0..melt_len {
                 hold_permutation.push(i);
             }
         }
-        hold_frame.update_permutation(&hold_permutation);
+        let hold_frame = hold_frame.update_permutation(&hold_permutation);
         let label_hold_dv = melt_label_view.add_frame(hold_frame);
 
         // create a new frame based on the MeltLabels as a LabelSpan-based frame (switches the
@@ -1704,8 +1693,8 @@ mod tests {
         assert_eq!(orig_dv.nrows(), 7);
 
         // sort by name
-        let mut dv1 = orig_dv.clone();
-        dv1.sort_by_label::<EmpName>();
+        let dv1 = orig_dv.clone();
+        let dv1 = dv1.sort_by_label::<EmpName>();
         assert_eq!(
             dv1.field::<EmpName>().to_vec(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louis", "Louise", "Sally"]
@@ -1713,8 +1702,8 @@ mod tests {
         assert_eq!(dv1.field::<EmpId>().to_vec(), vec![10u64, 5, 6, 2, 8, 9, 0]);
 
         // re-sort by empid
-        let mut dv2 = dv1.clone();
-        dv2.sort_by_label::<EmpId>();
+        let dv2 = dv1.clone();
+        let dv2 = dv2.sort_by_label::<EmpId>();
         assert_eq!(
             dv2.field::<EmpName>().to_vec(),
             vec!["Sally", "Jamie", "Bob", "Cara", "Louis", "Louise", "Ann"]
@@ -1729,10 +1718,10 @@ mod tests {
         assert_eq!(dv1.field::<EmpId>().to_vec(), vec![10u64, 5, 6, 2, 8, 9, 0]);
 
         // starting with sorted by name, sort by vacation hours
-        let mut dv3 = dv1.clone();
-        dv3.sort_by_label_comparator::<VacationHrs, _>(|left: Value<&f32>, right: Value<&f32>| {
-            left.partial_cmp(&right).unwrap()
-        });
+        let dv3 = dv1.clone();
+        let dv3 = dv3.sort_by_label_comparator::<VacationHrs, _>(
+            |left: Value<&f32>, right: Value<&f32>| left.partial_cmp(&right).unwrap(),
+        );
         assert_eq!(
             dv3.field::<EmpName>().to_vec(),
             vec!["Louis", "Louise", "Cara", "Ann", "Sally", "Jamie", "Bob"]
@@ -1748,8 +1737,8 @@ mod tests {
         assert_eq!(orig_dv.nrows(), 7);
 
         // set filtering by department ID
-        let mut dv1 = orig_dv.clone();
-        dv1.filter::<DeptId, _>(|val: Value<&u64>| val == valref![1]);
+        let dv1 = orig_dv.clone();
+        let dv1 = dv1.filter::<DeptId, _>(|val: Value<&u64>| val == valref![1]);
         println!("{}", dv1);
         assert_eq!(dv1.nrows(), 3);
         assert_eq!(
@@ -1758,13 +1747,13 @@ mod tests {
         );
 
         // filter a second time
-        dv1.filter::<EmpId, _>(|val: Value<&u64>| val >= valref![6]);
+        let dv1 = dv1.filter::<EmpId, _>(|val: Value<&u64>| val >= valref![6]);
         assert_eq!(dv1.nrows(), 1);
         assert_eq!(dv1.field::<EmpName>().to_vec(), vec!["Cara"]);
 
         // that same filter on the original DV has different results
-        let mut dv2 = orig_dv.clone();
-        dv2.filter::<EmpId, _>(|val: Value<&u64>| val >= valref![6]);
+        let dv2 = orig_dv.clone();
+        let dv2 = dv2.filter::<EmpId, _>(|val: Value<&u64>| val >= valref![6]);
         assert_eq!(dv2.nrows(), 4);
         assert_eq!(
             dv2.field::<EmpName>().to_vec(),
@@ -1772,7 +1761,7 @@ mod tests {
         );
 
         // let's try filtering by a different department on dv2
-        dv2.filter::<DeptId, _>(|val: Value<&u64>| val == valref![4]);
+        let dv2 = dv2.filter::<DeptId, _>(|val: Value<&u64>| val == valref![4]);
         assert_eq!(dv2.nrows(), 2);
         assert_eq!(dv2.field::<EmpName>().to_vec(), vec!["Louise", "Ann"]);
     }
@@ -1786,8 +1775,8 @@ mod tests {
         assert_eq!(orig_dv.nrows(), 7);
 
         // start by filtering for employees with remaining vacation hours
-        let mut dv1 = orig_dv.clone();
-        dv1.filter::<VacationHrs, _>(|val: Value<&f32>| val >= 0.0);
+        let dv1 = orig_dv.clone();
+        let dv1 = dv1.filter::<VacationHrs, _>(|val: Value<&f32>| val >= 0.0);
         assert_eq!(dv1.nrows(), 6);
         // only Louis has negative hours, so rest of employees still remain
         assert_eq!(
@@ -1796,16 +1785,16 @@ mod tests {
         );
 
         // next, sort by employee name
-        let mut dv2 = dv1.clone();
-        dv2.sort_by_label::<EmpName>();
+        let dv2 = dv1.clone();
+        let dv2 = dv2.sort_by_label::<EmpName>();
         assert_eq!(
             dv2.field::<EmpName>().to_vec(),
             vec!["Ann", "Bob", "Cara", "Jamie", "Louise", "Sally"]
         );
 
         // filter by people in department 1
-        let mut dv3 = dv2.clone();
-        dv3.filter::<DeptId, _>(|val: Value<&u64>| val == 1);
+        let dv3 = dv2.clone();
+        let dv3 = dv3.filter::<DeptId, _>(|val: Value<&u64>| val == 1);
         assert_eq!(dv3.nrows(), 3);
         // should just be the people in department 1, in employee name order
         assert_eq!(
@@ -1820,7 +1809,7 @@ mod tests {
         );
 
         // ok, now filter dv1 by department 1
-        dv1.filter::<DeptId, _>(|val: Value<&u64>| val == 1);
+        let dv1 = dv1.filter::<DeptId, _>(|val: Value<&u64>| val == 1);
         assert_eq!(dv1.nrows(), 3);
         // should be the people in department 1, but in original name order
         assert_eq!(

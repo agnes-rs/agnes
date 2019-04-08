@@ -66,13 +66,14 @@ fn main() {
         "gdp/Metadata_Country_API_NY.GDP.MKTP.CD_DS2_en_csv_v2.csv",
         gdp_metadata_schema,
     );
-    let mut dv_gdp_metadata = csv_rdr
+    let dv_gdp_metadata = csv_rdr
         .read()
         .unwrap()
         .into_view()
         .v::<Labels![gdp_metadata::CountryCode, gdp_metadata::Region]>();
 
-    dv_gdp_metadata.filter::<gdp_metadata::Region, _>(|val: Value<&String>| val.exists());
+    let dv_gdp_metadata =
+        dv_gdp_metadata.filter::<gdp_metadata::Region, _>(|val: Value<&String>| val.exists());
 
     let dv_gdp_joined = dv_gdp
         .join::<Join<gdp::CountryCode, gdp_metadata::CountryCode, Equal>, _, _>(&dv_gdp_metadata);

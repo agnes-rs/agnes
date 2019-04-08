@@ -38,13 +38,14 @@ fn main() {
     ];
 
     // load the metadata CSV file from a URI
-    let mut gdp_metadata_view = load_csv_from_uri(
+    let gdp_metadata_view = load_csv_from_uri(
         "https://wee.codes/data/gdp_metadata.csv",
         gdp_metadata_schema,
     )
     .expect("CSV loading failed.");
 
-    gdp_metadata_view.filter::<gdp_metadata::Region, _>(|val: Value<&String>| val.exists());
+    let gdp_metadata_view =
+        gdp_metadata_view.filter::<gdp_metadata::Region, _>(|val: Value<&String>| val.exists());
 
     let gdp_country_view = gdp_view
         .join::<Join<gdp::CountryCode, gdp_metadata::CountryCode, Equal>, _, _>(&gdp_metadata_view);

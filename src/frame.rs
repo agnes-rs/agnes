@@ -177,8 +177,10 @@ impl<FrameFields, FramedStore> StoreRefCount for DataFrame<FrameFields, FramedSt
     }
 }
 impl<FrameFields, FramedStore> UpdatePermutation for DataFrame<FrameFields, FramedStore> {
-    fn update_permutation(&mut self, new_permutation: &[usize]) {
-        Rc::make_mut(&mut self.permutation).update_indices(new_permutation);
+    fn update_permutation(mut self, new_permutation: &[usize]) -> Self {
+        let perm = (*self.permutation).clone();
+        self.permutation = Rc::new(perm.update_indices(new_permutation));
+        self
     }
 }
 
