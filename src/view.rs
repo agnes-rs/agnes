@@ -13,9 +13,9 @@ object with all of the records of the two source `DataView`s.
 parameters.
 
 */
-use std::collections::HashSet;
 #[cfg(test)]
 use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -27,7 +27,7 @@ use serde::ser::{Serialize, SerializeMap, Serializer};
 use access::*;
 use cons::*;
 use error;
-use field::Value;
+use field::{FieldData, Value};
 use fieldlist::FieldPayloadCons;
 #[cfg(test)]
 use frame::StoreRefCount;
@@ -40,7 +40,7 @@ use permute::{
     UpdatePermutation,
 };
 use select::{FieldSelect, SelectFieldByLabel};
-use store::IntoView;
+use store::{IntoStore, IntoView};
 
 /// Cons-list of `DataFrame`s held by a `DataView. `FrameIndex` is simply an index used by
 /// `FrameLookupCons` to look up `DataFrame`s for a specified `Label`, and `Frame` is the type
@@ -1353,6 +1353,216 @@ where
         let final_dv = label_hold_dv.add_frame(melt_frame);
         // call subview to reorder fields properly
         final_dv.subview()
+    }
+}
+
+impl<Labels, Frames> DataView<Labels, Frames> {
+    /// Creates a new `DataView` that aggregates values in the `ValueLabel` field, grouping by
+    /// records in the `KeyLabels` set of fields, and storing the result in a new field with
+    /// label `AggLabel`. The resulting `DataView` will contain the `KeyLabels` fields and the
+    /// newly constructed `AggLabel` field.
+    ///
+    /// For each unique set of key values in `KeyLabels`, this method will find all the records
+    /// in the `DataView` which match, initialize an accumulator value with the argument `init`,
+    /// and call `AggFunc` for each of the values in the `ValueLabel` field. `AggFunc` takes a
+    /// mutable `AggType` value which it updates with the
+    /// [Value](../field/enum.Value.html)s of type `DType` from the `ValueLabel` field.
+    ///
+    /// # Example
+    /// Let's start with the data table which contains three fields: an employee ID `EmpId`, an
+    /// annual salary `Salary`, and a text field denoting which year this salary took place:
+    /// `SalaryYear`. This table (which is the final result of the example for the
+    /// [melt](struct.DataView.html#method.melt) documentation) can be represented with the
+    /// tablespace:
+    /// ```
+    /// # #[macro_use] extern crate agnes;
+    /// tablespace![
+    ///     table salary {
+    ///         EmpId: u64,
+    ///         SalaryYear: String,
+    ///         Salary: f64,
+    ///     }
+    /// ];
+    /// ```
+    /// and data:
+    /// ```text
+    ///  EmpId | SalaryYear | Salary
+    /// -------+------------+--------
+    ///  0     | Year2010   | 1500
+    ///  0     | Year2011   | 1600
+    ///  0     | Year2012   | 1700
+    ///  0     | Year2013   | 1850
+    ///  0     | Year2014   | 2000
+    ///  1     | Year2010   | 900
+    ///  1     | Year2011   | 920
+    ///  1     | Year2012   | 940
+    ///  1     | Year2013   | 940
+    ///  1     | Year2014   | 970
+    ///  2     | Year2010   | 600
+    ///  2     | Year2011   | 800
+    ///  2     | Year2012   | 900
+    ///  2     | Year2013   | 1020
+    ///  2     | Year2014   | 1100
+    /// ```
+    /// For this example, let's compute the total yearly salary being payed out to all employees.
+    /// Thus, we want to aggregate over each value in `SalaryYear`, and compute the sum of `Salary`.
+    /// Therefore, our `KeyLabels` (our groups) would be `Labels![SalaryYear]` (since we can have
+    /// more than one labels as our key, we need to use the label list-making macro
+    /// [Labels](../macro.Labels.html)). Our `ValueLabel` (the value being summed) is `Salary`, and
+    /// `AggLabel` will be a new label we need to add to our tablespace, which we'll call
+    /// `TotalYearlySalary`.
+    ///
+    /// ```
+    /// # #[macro_use] extern crate agnes;
+    /// tablespace![
+    ///     table salary {
+    ///         EmpId: u64,
+    ///         SalaryYear: String,
+    ///         Salary: f64,
+    ///         TotalYearlySalary: f64,
+    ///     }
+    /// ];
+    /// #
+    /// # use salary::*;
+    /// #
+    /// fn main() {
+    /// #     let salary_table = table![
+    /// #         EmpId = [0u64, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2];
+    /// #         SalaryYear = [
+    /// #             "Year2010", "Year2011", "Year2012", "Year2013", "Year2014",
+    /// #             "Year2010", "Year2011", "Year2012", "Year2013", "Year2014",
+    /// #             "Year2010", "Year2011", "Year2012", "Year2013", "Year2014"
+    /// #         ];
+    /// #         Salary = [
+    /// #             1500.0, 1600.0, 1700.0, 1850.0, 2000.0,
+    /// #             900.0, 920.0, 940.0, 940.0, 970.0,
+    /// #             600.0, 800.0, 900.0, 1020.0, 1100.0
+    /// #         ];
+    /// #     ];
+    ///     // <load data into DataView salary_table>
+    ///     // salary table should have 15 rows -- 5 years of data for each of our 3 employees --
+    ///     // and 3 fields (employee ID, salary year name, and salary value)
+    ///     assert_eq!((salary_table.nrows(), salary_table.nfields()), (15, 3));
+    ///     assert_eq!(salary_table.fieldnames(), vec!["EmpId", "SalaryYear", "Salary"]);
+    ///     println!("{}", salary_table);
+    ///
+    ///     // compute the total salary per year, aggregated over employees
+    ///     let agg_table = salary_table
+    ///         .aggregate::<Labels![SalaryYear], Salary, TotalYearlySalary, _, _, _>(
+    ///             0.0,
+    ///             |accum, val| {
+    ///                 *accum = *accum + val.unwrap_or(&0.0);
+    ///             },
+    ///         );
+    ///
+    ///     // we're left with five rows (one for each year of data), and two columns (year name and
+    ///     // sum)
+    ///     assert_eq!((agg_table.nrows(), agg_table.nfields()), (5, 2));
+    ///     println!("{}", agg_table);
+    /// }
+    /// ```
+    /// The call to aggregate takes two arguments: the value used to initialized each of our five
+    /// aggregations (each of the five years), and a function which takes a mutable accumulator
+    /// and the datum value (a [Value](../field/enum.Value.html) object) and updates the
+    /// accumulator by adding the value. We use `unwrap_or` here to treat missing values a `0.0`.
+    ///
+    /// The resulting printed table should be:
+    /// ```text
+    ///  SalaryYear | TotalYearlySalary
+    /// ------------+-------------------
+    ///  Year2010   | 3000
+    ///  Year2011   | 3320
+    ///  Year2012   | 3540
+    ///  Year2013   | 3810
+    ///  Year2014   | 4070
+    /// ```
+    pub fn aggregate<KeyLabels, ValueLabel, AggLabel, DType, AggType, AggFunc>(
+        &self,
+        init: AggType,
+        f: AggFunc,
+    ) -> <Self as Aggregate<KeyLabels, ValueLabel, AggLabel, DType, AggType>>::Output
+    where
+        Self: Aggregate<KeyLabels, ValueLabel, AggLabel, DType, AggType>,
+        AggFunc: Fn(&mut AggType, Value<&DType>),
+    {
+        Aggregate::<KeyLabels, ValueLabel, AggLabel, DType, AggType>::aggregate::<AggFunc>(
+            self, init, f,
+        )
+    }
+}
+
+/// Trait providing the `aggregate` method for aggregating values over a specified grouping of
+/// records. See the intrinsic method [aggregate](struct.DataView.html#method.aggregate) for more
+/// details.
+pub trait Aggregate<KeyLabels, ValueLabel, AggLabel, DType, AggType> {
+    /// Type produced by this aggregate method.
+    type Output;
+
+    /// Perform the 'aggregate' operation. See the intrinsic method
+    /// [aggregate](struct.DataView.html#method.aggregate) for more details.
+    fn aggregate<AggFunc>(&self, init: AggType, f: AggFunc) -> Self::Output
+    where
+        AggFunc: Fn(&mut AggType, Value<&DType>);
+}
+
+impl<Labels, Frames, KeyLabels, ValueLabel, AggLabel, DType, AggType>
+    Aggregate<KeyLabels, ValueLabel, AggLabel, DType, AggType> for DataView<Labels, Frames>
+where
+    Self: NRows + SelectFieldByLabel<ValueLabel, DType = DType>,
+    Labels: FieldList<KeyLabels, Frames> + LabelSubset<KeyLabels> + FrameIndexList,
+    <Labels as FieldList<KeyLabels, Frames>>::Output: HashIndex + PartialEqIndex,
+    <Labels as LabelSubset<KeyLabels>>::Output: Reorder<KeyLabels>,
+    AggType: Clone,
+    // AggFunc: Fn(&mut AggType, Value<&<Self as SelectFieldByLabel<ValueLabel>>::DType>),
+    FieldData<AggType>: IntoStore<AggLabel>,
+    <FieldData<AggType> as IntoStore<AggLabel>>::Output: IntoFrame,
+    Frames: NRows + SubsetClone<<Labels as FrameIndexList>::LabelList>,
+    <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output: UpdatePermutation,
+    DataView<
+        <<Labels as LabelSubset<KeyLabels>>::Output as Reorder<KeyLabels>>::Output,
+        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
+    >: AddFrame<<<FieldData<AggType> as IntoStore<AggLabel>>::Output as IntoFrame>::Output>,
+{
+    // output is KeyLabels, then single ValueLabel column
+    type Output = <DataView<
+        <<Labels as LabelSubset<KeyLabels>>::Output as Reorder<KeyLabels>>::Output,
+        <Frames as SubsetClone<<Labels as FrameIndexList>::LabelList>>::Output,
+    > as AddFrame<
+        <<FieldData<AggType> as IntoStore<AggLabel>>::Output as IntoFrame>::Output,
+    >>::Output;
+
+    fn aggregate<AggFunc>(&self, init: AggType, f: AggFunc) -> Self::Output
+    where
+        AggFunc: Fn(&mut AggType, Value<&DType>),
+    {
+        let fl = self.field_list::<KeyLabels>();
+        let values = self.field::<ValueLabel>();
+        let mut map = HashMap::new();
+        let mut indices = vec![];
+        let mut aggregates = vec![];
+        for i in 0..self.nrows() {
+            let record = Record::new(&fl, i);
+            let aggregates_idx = map.entry(record).or_insert_with(|| {
+                indices.push(i);
+                aggregates.push(init.clone());
+                debug_assert_eq!(indices.len(), aggregates.len());
+                indices.len() - 1
+            });
+            f(
+                &mut aggregates[*aggregates_idx],
+                values.get_datum(i).unwrap(),
+            );
+        }
+        let agg_data: FieldData<_> = aggregates.into();
+        let agg_frame = IntoStore::<AggLabel>::into_store(agg_data).into_frame();
+
+        let record_frames = self.frames.subset_clone().update_permutation(&indices);
+
+        DataView {
+            _labels: PhantomData,
+            frames: record_frames,
+        }
+        .add_frame(agg_frame)
     }
 }
 

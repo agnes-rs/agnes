@@ -246,6 +246,21 @@ where
     }
 }
 
+impl<Fields> IntoFrame for DataStore<Fields>
+where
+    Fields: AssocStorage + SimpleFrameFields,
+    DataFrame<<Fields as SimpleFrameFields>::Fields, DataStore<Fields>>: From<DataStore<Fields>>,
+{
+    type FrameFields = <Fields as SimpleFrameFields>::Fields;
+    type FramedStore = DataStore<Fields>;
+
+    type Output = DataFrame<Self::FrameFields, Self::FramedStore>;
+
+    fn into_frame(self) -> Self::Output {
+        self.into()
+    }
+}
+
 /// Trait for repackaging an data store into a `DataFrame`[struct.DataFrame.html] as a melted data
 /// structure. The output `DataFrame` will have one label, `MeltLabel`, which rotates over the
 /// labels in underlying data store.

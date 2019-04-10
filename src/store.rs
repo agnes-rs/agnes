@@ -681,6 +681,28 @@ where
     }
 }
 
+/// Trait for converting field data into a [DataStore](struct.DataStore.html) object with label
+/// `Label`.
+pub trait IntoStore<Label> {
+    /// The reulting `DataStore` object.
+    type Output;
+
+    /// Wraps this field data in a `DataStore` and returns it.
+    fn into_store(self) -> Self::Output;
+}
+
+impl<Label, T> IntoStore<Label> for FieldData<T>
+where
+    Label: Debug,
+    T: Default + Debug,
+{
+    type Output = SingleFieldStore<Label, T>;
+
+    fn into_store(self) -> Self::Output {
+        DataStore::<Nil>::empty().push_front_field(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
