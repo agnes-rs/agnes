@@ -515,7 +515,7 @@ macro_rules! impl_addcell_is_impl {
         }
     )*}
 }
-impl_addcell_is_impl![String f64 f32 u64 u32 i64 i32 bool];
+impl_addcell_is_impl![String &str f64 f32 u64 u32 i64 i32 bool];
 
 impl<Labels, Frames> DataView<Labels, Frames> {
     /// Construct a new `DataView` with the label `CurrLabel` relabeled with the label `NewLabel`.

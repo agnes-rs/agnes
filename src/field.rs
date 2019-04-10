@@ -280,6 +280,14 @@ impl<T> FieldData<T> {
             })
             .collect()
     }
+    /// Create a new `FieldData` from a slice. Does not clone or reallocate the contained data (but
+    /// does allocate the bit mask). Resulting `FieldData` struct will have no `Value::Na` values.
+    pub fn from_boxed_slice(orig: Box<[T]>) -> Self {
+        FieldData {
+            mask: BitVec::from_elem(orig.len(), true),
+            data: <[_]>::into_vec(orig),
+        }
+    }
 }
 impl<T> Default for FieldData<T> {
     fn default() -> FieldData<T> {

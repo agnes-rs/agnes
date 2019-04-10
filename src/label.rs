@@ -1323,6 +1323,65 @@ macro_rules! Fields {
     }
 }
 
+/// Creates a data table with supplied data.
+///
+/// `table` handles creating the underlying [DataStore](store/struct.DataStore.html) to store the
+/// data, and returns a [DataView](view/struct.DataView.html).
+///
+/// This macro should be called with a semi-colon separated list of
+/// '`<label> = [<comma-separated list of data];`' field data definitions. Each field should have
+/// the same number of data entries.
+///
+/// # Example
+///
+/// In this usage, we are creating a data table for the `employee` table, as defined with the
+/// [tablespace](macro.tablespace.html) macro. We add 7 data points to each of the `EmpId`,
+/// `DeptId`, and `EmpName` fields:
+/// ```
+/// # #[macro_use] extern crate agnes;
+/// tablespace![
+///     pub table employee {
+///         EmpId: u64,
+///         DeptId: u64,
+///         EmpName: String,
+///     }
+/// ];
+/// fn main() {
+///     let emp_table = table![
+///         employee::EmpId = [0, 1, 2, 3, 4, 5, 6];
+///         employee::DeptId = [0, 2, 1, 1, 1, 0, 1];
+///         employee::EmpName =
+///             ["Astrid", "Bob", "Calvin", "Deborah", "Eliza", "Franklin", "Gunther"];
+///     ];
+///     assert_eq!((emp_table.nrows(), emp_table.nfields()), (7, 3));
+///     println!("{}", emp_table);
+/// }
+/// ```
+/// This will produce the output:
+/// ```text
+///  EmpId | DeptId | EmpName
+/// -------+--------+----------
+///  0     | 0      | Astrid
+///  1     | 2      | Bob
+///  2     | 1      | Calvin
+///  3     | 1      | Deborah
+///  4     | 1      | Eliza
+///  5     | 0      | Franklin
+///  6     | 1      | Gunther
+/// ```
+#[macro_export]
+macro_rules! table {
+    ($($label:ty = [$($value:expr),*];)*) => {{
+        $crate::store::DataStore::<$crate::cons::Nil>::empty()
+        $(
+            .push_back_field::<$label, _>(
+                $crate::field::FieldData::from_boxed_slice(Box::new([$($value),*]))
+            )
+        )*
+            .into_view()
+    }}
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
