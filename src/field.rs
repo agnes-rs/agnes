@@ -40,6 +40,23 @@ impl<T> Value<T> {
             Value::Exists(t) => t,
         }
     }
+    /// Unwrap a `Value`, returning the contained value or a default.
+    pub fn unwrap_or(self, def: T) -> T {
+        match self {
+            Value::Na => def,
+            Value::Exists(t) => t,
+        }
+    }
+    /// Unwrap a `Value`, returning the contained value or a default computed from a closure.
+    pub fn unwrap_or_else<F>(self, f: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        match self {
+            Value::Na => f(),
+            Value::Exists(t) => t,
+        }
+    }
     /// Test if a `Value` contains a value.
     pub fn exists(&self) -> bool {
         match *self {
