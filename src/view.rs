@@ -1892,6 +1892,25 @@ mod tests {
         assert_eq!(subdv.fieldnames(), vec!["DeptId", "EmpId"]);
     }
 
+    #[cfg(feature = "test-utils")]
+    #[test]
+    fn subview_no_shared_frame() {
+        // test to make sure frames aren't shared between view and subview
+        use test_utils::emp_table::*;
+        let dv = sample_emp_table().into_view();
+        assert_eq!(dv.nrows(), 7);
+
+        let subdv = dv.v::<Labels![DeptId, EmpId]>();
+        assert_eq!(subdv.nrows(), 7);
+
+        let newdv = dv.filter::<DeptId, _>(|val: Value<&_>| match val {
+            Value::Exists(v) => *v == 1,
+            Value::Na => false,
+        });
+        assert_eq!(newdv.nrows(), 3);
+        assert_eq!(subdv.nrows(), 7);
+    }
+
     //TODO: multi-frame subview tests (which filter out no-longer-needed frames)
 
     #[cfg(feature = "test-utils")]
