@@ -1903,10 +1903,7 @@ mod tests {
         let subdv = dv.v::<Labels![DeptId, EmpId]>();
         assert_eq!(subdv.nrows(), 7);
 
-        let newdv = dv.filter::<DeptId, _>(|val: Value<&_>| match val {
-            Value::Exists(v) => *v == 1,
-            Value::Na => false,
-        });
+        let newdv = dv.filter::<DeptId, _>(|val: Value<&_>| val.map_or(false, |&v| v == 1));
         assert_eq!(newdv.nrows(), 3);
         assert_eq!(subdv.nrows(), 7);
     }

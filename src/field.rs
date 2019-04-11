@@ -79,10 +79,34 @@ impl<T> Value<T> {
         }
     }
     /// Applies function `f` if this `Value` exists.
-    pub fn map<U, F: FnMut(T) -> U>(self, mut f: F) -> Value<U> {
+    pub fn map<U, F>(self, f: F) -> Value<U>
+    where
+        F: FnOnce(T) -> U,
+    {
         match self {
             Value::Exists(val) => Value::Exists(f(val)),
             Value::Na => Value::Na,
+        }
+    }
+    /// Applies function `f` if this `Value` exists, or returns a default `def` if not
+    pub fn map_or<U, F>(self, def: U, f: F) -> U
+    where
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            Value::Exists(val) => f(val),
+            Value::Na => def,
+        }
+    }
+    /// Applies function `f` if this `Value` exists, or computes a default using `def` if not
+    pub fn map_or_else<U, D, F>(self, def: D, f: F) -> U
+    where
+        D: FnOnce() -> U,
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            Value::Exists(val) => f(val),
+            Value::Na => def(),
         }
     }
 }
