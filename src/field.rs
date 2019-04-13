@@ -246,25 +246,43 @@ where
 /// appropriate type, along with a bit mask to denote valid / missing values.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct FieldData<T> {
-    mask: BitVec,
+    mask: Option<BitVec>,
     data: Vec<T>,
 }
 impl<T> FieldData<T> {
     /// Returns the length of this data vector.
     pub fn len(&self) -> usize {
-        assert_eq!(self.mask.len(), self.data.len());
+        debug_assert!(self
+            .mask
+            .as_ref()
+            .map_or(true, |mask| mask.len() == self.data.len()));
         self.data.len()
     }
     /// Returns `true` if this field contains no values.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    fn exists_at(&self, index: usize) -> bool {
+        self.mask.as_ref().map_or(true, |mask| mask[index])
+    }
+    fn mask_set(&mut self, index: usize, value: bool) {
+        if value {
+            // if mask exists, set the `true` value, otherwise do nothing (since no mask means
+            // we consider all values to exist already)
+            self.mask.as_mut().map(|mask| mask.set(index, value));
+        } else {
+            // generate new mask if it doesn't exist, and set `false` value
+            self.mask
+                .get_or_insert(BitVec::from_elem(self.data.len(), true))
+                .set(index, value);
+        }
+    }
     /// Get the value at the given index. Returns `None` if `index` is out of bounds, or a
     /// `Value` enum.
     pub fn get(&self, index: usize) -> Option<Value<&T>> {
         if index >= self.data.len() {
             None
-        } else if self.mask[index] {
+        } else if self.exists_at(index) {
             Some(Value::Exists(&self.data[index]))
         } else {
             Some(Value::Na)
@@ -278,10 +296,10 @@ impl<T> FieldData<T> {
     {
         if index >= self.data.len() {
             None
-        } else if self.mask[index] {
+        } else if self.exists_at(index) {
             self.data.push(T::default());
             let value = self.data.swap_remove(index);
-            self.mask.set(index, false);
+            self.mask_set(index, false);
             Some(Value::Exists(value))
         } else {
             Some(Value::Na)
@@ -296,7 +314,7 @@ impl<T> FieldData<T> {
             .iter()
             .enumerate()
             .map(|(idx, value)| {
-                if self.mask[idx] {
+                if self.exists_at(idx) {
                     Value::Exists(value)
                 } else {
                     Value::Na
@@ -308,7 +326,7 @@ impl<T> FieldData<T> {
     /// does allocate the bit mask). Resulting `FieldData` struct will have no `Value::Na` values.
     pub fn from_boxed_slice(orig: Box<[T]>) -> Self {
         FieldData {
-            mask: BitVec::from_elem(orig.len(), true),
+            mask: None,
             data: <[_]>::into_vec(orig),
         }
     }
@@ -317,7 +335,7 @@ impl<T> Default for FieldData<T> {
     fn default() -> FieldData<T> {
         FieldData {
             data: vec![],
-            mask: BitVec::new(),
+            mask: None,
         }
     }
 }
@@ -326,7 +344,7 @@ impl<T> FieldData<T> {
     /// will have no `Value::Na` values.
     pub fn from_vec<U: Into<T>>(mut v: Vec<U>) -> FieldData<T> {
         FieldData {
-            mask: BitVec::from_elem(v.len(), true),
+            mask: None,
             data: v.drain(..).map(|value| value.into()).collect(),
         }
     }
@@ -340,11 +358,16 @@ where
         match value {
             Value::Exists(v) => {
                 self.data.push(v);
-                self.mask.push(true);
+                // if mask exists (which means there are NA values), then add a true to the end
+                self.mask.as_mut().map(|mask| mask.push(true));
             }
             Value::Na => {
+                let prev_len = self.data.len();
                 self.data.push(T::default());
-                self.mask.push(false);
+                // either get or create mask, and add a false to the end
+                self.mask
+                    .get_or_insert_with(|| BitVec::from_elem(prev_len, true))
+                    .push(false);
             }
         }
     }
@@ -358,11 +381,16 @@ where
         match value {
             Value::Exists(v) => {
                 self.data.push(v.clone());
-                self.mask.push(true);
+                // if mask exists (which means there are NA values), then add a true to the end
+                self.mask.as_mut().map(|mask| mask.push(true));
             }
             Value::Na => {
+                let prev_len = self.data.len();
                 self.data.push(T::default());
-                self.mask.push(false)
+                // either get or create mask, and add a false to the end
+                self.mask
+                    .get_or_insert_with(|| BitVec::from_elem(prev_len, true))
+                    .push(false);
             }
         }
     }
@@ -401,13 +429,11 @@ where
 }
 impl<T> FromIterator<T> for FieldData<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        let mut mask = BitVec::new();
         let mut data = vec![];
         for value in iter {
-            mask.push(true);
             data.push(value);
         }
-        FieldData { data, mask }
+        FieldData { data, mask: None }
     }
 }
 impl<T> From<Vec<T>> for FieldData<T> {
@@ -460,11 +486,20 @@ where
         S: Serializer,
     {
         let mut seq = serializer.serialize_seq(Some(self.data.len()))?;
-        for (mask, elem) in self.mask.iter().zip(self.data.iter()) {
-            if mask {
-                seq.serialize_element(elem)?;
-            } else {
-                seq.serialize_element("null")?;
+        match self.mask {
+            Some(ref mask) => {
+                for (mask, elem) in mask.iter().zip(self.data.iter()) {
+                    if mask {
+                        seq.serialize_element(elem)?;
+                    } else {
+                        seq.serialize_element("null")?;
+                    }
+                }
+            }
+            None => {
+                for elem in self.data.iter() {
+                    seq.serialize_element(elem)?;
+                }
             }
         }
         seq.end()
