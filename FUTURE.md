@@ -11,10 +11,8 @@ Some currently planned features / changes (not a complete list) are:
 * Additional documentation and examples.
 * Interface with matrix / machine learning libraries ([matrix](https://github.com/jblondin/matrix), [tensorflow](https://github.com/tensorflow/rust), etc.)
 * Data visualization through [rhubarb](https://github.com/jblondin/rhubarb).
-* `DataView` reshaping and aggregation (see R's `reshape` package / SQL GROUP BY)
 * Hash joins (currently only uses sort-merge joins)
 * Outer joins
 * Replacement of partial functions with specializations once specializations stabilize.
 * Expanded test suite.
-* Integration of [Apache Arrow](https://github.com/apache/arrow) data structures.
 * Move compile failure tests into doc tests (using compile_fail attribute).
