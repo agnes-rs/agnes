@@ -4,7 +4,7 @@ version = "0.3.2"
 description = "A data wrangling library for Rust"
 authors = ["Jamie Blondin <jblondin@gmail.com>"]
 license-file = "LICENSE"
-repository = "https://github.com/jblondin/agnes"
+repository = "https://github.com/agnes-rs/agnes"
 exclude = ["tests/data/*"]
 autoexamples = true
 
