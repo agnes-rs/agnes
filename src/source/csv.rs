@@ -11,13 +11,13 @@ use csv_sniffer::Sniffer;
 use cons::*;
 use error::*;
 use field::FieldIdent;
-use field::Value;
 use fieldlist::{FieldDesignator, FieldPayloadCons, FieldSchema, SchemaCons};
 use frame::SimpleFrameFields;
 use label::{TypedValue, Valued};
 use source::decode::decode;
 use source::file::{FileLocator, LocalFileReader, Uri};
 use store::{AssocFrameLookup, AssocStorage, DataStore, IntoView, PushFrontFromValueIter};
+use value::Value;
 
 /// CSV Data source. Contains location of data file, and computes CSV metadata. Can be turned into
 /// `CsvReader` object.

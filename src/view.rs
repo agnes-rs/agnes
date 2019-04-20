@@ -27,7 +27,7 @@ use serde::ser::{Serialize, SerializeMap, Serializer};
 use access::*;
 use cons::*;
 use error;
-use field::{FieldData, Value};
+use field::FieldData;
 use fieldlist::FieldPayloadCons;
 #[cfg(test)]
 use frame::StoreRefCount;
@@ -41,6 +41,7 @@ use permute::{
 };
 use select::{FieldSelect, SelectFieldByLabel};
 use store::{IntoStore, IntoView};
+use value::Value;
 
 /// Cons-list of `DataFrame`s held by a `DataView. `FrameIndex` is simply an index used by
 /// `FrameLookupCons` to look up `DataFrame`s for a specified `Label`, and `Frame` is the type

@@ -6,7 +6,7 @@ use std::ops::{Add, Mul};
 use num_traits::{AsPrimitive, Zero};
 
 use access::DataIndex;
-use field::*;
+use value::Value;
 
 /// A trait for counting NA and existing values in a field.
 pub trait NaCount {
@@ -224,9 +224,10 @@ where
 mod tests {
     use super::*;
     use cons::Nil;
-    use field::Value;
+    use field::FieldData;
     use select::FieldSelect;
     use store::DataStore;
+    use value::Value;
 
     tablespace![
         pub table foo {

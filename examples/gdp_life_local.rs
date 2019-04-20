@@ -4,9 +4,9 @@ extern crate agnes;
 use std::fmt::Debug;
 use std::path::Path;
 
-use agnes::field::Value;
 use agnes::join::{Equal, Join};
 use agnes::source::csv::{CsvReader, CsvSource, IntoCsvSrcSchema};
+use agnes::value::Value;
 
 fn load_csv_file<Schema>(filename: &str, schema: Schema) -> CsvReader<Schema::CsvSrcSchema>
 where

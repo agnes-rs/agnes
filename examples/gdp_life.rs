@@ -1,9 +1,9 @@
 #[macro_use]
 extern crate agnes;
 
-use agnes::field::Value;
 use agnes::join::{Equal, Join};
 use agnes::source::csv::load_csv_from_uri;
+use agnes::value::Value;
 
 tablespace![
     table gdp {

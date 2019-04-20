@@ -13,12 +13,12 @@ use std::ops::Add;
 use access::DataIndex;
 use cons::*;
 use error::*;
-use field::Value;
 use frame::DataFrame;
 use label::{LVCons, Labeled, LookupValuedElemByLabel, Valued};
 use permute::SortOrder;
 use select::{FieldSelect, SelectFieldByLabel};
 use store::{DataStore, IntoView, PushBackClonedFromValueIter};
+use value::Value;
 use view::*;
 
 /// A trait for applying a frame index offset `O`.

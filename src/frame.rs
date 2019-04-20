@@ -19,12 +19,13 @@ use typenum::UTerm;
 use access::{DataIndex, NRows};
 use cons::Nil;
 use error;
-use field::{FieldData, Value};
+use field::FieldData;
 use fieldlist::FieldCons;
 use label::*;
 use permute::{self, UpdatePermutation};
 use select::{FieldSelect, SelectFieldByLabel};
 use store::{AssocFrameLookup, AssocStorage, DataRef, DataStore, IntoView};
+use value::Value;
 use view::{DataView, ViewFrameCons};
 
 type Permutation = permute::Permutation<Vec<usize>>;

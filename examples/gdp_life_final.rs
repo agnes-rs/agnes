@@ -2,12 +2,12 @@
 extern crate agnes;
 
 use agnes::access::DataIndex;
-use agnes::field::Value;
 use agnes::join::{Equal, Join};
 use agnes::label::IntoLabeled;
 use agnes::select::FieldSelect;
 use agnes::source::csv::load_csv_from_uri;
 use agnes::store::IntoView;
+use agnes::value::Value;
 
 tablespace![
     table gdp {

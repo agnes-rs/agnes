@@ -9,8 +9,8 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 use error::*;
-use field::Value;
 use frame::Framed;
+use value::Value;
 
 /// Trait that provides access to values in a data field.
 pub trait DataIndex: Debug {

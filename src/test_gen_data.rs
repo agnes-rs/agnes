@@ -3,7 +3,7 @@ use rand::distributions as rdists;
 use rand::distributions::Distribution;
 use rand::StdRng;
 
-use field::Value;
+use value::Value;
 
 pub trait Generate<T> {
     fn generate(&self, sz: usize, rng: &mut StdRng) -> FieldData<T>;

@@ -14,11 +14,12 @@ use typenum::uint::UTerm;
 use access::{DataIndex, NRows};
 use cons::*;
 use error;
-use field::{FieldData, Value};
+use field::FieldData;
 use fieldlist::{FieldCons, FieldPayloadCons, FieldSchema};
 use frame::{DataFrame, SimpleFrameFields};
 use label::*;
 use select::{FieldSelect, SelectFieldByLabel};
+use value::Value;
 use view::{DataView, FrameLookupCons, ViewFrameCons};
 
 /// Local `Rc` wrapper type for [FieldData](../field/struct.FieldData.html) objects.
@@ -714,9 +715,9 @@ mod tests {
 
     use super::{DataStore, NRows};
     use cons::*;
-    use field::Value;
     use select::FieldSelect;
     use source::csv::{CsvReader, CsvSource, IntoCsvSrcSchema};
+    use value::Value;
 
     fn load_csv_file<Schema>(
         filename: &str,

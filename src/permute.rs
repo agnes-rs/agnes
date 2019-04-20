@@ -11,7 +11,7 @@ use std::cmp::Ordering;
 
 use access::DataIndex;
 use cons::Nil;
-use field::Value;
+use value::Value;
 
 /// A structure containing information about the permutation status of a field. `I` represents the
 /// underlying permutation implementation type (such as `Vec<usize>` or &[usize]).

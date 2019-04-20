@@ -36,7 +36,7 @@ mod tests {
     use super::FieldSelect;
 
     use access::DataIndex;
-    use field::Value;
+    use value::Value;
 
     #[cfg(feature = "test-utils")]
     use test_utils::*;

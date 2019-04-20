@@ -94,6 +94,8 @@ pub mod fieldlist;
 pub mod store;
 #[macro_use]
 pub mod field;
+#[macro_use]
+pub mod value;
 
 #[cfg(feature = "test-utils")]
 #[macro_use]
