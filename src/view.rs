@@ -451,12 +451,30 @@ where
 /// associated with labels `Labels`.
 pub type AssocDataIndexConsOf<Labels, Frames> = <Frames as AssocDataIndexCons<Labels>>::Output;
 
+/// Trait for applying a function (implementing [Func](../partial/trait.Func.html)) to all the
+/// fields in a data structure. Calls the [call](../partial.trait.Func.html#call) method for each
+/// field of this object.
+pub trait FieldMap<F> {
+    /// Apply this function to every field in this structure.
+    fn field_map(&self, f: &mut F);
+}
+
+impl<F, Labels, Frames> FieldMap<F> for DataView<Labels, Frames>
+where
+    Frames: AssocDataIndexCons<Labels>,
+    AssocDataIndexConsOf<Labels, Frames>: DeriveCapabilities<F>,
+{
+    fn field_map(&self, f: &mut F) {
+        self.frames.assoc_data().derive().map(f);
+    }
+}
+
 const MAX_DISP_ROWS: usize = 1000;
 
 impl<Labels, Frames> Display for DataView<Labels, Frames>
 where
-    Frames: Len + NRows + AssocDataIndexCons<Labels>,
-    AssocDataIndexConsOf<Labels, Frames>: DeriveCapabilities<AddCellToRowFn>,
+    Frames: Len + NRows,
+    Self: FieldMap<AddCellToRowFn>,
     Labels: StrLabels,
 {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
@@ -469,7 +487,7 @@ where
         let mut func = AddCellToRowFn {
             rows: vec![pt::row::Row::empty(); nrows.min(MAX_DISP_ROWS)],
         };
-        self.frames.assoc_data().derive().map(&mut func);
+        self.field_map(&mut func);
         for row in func.rows.drain(..) {
             table.add_row(row);
         }
