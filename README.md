@@ -1,6 +1,6 @@
 # Agnes
 
-[![Build Status](https://travis-ci.org/jblondin/agnes.svg?branch=master)](https://travis-ci.org/jblondin/agnes)
+[![Build Status](https://travis-ci.org/agnes-rs/agnes.svg?branch=master)](https://travis-ci.org/agnes-rs/agnes)
 [![Documentation](https://docs.rs/agnes/badge.svg)](https://docs.rs/agnes)
 [![Join the chat at https://gitter.im/agnes-rs/community](https://badges.gitter.im/agnes-rs/community.svg)](https://gitter.im/agnes-rs/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
